@@ -1,0 +1,8 @@
+# Jupyter Notebook Checkpoints
+.ipynb_checkpoints/
+
+# Jupyter Notebook Cache
+__pycache__/
+
+# Jupyter Notebook Metadata
+*.ipynb_metadata.json
