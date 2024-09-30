@@ -47,6 +47,8 @@ export interface CsemData {
   StdErr: number;
   X_rx: number;
   Y_rx: number;
+  Lon_rx: number;
+  Lat_rx: number;
   Z_rx: number;
   Theta: number;
   Alpha: number;
@@ -55,12 +57,42 @@ export interface CsemData {
   Name_rx: string;
   X_tx: number;
   Y_tx: number;
+  Lon_tx: number;
+  Lat_tx: number;
   Z_tx: number;
   Azimuth: number;
   Dip: number;
   Length_tx: number;
   Type_tx: string;
   Name_tx: string;
+}
+
+export interface TxData {
+  Tx_id: number;
+  X_tx: number;
+  Y_tx: number;
+  Lon_tx: number;
+  Lat_tx: number;
+  Z_tx: number;
+  Azimuth: number;
+  Dip: number;
+  Length_tx: number;
+  Type_tx: string;
+  Name_tx: string;
+}
+
+export interface RxData {
+  Rx_id: number;
+  X_rx: number;
+  Y_rx: number;
+  Lon_rx: number;
+  Lat_rx: number;
+  Z_rx: number;
+  Theta: number;
+  Alpha: number;
+  Beta: number;
+  Length_rx: number;
+  Name_rx: string;
 }
 
 export interface xyzData {
@@ -82,14 +114,28 @@ export interface xyzData {
 //   type: string;
 // }
 
+export interface GeometryData {
+  UTM_zone: number;
+  Hemisphere: string;
+  North: number;
+  East: number;
+  Strike: number;
+}
+
 type DataTableStore = {
   data: CsemData[];
+  txData: TxData[];
+  rxData: RxData[];
   filteredData: CsemData[];
   subDatasets: CsemData[][],
   colDefs: ColDef[];
+  geometryInfo: GeometryData;
   filterModel: FilterModel | null,
   setData: (data: CsemData[]) => void;
+  setTxData: (txData: TxData[]) => void;
+  setRxData: (rxData: RxData[]) => void;
   setColDefs: (newColDefs: ColDef[]) => void;
+  setGeometryInfo: (newGeometryInfo: GeometryData) => void;
   setFilteredData: (newFilteredData: CsemData[]) => void;
   setFilterModel: (newFilterModel: FilterModel | null) => void;
   setSubDatasets: (newSubDatasets: []) => void;
@@ -107,6 +153,8 @@ export const useInv2DStore = create<Inv2DStore>()((set) => ({
 
 export const useDataTableStore = create<DataTableStore>()((set) => ({
   data: [],
+  txData: [],
+  rxData: [],
   filteredData: [],
   subDatasets: [],
   colDefs: [
@@ -120,11 +168,15 @@ export const useDataTableStore = create<DataTableStore>()((set) => ({
     { headerName: 'X (rx)', field: "X_rx", filter: true, floatingFilter: true},
     { headerName: 'Y (rx)', field: "Y_rx", filter: true, floatingFilter: true},
     { headerName: 'Z (rx)', field: "Z_rx", filter: true, floatingFilter: true},
+    { headerName: 'Lat (rx)', field: "Lat_rx", filter: true, floatingFilter: true},
+    { headerName: 'Lon (rx)', field: "Lon_rx", filter: true, floatingFilter: true},
     { headerName: 'Theta', field: "Theta", filter: true, floatingFilter: true},
     { headerName: 'Alpha', field: "Alpha", filter: true, floatingFilter: true},
     { headerName: 'Beta', field: "Beta", filter: true, floatingFilter: true},
     { headerName: 'X (tx)', field: "X_tx", filter: true, floatingFilter: true},
     { headerName: 'Y (tx)', field: "Y_tx", filter: true, floatingFilter: true},
+    { headerName: 'Lat (tx)', field: "Lat_tx", filter: true, floatingFilter: true},
+    { headerName: 'Lon (tx)', field: "Lon_tx", filter: true, floatingFilter: true},
     { headerName: 'Z (tx)', field: "Z_tx", filter: true, floatingFilter: true},
     { headerName: 'Azimuth', field: "Azimuth", filter: true, floatingFilter: true},
     { headerName: 'Dip', field: "Dip", filter: true, floatingFilter: true},
@@ -136,11 +188,15 @@ export const useDataTableStore = create<DataTableStore>()((set) => ({
 
   ],
   filterModel: null,
+  geometryInfo: { UTM_zone: 0, Hemisphere: 'N', North: 0, East: 0, Strike: 0 },
   setData: (data) => set({ data: data }),
+  setTxData: (txData) => set({ txData: txData }),
+  setRxData: (rxData) => set({ rxData: rxData }),
   setColDefs: (newColDefs) => set({ colDefs: newColDefs }),
   setFilteredData: (newFilteredData) => set({ filteredData: newFilteredData }),
   setFilterModel: (newFilterModel) => set({ filterModel: newFilterModel }),
-  setSubDatasets: (newSubDatasets) => set({ subDatasets: newSubDatasets })
+  setSubDatasets: (newSubDatasets) => set({ subDatasets: newSubDatasets }),
+  setGeometryInfo: (newGeometryInfo) => set({ geometryInfo: newGeometryInfo }),
 }));
 
 export const useSettingFormStore = create<SettingFormState>()((set) => ({

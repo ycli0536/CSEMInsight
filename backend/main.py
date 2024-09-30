@@ -54,10 +54,13 @@ def upload_data_file():
             print(path)
             file.save(path)
             csem_datafile_reader = CSEMDataFileReader(path)
+            geometry_info = csem_datafile_reader.extract_geometry_info()
             csem_data = csem_datafile_reader.blocks
             data_df = csem_datafile_reader.data_block_init(csem_data['Data'])
             rx_data_df = csem_datafile_reader.rx_data_block_init(csem_data['Rx'])
             tx_data_df = csem_datafile_reader.tx_data_block_init(csem_data['Tx'])
+            rx_data_df = csem_datafile_reader.ne2latlon(rx_data_df, geometry_info)
+            tx_data_df = csem_datafile_reader.ne2latlon(tx_data_df, geometry_info)
             data_rx_tx_df = csem_datafile_reader.merge_data_rx_tx(data_df, rx_data_df, tx_data_df)
             data_js = csem_datafile_reader.df_to_json(data_rx_tx_df)
             
@@ -66,8 +69,9 @@ def upload_data_file():
             # # Split the file name into base name and extension
             # base_name, _ = os.path.splitext(file_name)
             # df.to_json(os.path.join(directory, base_name, '.json'), orient='records', date_format='epoch', date_unit='s')
-        
-            return jsonify(data_js)
+            
+            # Return geometry info and data
+            return jsonify(geometry_info, data_js)
 
     return 'Invalid file format'
 

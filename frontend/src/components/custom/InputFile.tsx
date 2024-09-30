@@ -3,11 +3,11 @@ import { useState } from 'react';
 import { Button, FileTrigger, DropZone } from "react-aria-components";
 import type { FileDropItem } from "react-aria";
 
-import { useDataTableStore, CsemData,
+import { useDataTableStore, CsemData, GeometryData,
     useInv2DStore, xyzData } from '@/store/settingFormStore';
 
 export function InputFile() {
-    const { setData } = useDataTableStore();
+    const { setData, setGeometryInfo } = useDataTableStore();
     const { setInvResult } = useInv2DStore();
     const [files, setFiles] = useState<string | null>(null);
         
@@ -39,9 +39,11 @@ return (
                 axios.post('http://127.0.0.1:5000/upload-data', formData)
                 .then(response => {
                         console.log('response.json: ', response)
-                        const responseData: CsemData[] = JSON.parse(response.data).data;
+                        const geomtryData: GeometryData = response.data[0];
+                        const responseData: CsemData[] = JSON.parse(response.data[1]).data;
                         console.log('responseData', responseData)
                         setData(responseData);
+                        setGeometryInfo(geomtryData);
                 })
                 .catch(error => console.error('Error uploading file:', error));
                 

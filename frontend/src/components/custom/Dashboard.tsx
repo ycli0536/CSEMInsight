@@ -19,6 +19,8 @@ import { Button } from "@/components/ui/button"
 
 import { DataPage } from "@/components/custom/table-page"
 import { ResponsesWithErrorBars } from "@/components/custom/ResponsePlot";
+import { TxRxPosPlot } from "@/components/custom/TxRxPos";
+import Map from "@/components/custom/Map";
 // import { Heatmap } from "@/components/custom/heatmap";
 
 export function Dashboard() {
@@ -57,13 +59,38 @@ return (
             </ResizablePanel>
             <ResizableHandle withHandle className="hidden md:flex"/>
             <ResizablePanel defaultSize={75}>
-                <div className="grid-flow-col items-center justify-center p-6">
+              <div className="grid-flow-col items-center justify-center p-2">
+                <fieldset className="grid gap-6 rounded-lg border p-2 m-0">
+                  <legend className="-ml-1 px-1 text-base font-bold">
+                    Data table
+                  </legend>
                   <DataPage />
+                </fieldset>
+                <fieldset className="grid gap-6 rounded-lg border p-2 m-0">
+                  <legend className="-ml-1 px-1 text-base font-bold">
+                    CSEM Responses
+                  </legend>
                   <div id="plot" className="w-full">
                     <ResponsesWithErrorBars />
                   </div>
-
+                </fieldset>
+                <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+                  <fieldset className="grid gap-6 rounded-lg border p-2 m-0">
+                  <legend className="-ml-1 px-1 text-base font-bold">
+                    Rx Tx positions (MARE2DEM coordinate system)
+                  </legend>
+                  <div id="txrxplot" className="overflow-auto">
+                    <TxRxPosPlot />
+                  </div>
+                </fieldset>
+                <fieldset className="grid gap-6 rounded-lg border p-2 m-0">
+                  <legend className="-ml-1 px-1 text-base font-bold">
+                    Rx Tx positions on Map
+                  </legend>
+                  <Map />
+                </fieldset>
                 </div>
+              </div>
 
             </ResizablePanel>
         </ResizablePanelGroup>

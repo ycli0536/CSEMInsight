@@ -1,6 +1,8 @@
 import re
 import pandas as pd
 import numpy as np
+import utm
+from os import path
 
 class CSEMDataFileReader():
     """_summary_
@@ -52,6 +54,21 @@ class CSEMDataFileReader():
             for i, block in enumerate(extracted_blocks):
                 # assume for each pattern we can only find single match (if any)
                 self.blocks[self.block_infos[i]] = block
+
+    def extract_geometry_info(self):
+        """Extract geometry information."""
+        geometry_info_line = self.blocks['Geometry']
+        geometry_info = geometry_info_line[0].split(':')[1].split('!')[0].strip().split()
+
+        geometry_key = [
+                    "UTM_zone",
+                    "Hemisphere",
+                    "North",
+                    "East",
+                    "Strike",
+                ]
+        geometry_data = {key: value for key, value in zip(geometry_key, geometry_info)}
+        return geometry_data
 
     def extract_data_block(self, lines:str) -> dict:
         """Extract certain data block."""
@@ -235,6 +252,34 @@ class CSEMDataFileReader():
         Rx_data.insert(0, "Rx#", pd.Series(range(1, len(Rx_data)+1)))
         return Rx_data
 
+    # Function to rotate coordinates
+    def inv_rotate_coords(self, x, y, rot_angle, origin):
+        angle = np.deg2rad(rot_angle)  # Convert azimuth to radians
+        x_rot = x * np.cos(angle) - y * np.sin(angle) + origin[0]
+        y_rot = x * np.sin(angle) + y * np.cos(angle) + origin[1]
+        return x_rot, y_rot
+
+    # Function to convert UTM to latitude and longitude
+    def utm_to_latlon(self, x, y, zone_number, northern_hemisphere=True):
+        lat, lon = utm.to_latlon(x, y, zone_number, northern=northern_hemisphere)
+        return lat, lon
+
+    def ne2latlon(self, data_df, geometry_info):
+        """Convert mare2dem inline-crossline coordinates to latitude and longitude."""
+        # Extract UTM zone info (e.g., Zone 4, Northern Hemisphere)
+        utm_zone = int(geometry_info['UTM_zone'])
+        if geometry_info['Hemisphere'] == 'N':
+            northern_hemisphere = True
+        else:
+            northern_hemisphere = False
+        strike = float(geometry_info['Strike'])
+        e, n = self.inv_rotate_coords(data_df['Y'], data_df['X'], -strike, # be careful with the mare2dem coordinate system
+                                      (float(geometry_info['East']), float(geometry_info['North'])))
+        lat, lon = self.utm_to_latlon(e, n, utm_zone, northern_hemisphere)
+        data_df['Lat'] = lat
+        data_df['Lon'] = lon
+        return data_df
+
     def merge_data_rx_tx(self, data, rx_data, tx_data):
         """Merge the data, Rx and Tx blocks."""
 
@@ -248,18 +293,18 @@ class CSEMDataFileReader():
 
     def anti_merge_data_rx_tx(self, merged_df):
         """Anti-merge the data, Rx and Tx blocks."""
-        data = merged_df[['Type', 'Freq_id', 'Tx_id', 'Rx_id', 'Data', 'StdErr']]
+        data = merged_df[['Type', 'Freq_id', 'Tx_id', 'Rx_id', 'Data', 'StdErr']].copy()
         data.rename(columns={'Freq_id': 'Freq#',
                              'Tx_id': 'Tx#',
                              'Rx_id': 'Rx#'}, inplace=True)
-        rx_data = merged_df[['Rx_id', 'X_rx', 'Y_tx', 'Z_rx', 'Theta', 'Alpha', 'Beta', 'Length_rx', 'Name_rx']]
+        rx_data = merged_df[['Rx_id', 'X_rx', 'Y_tx', 'Z_rx', 'Theta', 'Alpha', 'Beta', 'Length_rx', 'Name_rx']].copy()
         rx_data.rename(columns={'X_rx': 'X',
                                 'Y_rx': 'Y',
                                 'Z_rx': 'Z',
                                 'Rx_id': 'Rx#',
                                 'Length_rx': 'Length',
                                 'Name_rx': 'Name'}, inplace=True)
-        tx_data = merged_df[['Tx_id', 'X_tx', 'Y_tx', 'Z_tx', 'Azimuth', 'Dip', 'Length_tx', 'Type_tx', 'Name_tx']]
+        tx_data = merged_df[['Tx_id', 'X_tx', 'Y_tx', 'Z_tx', 'Azimuth', 'Dip', 'Length_tx', 'Type_tx', 'Name_tx']].copy()
         tx_data.rename(columns={'X_tx': 'X',
                                 'Y_tx': 'Y',
                                 'Z_tx': 'Z',
@@ -295,3 +340,27 @@ class CSEMDataFileReader():
         # result = pivoted_df.to_json(orient='table', index=True)
         # result = pivoted_df.to_json(orient='records', index=True)
         return result
+
+    def write_file(self):
+        # Define all types of data info string list
+        AllBlocks = []
+
+        for _, info in enumerate(self.blocks):
+            AllBlocks.append(''.join(self.blocks[info]))
+
+        # Join the lines back into a string
+        AllData = ''.join(AllBlocks)
+
+        datafile_pathname = path.split(self.file_path)[0]
+        datafile = path.split(self.file_path)[1]
+        datafilename = path.splitext(datafile)[0]
+
+        datafilename_n = datafilename + '_m.data'
+        new_file_path = path.join(datafile_pathname, datafilename_n)
+
+        # Write the modified data back to another file
+        with open(new_file_path, "w", encoding="utf-8") as file:
+            file.write(AllData)
+
+        # # Print a message indicating that the file has been updated
+        print(f"The file '{self.file_path}' has been modified with modified data and saved to a new file '{new_file_path}'.")
