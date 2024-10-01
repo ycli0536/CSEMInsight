@@ -25,16 +25,9 @@ const MapComponent = () => {
             : defaultPosition;
     }, [txLoc]);
 
-    useEffect(() => {
-        if (MapViewRef.current && txData.length > 0) {
-            console.log('txSite: ', txSite);
-            console.log('position: ', position);
-        }
-    }, [txData, txSite, position]);
-
     return (
         <div className="grid gap-2">
-            <Label className="flex items-center space-x-2">
+            <Label className="flex items-center justify-center space-x-2">
                 <span>UTM_zone: {geometryInfo.UTM_zone}</span>
                 <span>Hemisphere: {geometryInfo.Hemisphere}</span>
                 <span>North: {geometryInfo.North}</span>

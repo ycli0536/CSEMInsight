@@ -21,7 +21,7 @@ import { DataPage } from "@/components/custom/table-page"
 import { ResponsesWithErrorBars } from "@/components/custom/ResponsePlot";
 import { TxRxPosPlot } from "@/components/custom/TxRxPos";
 import Map from "@/components/custom/Map";
-// import { Heatmap } from "@/components/custom/heatmap";
+import HeatmapComponent from "@/components/custom/Heatmap";
 
 export function Dashboard() {
 return (
@@ -85,11 +85,17 @@ return (
                 </fieldset>
                 <fieldset className="grid gap-6 rounded-lg border p-2 m-0">
                   <legend className="-ml-1 px-1 text-base font-bold">
+                    Inversion results
+                  </legend>
+                  <HeatmapComponent />
+                </fieldset>
+                </div>
+                <fieldset className="grid gap-6 rounded-lg border p-2 m-0">
+                  <legend className="-ml-1 px-1 text-base font-bold">
                     Rx Tx positions on Map
                   </legend>
                   <Map />
                 </fieldset>
-                </div>
               </div>
 
             </ResizablePanel>

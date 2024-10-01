@@ -178,8 +178,8 @@ export function TxRxPosPlot() {
                 uplotTxRxData[nameToIndexMap['Y_tx']], // Keep the x-axis (Y distance)
                 uplotTxRxData[nameToIndexMap['X_tx']],
                 uplotTxRxData[nameToIndexMap['X_rx']],
-                uplotTxRxData[nameToIndexMap['Dip']],
                 uplotTxRxData[nameToIndexMap['Name_tx']],
+                uplotTxRxData[nameToIndexMap['Theta']],
                 uplotTxRxData[nameToIndexMap['Length_tx']],
             ];
 
@@ -193,9 +193,9 @@ export function TxRxPosPlot() {
 
             // uPlot options
             const series_xy: uPlot.Series[] = [
-                { label: "Y (inline) distance (m)" },
+                { label: "Inline distance (m)" },
                 { 
-                    label: "Tx X (crossline) distance (m)",
+                    label: "Tx crossline distance (m)",
                     stroke: "red",
                     paths: () => null,
                     points: {
@@ -206,7 +206,7 @@ export function TxRxPosPlot() {
                       },
                 },
                 { 
-                    label: "Rx X (crossline) distance (m)",
+                    label: "Rx crossline distance (m)",
                     stroke: "blue",
                     points: {
                         show: true,
@@ -214,14 +214,14 @@ export function TxRxPosPlot() {
                       },
                 },
                 { 
-                    label: "Dip",
-                    show: false,
-                },
-                { 
                     label: "Tx Site", 
                     show: false, // Do not plot this series
                     value: (_self, _rawValue, _seriesIdx, idx) => `${uplotTxRxData[nameToIndexMap['Name_tx']][idx]}` // Display string in legend
                   },
+                  { 
+                    label: "Rx Theta",
+                    show: false,
+                },
                 { 
                     label: "Tx Length (m)",
                     show: false,
@@ -299,7 +299,7 @@ export function TxRxPosPlot() {
                 },
                 
                 {
-                    label: 'Crossline distance (m)',
+                    label: 'Crossline (X) distance (m)',
                     labelFont: 'bold 20px Helvetica',
                     // font: "14px Arial",
                     stroke: 'black',
@@ -307,9 +307,6 @@ export function TxRxPosPlot() {
                     ticks: {stroke: 'black', show: true, dash: [], size: 10}
                 }
                 ],
-                // legend: {
-                //     show: true,
-                // }
                 hooks: {
                     init: [
                       u => {
@@ -354,7 +351,7 @@ export function TxRxPosPlot() {
                   ],
                 axes: [
                     {
-                    label: 'Inline distance (m)',
+                    label: 'Inline (Y) distance (m)',
                     labelFont: 'bold 20px Helvetica',
                     stroke: 'black',
                     size: 40,
@@ -387,7 +384,7 @@ export function TxRxPosPlot() {
                 plotTxRx2Instance.destroy();
             };
         }
-    }, [data]);
+    }, [data, setRxData, setTxData]);
 
     return (
         <div ref={XYChartRef} className="overflow-auto"></div>

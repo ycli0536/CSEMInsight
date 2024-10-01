@@ -98,21 +98,8 @@ export interface RxData {
 export interface xyzData {
   Y: number;
   Z: number;
-  rho: number;
+  rho1: number;
 }
-
-// export interface xyzData {
-//   rho: number[][];
-// }
-
-// export interface CsemData {
-//   data_freq1: number;
-//   data_freq2: number;
-//   data_freq3: number;
-//   rx_id: number;
-//   tx_id: number;
-//   type: string;
-// }
 
 export interface GeometryData {
   UTM_zone: number;
