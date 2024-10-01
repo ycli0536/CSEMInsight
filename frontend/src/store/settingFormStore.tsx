@@ -96,7 +96,9 @@ export interface RxData {
 }
 
 export interface xyzData {
+  X: number;
   Y: number;
+  Y_dist: number;
   Z: number;
   rho1: number;
 }

@@ -29,6 +29,7 @@ def upload_xyz_file():
             file.save(path)
             xyz_datafile_reader = XYZDataFileReader(path)
             xyz_datafile_reader.read_file()
+            xyz_datafile_reader.add_distance()
             # result_df = xyz_datafile_reader.df_for_echart_heatmap(xyz_datafile_reader.data)
             data_js = xyz_datafile_reader.df_to_json(xyz_datafile_reader.data)
             return jsonify(data_js)

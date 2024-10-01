@@ -1,4 +1,5 @@
 import pandas as pd
+import numpy as np
 
 class XYZDataFileReader():
     """Visualization tool for MARE2DEM inversion results.
@@ -18,7 +19,11 @@ class XYZDataFileReader():
                          names=['X', 'Y', 'Z', 'rho1', 'rho2', 'rho3'])
 
         # Extract Y and Z coordinates, and resistivity values (rho1)
-        self.data = df[['Y', 'Z', 'rho1']]
+        self.data = df[['X', 'Y', 'Z', 'rho1']]
+
+    def add_distance(self):
+        """Add distance column to the DataFrame."""
+        self.data['Y_dist'] = -np.sqrt((self.data['Y'] - self.data['Y'].iloc[-1])**2 + (self.data['X'] - self.data['X'].iloc[-1])**2)
 
     def df_for_echart_heatmap(self, df):
         """Convert DataFrame to a format that can be used by ECharts."""

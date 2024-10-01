@@ -14,7 +14,7 @@ const HeatmapComponent: React.FC = () => {
   useEffect(() => {
 
     const testData = [
-      invData.map(d => d.Y),
+      invData.map(d => d.Y_dist),
       invData.map(d => d.Z),
       invData.map(d => d.rho1),
     ];
@@ -171,7 +171,7 @@ const HeatmapComponent: React.FC = () => {
               const cx = cxs[~~(i / yBinQty)];
               const cy = cys[i % yBinQty];
               const fillPath = fillPaths[fills[i]];
-              rect(fillPath, cx, cy, xSize, ySize);
+              rect(fillPath, cx, cy, Math.ceil(xSize), Math.ceil(ySize));
             }
           }
 
@@ -197,7 +197,7 @@ const HeatmapComponent: React.FC = () => {
       scales: {
       x: {
         time: false,
-        dir: -1,
+        dir: 1,
       },
       y: {
         dir: -1,
@@ -285,7 +285,7 @@ const HeatmapComponent: React.FC = () => {
               }
 
               if (closestIdx !== -1) {
-                setLegendValue(`(${xs[closestIdx]}, ${ys[closestIdx]}) = ${round3(10**(rho[closestIdx]))} Ohm.m`);
+                setLegendValue(`(${Math.round(xs[closestIdx])}, ${Math.round(ys[closestIdx])}) = ${round3(10**(rho[closestIdx]))} Ohm.m`);
               }
             }
           },
