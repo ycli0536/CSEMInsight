@@ -12,7 +12,7 @@
 ## Future
 
 - **Extended Data Format Support**: Adding compatibility for more marine EM data and general geophysical data formats.
-- **Expanded Visualizations**: e.g., Map, Navigation dashboard
+- **Expanded Visualizations**: e.g., Navigation dashboard
 - **Data Editing**: Integrating in-app data editing functionality for streamlined workflows. For now, it is **highly recommended to perform any data edits in the original data files** before uploading them into the app for visualization and analysis. This approach ensures the integrity of the data and allows the app to serve as a powerful decision-making tool based on visualized insights.
 - **Export results**: Export results for further analysis or publication.
 
@@ -26,10 +26,11 @@ Follow these steps to set up **EMInsight** on your local machine:
   - [Node.js](https://nodejs.org/) (test on v22)
   - [Vite](https://vitejs.dev/) for project build and development
   - [React](https://reactjs.org/) and [TypeScript](https://www.typescriptlang.org/)
+  - [bun](https://bun.sh/)
 - Backend
   - [Python](https://www.python.org/) (test on 3.12) for backend data pre-processing and scientific computation
 
-For package manager, I'm using [bun](https://bun.sh/) but feel free to choose other commonly used package managers, e.g., npm, yarn, etc.
+For package manager, I'm using bun but feel free to choose other commonly used package managers, e.g., npm, yarn, etc.
 
 ### Steps
 
@@ -37,7 +38,7 @@ For package manager, I'm using [bun](https://bun.sh/) but feel free to choose ot
 
    ```bash
    git clone https://github.com/ycli0536/CSEMInsight.git
-   cd EMInsight
+   cd CSEMInsight
    ```
 
 2. Install the dependencies (frontend):
@@ -63,20 +64,22 @@ For package manager, I'm using [bun](https://bun.sh/) but feel free to choose ot
    pip install -r requirements.txt
    ```
 
-5. Run python script (backend):
+5. Run python script (backend) to deploy a development (Not Production!) server:
 
    ```bash
+   cd backend
    python main.py
    ```
 
 6. Open the app in your browser at `http://localhost:5173`.
 
-### Build for production
+### Build for production (Optional)
 
-To create an optimized production build (not tried yet):
+To create an optimized production build (frontend) under `frontend/dist`:
 
 ```bash
-bun build
+cd frontend
+bun run build
 ```
 
 ## Usage
