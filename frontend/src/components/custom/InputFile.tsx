@@ -10,7 +10,7 @@ export function InputFile() {
     const { setData, setGeometryInfo } = useDataTableStore();
     const { setInvResult } = useInv2DStore();
     const [files, setFiles] = useState<string | null>(null);
-        
+
 return (
     <div className="grid gap-6 rounded-lg border p-4">
     <DropZone
@@ -36,7 +36,7 @@ return (
                     formData.append(`file${index}`, file);
                 });
 
-                axios.post('http://127.0.0.1:5000/upload-data', formData)
+                axios.post('http://127.0.0.1:3354/api/upload-data', formData)
                 .then(response => {
                         console.log('response.json: ', response)
                         const geomtryData: GeometryData = response.data[0];
@@ -83,7 +83,7 @@ return (
                 formData.append(`file${index}`, file);
             });
 
-            axios.post('http://127.0.0.1:5000/upload-xyz', formData)
+            axios.post('http://127.0.0.1:3354/api/upload-xyz', formData)
             .then(data => {
                 console.log('xyz data: ', data)
                 const invResult: xyzData[] = JSON.parse(data.data); //Dataset mode for eCharts

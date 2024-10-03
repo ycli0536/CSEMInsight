@@ -1,7 +1,6 @@
 import os
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-import pandas as pd
 from suesi_depth_reader import process_SuesiDepth_mat_file
 from csem_datafile_parser import CSEMDataFileReader
 from xyz_datafile_parser import XYZDataFileReader
@@ -9,7 +8,7 @@ from xyz_datafile_parser import XYZDataFileReader
 app = Flask(__name__)
 CORS(app)
 
-@app.route('/upload-xyz', methods=['POST'])
+@app.route('/api/upload-xyz', methods=['POST'])
 def upload_xyz_file():
     print('Start processing file...')
 
@@ -36,7 +35,7 @@ def upload_xyz_file():
 
     return 'Invalid file format'
 
-@app.route('/upload-data', methods=['POST'])
+@app.route('/api/upload-data', methods=['POST'])
 def upload_data_file():
     print('Start processing file...')
 
@@ -76,7 +75,7 @@ def upload_data_file():
 
     return 'Invalid file format'
 
-@app.route('/upload-mat', methods=['POST'])
+@app.route('/api/upload-mat', methods=['POST'])
 def upload_mat_file():
     print('Start processing file...')
     
@@ -99,4 +98,4 @@ def upload_mat_file():
     return 'Invalid file format'
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run(debug=False, port=3354)
