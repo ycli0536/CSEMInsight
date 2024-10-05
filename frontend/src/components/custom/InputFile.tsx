@@ -9,7 +9,8 @@ import { useDataTableStore, CsemData, GeometryData,
 export function InputFile() {
     const { setData, setGeometryInfo } = useDataTableStore();
     const { setInvResult } = useInv2DStore();
-    const [files, setFiles] = useState<string | null>(null);
+    const [dataFiles, setDataFiles] = useState<string | null>(null);
+    const [modelFiles, setModelFiles] = useState<string | null>(null);
 
 return (
     <div className="grid gap-6 rounded-lg border p-4">
@@ -21,16 +22,16 @@ return (
             (file) => file.kind === "file"
             ) as FileDropItem[];
             const filenames = files.map((file) => file.name);
-            setFiles(filenames.join(", "));
+            setDataFiles(filenames.join(", "));
         }}
         >
         <FileTrigger
-            allowsMultiple
+            // allowsMultiple
             onSelect={(e) => {
             if (e) {
                 const files = Array.from(e);
                 const filenames = files.map((file) => file.name);
-                setFiles(filenames.join(", "));
+                setDataFiles(filenames.join(", "));
                 const formData = new FormData();
                 files.forEach((file, index) => {
                     formData.append(`file${index}`, file);
@@ -55,7 +56,7 @@ return (
             className="h-[100px] w-full border-none border-input bg-background hover:bg-accent hover:text-accent-foreground
               block items-center justify-center whitespace-normal rounded-md text-sm font-medium ring-offset-background transition-colors 
               focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50"
-            >{files || "Click to upload or drag and drop files here"}
+            >{dataFiles || "Click to upload or drag and drop data file here"}
             </Button>
             
         </FileTrigger>
@@ -68,16 +69,16 @@ return (
         (file) => file.kind === "file"
         ) as FileDropItem[];
         const filenames = files.map((file) => file.name);
-        setFiles(filenames.join(", "));
+        setModelFiles(filenames.join(", "));
     }}
     >
     <FileTrigger
-        allowsMultiple
+        // allowsMultiple
         onSelect={(e) => {
         if (e) {
             const files = Array.from(e);
             const filenames = files.map((file) => file.name);
-            setFiles(filenames.join(", "));
+            setModelFiles(filenames.join(", "));
             const formData = new FormData();
             files.forEach((file, index) => {
                 formData.append(`file${index}`, file);
@@ -101,7 +102,7 @@ return (
         className="h-[100px] w-full border-none border-input bg-background hover:bg-accent hover:text-accent-foreground
           block items-center justify-center whitespace-normal rounded-md text-sm font-medium ring-offset-background transition-colors 
           focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50"
-        >{files || "Click to upload or drag and drop files here"}
+        >{modelFiles || "Click to upload or drag and drop inv model file here"}
         </Button>
         
     </FileTrigger>
