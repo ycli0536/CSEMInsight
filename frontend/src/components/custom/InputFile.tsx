@@ -27,6 +27,7 @@ return (
         >
         <FileTrigger
             // allowsMultiple
+            acceptedFileTypes={[".data", ".emdata"]}
             onSelect={(e) => {
             if (e) {
                 const files = Array.from(e);
@@ -74,6 +75,7 @@ return (
     >
     <FileTrigger
         // allowsMultiple
+        acceptedFileTypes={[".xyz"]}
         onSelect={(e) => {
         if (e) {
             const files = Array.from(e);
