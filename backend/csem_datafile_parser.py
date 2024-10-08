@@ -55,6 +55,16 @@ class CSEMDataFileReader():
                 # assume for each pattern we can only find single match (if any)
                 self.blocks[self.block_infos[i]] = block
 
+    def extract_file_info(self):
+        """Extract file information."""
+        file_info_line = self.blocks['Format']
+        file_info = file_info_line[0].split(':')[1].strip().lower()
+        # Check the version of the file, e.g. EMData_2.3
+        file_format = file_info.split('_')[0]
+        file_version = file_info.split('_')[1]
+
+        return file_format, file_version
+
     def extract_geometry_info(self):
         """Extract geometry information."""
         geometry_info_line = self.blocks['Geometry']
@@ -70,11 +80,26 @@ class CSEMDataFileReader():
         geometry_data = {key: value for key, value in zip(geometry_key, geometry_info)}
         return geometry_data
 
+    def extract_freq_info(self):
+        """Extract frequency information."""
+        freq_info_line = self.blocks['Frequencies']
+        # Initialize an empty dictionary to store the extracted frequencies
+        freq_data = {}
+
+        # Loop through the data starting from the second element (index 1) to skip the header
+        for index, line in enumerate(freq_info_line[1:], start=1):
+            # Strip the newline and convert the string to a float
+            freq_v = float(line.strip())
+            # Add the value to the dictionary with its index
+            freq_data[str(index)] = freq_v
+        return freq_data
+
     def extract_data_block(self, lines:str) -> dict:
         """Extract certain data block."""
         # Use the second line as column headers
-        # Remove the leading "!" and split the input string into headers
-        headers = lines[1].strip().lstrip("!").split()
+        # Remove the '!' and any '#' characters and split the string into headers
+        cleaned_string = re.sub(r'[!#]', '', lines[1])
+        headers = cleaned_string.strip().split()
         # Initialize a dictionary to store data as lists by column
         data_table: dict[str, list] = {header: [] for header in headers}
 
@@ -103,51 +128,26 @@ class CSEMDataFileReader():
         """
         # Convert the DataFrame to a string
         data = data.astype({'Type': 'int',
-                            'Freq#': 'int',
-                            'Tx#': 'int',
-                            'Rx#': 'int',
+                            'Freq': 'int',
+                            'Tx': 'int',
+                            'Rx': 'int',
                             'Data': 'float',
-                            'StdErr': 'float',})
+                            'StdErr': 'float'})
+
+        data.rename(columns={'Freq': 'Freq #',
+                             'Tx': 'Tx #',
+                             'Rx': 'Tx #'}, inplace=True)
 
         # Apply MARE2DEM (DataMan) formatting to the DataFrame
         data_str = data.to_string(formatters={
-            "Type": "{:5d}".format,
-            "Freq#": "{:5d}".format,
-            "Tx#": "{:4d}".format,
-            "Rx#": "{:4d}".format,
-            "Data": "{:14.6g}".format,
-            "StdErr": "{:14.6g}".format
+            "Type": "{:4d}".format,
+            "Freq #": "{:7d}".format,
+            "Tx #": "{:7d}".format,
+            "Rx #": "{:7d}".format,
+            "Data": "{:22.15g}".format,
+            "StdErr": "{:22.15g}".format
         }, index=False)
         return data_str
-
-    def data_block_to_string_v2_3(self, data:pd.DataFrame) -> str:
-        """Convert the data block to a string (emdata_2.3).
-
-        Args:
-            data (pd.DataFrame): The data block as a DataFrame.
-
-        Returns:
-            str: The data block as a string.
-        """
-        # Convert the DataFrame to a string
-        data = data.astype({'Type': 'int',
-                            'Freq#': 'int',
-                            'Tx#': 'int',
-                            'Rx#': 'int',
-                            'Data': 'float',
-                            'StdErr': 'float',})
-
-        # Apply MARE2DEM (DataMan) formatting to the DataFrame
-        data_str = data.to_string(formatters={
-            "Type": "{:5d}".format,
-            "Freq#": "{:5d}".format,
-            "Tx#": "{:4d}".format,
-            "Rx#": "{:4d}".format,
-            "Data": "{:14.6g}".format,
-            "StdErr": "{:14.6g}".format
-        }, index=False)
-        return data_str
-
 
     def rx_block_to_string(self, Rx_data):
         # Convert the DataFrame to a string
@@ -176,24 +176,28 @@ class CSEMDataFileReader():
     def MT_data_block_to_string(self, MT_data):
         # Convert the DataFrame to a string
         MT_data = MT_data.astype({'Type': 'int',
-                            'Freq#': 'int',
-                            'Tx#': 'int',
-                            'Rx#': 'int',
+                            'Freq': 'int',
+                            'Tx': 'int',
+                            'Rx': 'int',
                             'Data': 'float',
                             'StdErr': 'float',})
+
+        MT_data.rename(columns={'Freq': 'Freq #',
+                                'Tx': 'Tx #',
+                                'Rx': 'Tx #'}, inplace=True)
 
         # Apply MARE2DEM (DataMan) formatting to the DataFrame
         data_str = MT_data.to_string(formatters={
             "Type": "{:5d}".format,
-            "Freq#": "{:5d}".format,
-            "Tx#": "{:4d}".format,
-            "Rx#": "{:4d}".format,
+            "Freq #": "{:6d}".format,
+            "Tx #": "{:5d}".format,
+            "Rx #": "{:5d}".format,
             "Data": "{:14.6g}".format,
             "StdErr": "{:14.6g}".format
         }, index=False)
         return data_str
 
-    def update_data_block(self, data_filtered):
+    def update_data_block(self, data_filtered: pd.DataFrame):
         """Update the Data block with the filtered data."""
         # Convert data back to string format
         data_str = self.data_block_to_string(data_filtered)
@@ -213,13 +217,18 @@ class CSEMDataFileReader():
         data_extracted = self.extract_data_block(data_block)
         data = pd.DataFrame.from_dict(data_extracted)
         data = data.astype({'Type': 'category',
-                            'Freq#': 'category',
-                            'Tx#': 'int',
-                            'Rx#': 'int',
+                            'Freq': 'category',
+                            'Tx': 'int',
+                            'Rx': 'int',
                             'Data': 'float',
                             'StdErr': 'float',})
         return data
     
+    def add_freq_column(self, table:pd.DataFrame, freq_dict:dict) -> pd.DataFrame:
+        """Add a frequency column to the data table."""
+        table['Freq'] = table['Freq_id'].map(freq_dict)
+        return table
+
     def tx_data_block_init(self, tx_data_block:str) -> dict:
         """Initialize the Tx Data block. Convert extracted data to DataFrame."""
         Tx_data_extracted = self.extract_data_block(tx_data_block)
@@ -233,7 +242,7 @@ class CSEMDataFileReader():
                             'Length': 'float',
                             'Type': 'category',
                             'Name': 'string',})
-        Tx_data.insert(0, "Tx#", pd.Series(range(1, len(Tx_data)+1)))
+        Tx_data.insert(0, "Tx", pd.Series(range(1, len(Tx_data)+1)))
         return Tx_data
 
     def rx_data_block_init(self, rx_data_block:str) -> dict:
@@ -249,7 +258,7 @@ class CSEMDataFileReader():
                                   'Beta': 'float',
                                   'Length': 'float',
                                   'Name': 'string',})
-        Rx_data.insert(0, "Rx#", pd.Series(range(1, len(Rx_data)+1)))
+        Rx_data.insert(0, "Rx", pd.Series(range(1, len(Rx_data)+1)))
         return Rx_data
 
     # Function to rotate coordinates
@@ -261,8 +270,12 @@ class CSEMDataFileReader():
 
     # Function to convert UTM to latitude and longitude
     def utm_to_latlon(self, x, y, zone_number, northern_hemisphere=True):
-        lat, lon = utm.to_latlon(x, y, zone_number, northern=northern_hemisphere)
-        return lat, lon
+        # check if the zone number is valid
+        if 1 <= zone_number <= 60:
+            lat, lon = utm.to_latlon(x, y, zone_number, northern=northern_hemisphere)
+            return lat, lon
+        else:
+            return 0, 0
 
     def ne2latlon(self, data_df, geometry_info):
         """Convert mare2dem inline-crossline coordinates to latitude and longitude."""
@@ -283,32 +296,34 @@ class CSEMDataFileReader():
     def merge_data_rx_tx(self, data, rx_data, tx_data):
         """Merge the data, Rx and Tx blocks."""
 
-        merged_df = pd.merge(data, rx_data, on='Rx#')
-        merged_df = pd.merge(merged_df, tx_data, on='Tx#', suffixes=("_rx", "_tx"))
+        merged_df = pd.merge(data, rx_data, on='Rx')
+        merged_df = pd.merge(merged_df, tx_data, on='Tx', suffixes=("_rx", "_tx"))
         merged_df.rename(columns={'Type_rx': 'Type', 
-                                  'Freq#': 'Freq_id',
-                                  'Tx#': 'Tx_id',
-                                  'Rx#': 'Rx_id'}, inplace=True)
+                                  'Freq': 'Freq_id',
+                                  'Tx': 'Tx_id',
+                                  'Rx': 'Rx_id'}, inplace=True)
+        freq_dict = self.extract_freq_info()
+        merged_df = self.add_freq_column(merged_df, freq_dict)
         return merged_df
 
     def anti_merge_data_rx_tx(self, merged_df):
         """Anti-merge the data, Rx and Tx blocks."""
         data = merged_df[['Type', 'Freq_id', 'Tx_id', 'Rx_id', 'Data', 'StdErr']].copy()
-        data.rename(columns={'Freq_id': 'Freq#',
-                             'Tx_id': 'Tx#',
-                             'Rx_id': 'Rx#'}, inplace=True)
+        data.rename(columns={'Freq_id': 'Freq #',
+                             'Tx_id': 'Tx #',
+                             'Rx_id': 'Rx #'}, inplace=True)
         rx_data = merged_df[['Rx_id', 'X_rx', 'Y_tx', 'Z_rx', 'Theta', 'Alpha', 'Beta', 'Length_rx', 'Name_rx']].copy()
         rx_data.rename(columns={'X_rx': 'X',
                                 'Y_rx': 'Y',
                                 'Z_rx': 'Z',
-                                'Rx_id': 'Rx#',
+                                'Rx_id': 'Rx #',
                                 'Length_rx': 'Length',
                                 'Name_rx': 'Name'}, inplace=True)
         tx_data = merged_df[['Tx_id', 'X_tx', 'Y_tx', 'Z_tx', 'Azimuth', 'Dip', 'Length_tx', 'Type_tx', 'Name_tx']].copy()
         tx_data.rename(columns={'X_tx': 'X',
                                 'Y_tx': 'Y',
                                 'Z_tx': 'Z',
-                                'Tx_id': 'Tx#',
+                                'Tx_id': 'Tx #',
                                 'Length_tx': 'Length',
                                 'Name_tx': 'Name'}, inplace=True)
         return data, rx_data, tx_data
@@ -336,7 +351,7 @@ class CSEMDataFileReader():
         # result = df.to_json(orient='records', date_format='epoch', date_unit='s')
         result = df.to_json(orient='table', index=True)
         # test pivot table
-        # pivoted_df = df.pivot_table(index=['Type', 'Tx#', 'Rx#'], columns='Freq#', values='Data')
+        # pivoted_df = df.pivot_table(index=['Type', 'Tx', 'Rx'], columns='Freq', values='Data')
         # result = pivoted_df.to_json(orient='table', index=True)
         # result = pivoted_df.to_json(orient='records', index=True)
         return result

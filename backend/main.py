@@ -49,7 +49,7 @@ def upload_data_file():
         if file.filename == '':
             return 'No selected file'
 
-        if file and file.filename.endswith('.data'):
+        if file and file.filename.endswith('.data') or file.filename.endswith('.emdata'):
             path = os.path.join('/tmp', file.filename)
             print(path)
             file.save(path)
