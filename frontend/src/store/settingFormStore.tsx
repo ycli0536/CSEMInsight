@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import type {Selection} from 'react-aria-components';
 import { ColDef, FilterModel } from 'ag-grid-community'; // Import ColDef type
+import { ITextFilterParams, INumberFilterParams } from 'ag-grid-community'; // Import ITextFilterParams type
 
 interface SettingFormState {
   showData: boolean;
@@ -41,6 +42,7 @@ export interface CsemData {
   index: number;
   Type: string;
   Freq_id: string;
+  Freq: number;
   Tx_id: number;
   Rx_id: number;
   Data: number;
@@ -150,9 +152,10 @@ export const useDataTableStore = create<DataTableStore>()((set) => ({
     { headerName: 'Index', field: "index"},
     { headerName: "Data", field: "Data", filter: true, floatingFilter: true},
     { headerName: 'Std Err', field: "StdErr", filter: true, floatingFilter: true},
-    { headerName: 'Frequency ID', field: "Freq_id", filter: true, floatingFilter: true},
-    { headerName: 'Rx ID', field: "Rx_id", filter: true, floatingFilter: true},
-    { headerName: 'Tx ID', field: "Tx_id", filter: true, floatingFilter: true},
+    { headerName: 'Frequency ID', field: "Freq_id", filter: true, filterParams: {maxNumConditions: 5} as ITextFilterParams, floatingFilter: true},
+    { headerName: 'Frequency', field: "Freq", filter: 'agTextColumnFilter', filterParams: {maxNumConditions: 5} as ITextFilterParams, floatingFilter: true},
+    { headerName: 'Rx ID', field: "Rx_id", filter: true, filterParams: {maxNumConditions: 5} as INumberFilterParams, floatingFilter: true},
+    { headerName: 'Tx ID', field: "Tx_id", filter: true, filterParams: {maxNumConditions: 5} as INumberFilterParams, floatingFilter: true},
     { headerName: 'Data Type', field: "Type", filter: true, floatingFilter: true},
     { headerName: 'X (rx)', field: "X_rx", filter: true, floatingFilter: true},
     { headerName: 'Y (rx)', field: "Y_rx", filter: true, floatingFilter: true},

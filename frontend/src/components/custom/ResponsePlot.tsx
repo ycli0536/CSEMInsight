@@ -22,11 +22,11 @@ export function ResponsesWithErrorBars() {
   const extractPlotData = (data: CsemData[], type: string): [Float64Array[][][][], number, { freqId: string; RxId: number; type: string; }[]] => {
     // Get unique Tx_id (actual rcv id) values
     const uniqueRxIds = Array.from(new Set(data.map((item) => item.Tx_id)));
-    console.log('uniqueRxIds: ', uniqueRxIds);
+    // console.log('uniqueRxIds: ', uniqueRxIds);
 
     // Get unique Freq_id values
     const uniqueFreqIds = Array.from(new Set(data.map((item) => item.Freq_id)));
-    console.log('uniqueFreqIds: ', uniqueFreqIds);
+    // console.log('uniqueFreqIds: ', uniqueFreqIds);
 
     const comb_info: { freqId: string; RxId: number; type: string; }[] = [];
 
@@ -155,8 +155,8 @@ export function ResponsesWithErrorBars() {
 
       const initialPlotOptions = (seriesNum: number, type: string, legendInfo: { freqId: string; RxId: number; type: string; }[]): uPlot.Options => {
         // Define colors and labels for each dataset
-        console.log('seriesNum: ', seriesNum);
-        console.log('legendInfo: ', legendInfo);
+        // console.log('seriesNum: ', seriesNum);
+        // console.log('legendInfo: ', legendInfo);
         const basicColors = [
           "hsl(240, 100%, 50%)", //"blue", 
           "hsl(  0, 100%, 50%)", //"red", 
@@ -242,10 +242,10 @@ export function ResponsesWithErrorBars() {
               },
           });
         }
-        console.log('series: ', series);
+        // console.log('series: ', series);
 
         const bands: uPlot.Band[] = [];
-        console.log('seriesNum: ', seriesNum);
+        // console.log('seriesNum: ', seriesNum);
         for (let idx = 0; idx < seriesNum; idx++) {
           bands.push({
             series: [idx + seriesNum + 1, idx + 1],
@@ -493,7 +493,7 @@ export function ResponsesWithErrorBars() {
                   }
                   const logMin = 10**Math.floor(Math.log10(minV));
                   const logMax = 10**Math.ceil(Math.log10(maxV));
-                  console.log('log min/max: ',  Math.log10(logMin), Math.log10(logMax))
+                  // console.log('log min/max: ',  Math.log10(logMin), Math.log10(logMax))
     
                   return [logMin, logMax];
                 }
@@ -548,7 +548,7 @@ export function ResponsesWithErrorBars() {
       // console.log('ampDataWithBand: ', ampDataWithBand);
       // console.log('phiDataWithBand: ', phiDataWithBand);
 
-      console.log('options_phi: ', options_phi);
+      // console.log('options_phi: ', options_phi);
       // Initialize uPlot with ref
       const plotAmpInstance = new uPlot(options_amp, ampDataWithBand, ampChartRef.current!)
       const plotPhiInstance = new uPlot(options_phi, phiDataWithBand, phiChartRef.current!)
@@ -563,7 +563,7 @@ export function ResponsesWithErrorBars() {
 
   const handleToggleDrag = () => {
     setDragEnabled(!dragEnabled);
-    console.log('dragEnabled: ', dragEnabled);
+    // console.log('dragEnabled: ', dragEnabled);
   };
 
   const handleToggleScroll = () => {

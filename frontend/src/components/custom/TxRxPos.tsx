@@ -65,7 +65,6 @@ export function TxRxPosPlot() {
         };
 
         const RxData = getRx(inputData, columns);
-        console.log(RxData);
 
         return RxData;
     }

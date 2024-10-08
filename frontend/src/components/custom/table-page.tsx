@@ -1,20 +1,16 @@
-import { useRef, useCallback, useState } from 'react';
+import { useRef, useState, useCallback, useEffect } from 'react';
 import { AgGridReact } from 'ag-grid-react'; // React Data Grid Component
 import "ag-grid-community/styles/ag-grid.css"; // Mandatory CSS required by the Data Grid
 import "ag-grid-community/styles/ag-theme-quartz.css"; // Optional theme for the Data Grid
 import { useDataTableStore } from '@/store/settingFormStore';
-import {
-  GridReadyEvent,
-  FilterModel,
-} from 'ag-grid-community';
 import { Checkbox } from '@/components/ui/checkbox'; // Import shadcn/ui Checkbox
 import { Label } from '@/components/ui/label'; // Import shadcn/ui Label
 
 export function DataPage() {
   const gridRef = useRef<AgGridReact>(null);
-  const { data, colDefs, setFilteredData } = useDataTableStore();
+  const { data, colDefs, setFilteredData, setFilterModel } = useDataTableStore();
   const [visibleColumns, setVisibleColumns] = useState(colDefs.map(col => col.field)); // Track visible columns
-
+  const [loading, setLoading] = useState<boolean>(true);
   // // On component mount, initialize visible columns with defaults
   // useEffect(() => {
   //   // Default columns to be toggled on initially
@@ -41,43 +37,40 @@ export function DataPage() {
     return colDefs.filter(col => visibleColumns.includes(col.field));
   };
 
-  const onGridReady = useCallback((params: GridReadyEvent) => {
-    const onFilterChanged = () => {
-      const api = gridRef.current?.api;
-      if (api) {
-        const filteredData: typeof data = [];
-        api.forEachNodeAfterFilterAndSort((node) => {
-          filteredData.push(node.data);
-        });
-        setFilteredData(filteredData);
-        console.log('filteredData', filteredData);
-      }
-    };
+  const onFilterChanged = useCallback(() => {
+    console.log('onFilterChanged is called')
+    const api = gridRef.current?.api;
+    if (api) {
+      const filteredData: typeof data = [];
+      api.forEachNodeAfterFilterAndSort((node) => {
+        filteredData.push(node.data);
+      });
+      setFilteredData(filteredData);
+      setFilterModel(api.getFilterModel());
+      // console.log('filterModel', filterModel);
+      // console.log('filteredData', filteredData);
+    }
+  }, [setFilteredData, setFilterModel]);
 
-    const hardcodedFilter: FilterModel = {
-      "Tx_id": {
-        type: 'equals',
-        filter: '',
-      },
-      "Type": {
-        type: 'contains',
-        filter: '2',
-      },
-    };
+  const onRowDataUpdated = useCallback(() => {
+    console.log('onRowDataUpdated is called');
+    const api = gridRef.current?.api;
+    if (api) {
+      setLoading(true);
+      const filteredData: typeof data = [];
+      api.forEachNodeAfterFilterAndSort((node) => {
+        filteredData.push(node.data);
+      });
+      setFilterModel(api.getFilterModel());
+      setFilteredData(filteredData);
+      setLoading(false);
+      console.log('filterModel', api.getFilterModel());
+      console.log('filteredData', filteredData);
+    }
+  }, [setFilteredData, setFilterModel, setLoading]);
 
-    // Set the hardcoded filter model
-    params.api.setFilterModel(hardcodedFilter);
-
-    // Apply the filter immediately
-    onFilterChanged();
-
-    // Add event listener for filter changes
-    params.api.addEventListener('filterChanged', onFilterChanged);
-
-    return () => {
-      params.api.removeEventListener('filterChanged', onFilterChanged); // Cleanup listener
-    };
-  }, [setFilteredData]);
+  useEffect(onRowDataUpdated, [onRowDataUpdated]);
+  useEffect(onFilterChanged, [onFilterChanged]);
 
   const style = {
     height: 300,
@@ -108,10 +101,13 @@ export function DataPage() {
       {/* AG Grid */}
       <div className="ag-theme-quartz" style={style}>
         <AgGridReact
+          loading={loading}
           ref={gridRef}
           rowData={data}
           columnDefs={getFilteredColDefs()} // Use filtered columns
-          onGridReady={onGridReady}
+          // onGridReady={onGridReady}
+          onFilterChanged={onFilterChanged}
+          onRowDataUpdated={onRowDataUpdated}
         />
       </div>
     </div>
