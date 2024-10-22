@@ -4,14 +4,13 @@ use std::env;
 use killport::cli::Mode;
 use killport::killport::{Killport, KillportOperations};
 use killport::signal::KillportSignal;
-use tauri::{Manager, WindowEvent};
+use tauri::{Manager, WindowEvent, RunEvent};
 use tauri_plugin_shell::ShellExt;
 
 
 pub fn run() {
     env_logger::init();
-
-    tauri::Builder::default()
+    let app = tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .setup(|app| {
             let sidecar = app.shell().sidecar("csemInsight").unwrap();
@@ -39,8 +38,19 @@ pub fn run() {
             }
             _ => {}
         })
-        .run(tauri::generate_context!())
+        .build(tauri::generate_context!())
         .expect("error while running tauri application");
+    
+    app.run(|_app_handle, event| match event {
+        RunEvent::ExitRequested { api, .. } => {
+          api.prevent_exit();
+        }
+        RunEvent::Exit => {
+          info!("Exiting app");
+          kill_process(3354);
+        }
+        _ => {}
+      });
 }
 
 fn kill_process(port: u16) {
