@@ -126,14 +126,7 @@ class CSEMDataFileReader():
         Returns:
             str: The data block as a string.
         """
-        # Convert the DataFrame to a string
-        data = data.astype({'Type': 'int',
-                            'Freq': 'int',
-                            'Tx': 'int',
-                            'Rx': 'int',
-                            'Data': 'float',
-                            'StdErr': 'float'})
-
+        # Rename the columns
         data.rename(columns={'Freq': 'Freq #',
                              'Tx': 'Tx #',
                              'Rx': 'Tx #'}, inplace=True)
@@ -150,26 +143,34 @@ class CSEMDataFileReader():
         return data_str
 
     def rx_block_to_string(self, Rx_data):
-        # Convert the DataFrame to a string
-        Rx_data = Rx_data.astype({'X': 'int',
-                        'Y': 'int',
-                        'Z': 'float',
-                        'Theta': 'int',
-                        'Alpha': 'int',
-                        'Beta': 'int',
-                        'Length': 'int',
-                        'Name': 'category',})
-
+        """Convert the DataFrame to a string"""
+        # Delete Rx column from Rx data
         # Apply MARE2DEM (DataMan) formatting to the DataFrame
-        data_str = Rx_data.to_string(formatters={
-            "X": "{:7d}".format,
-            "Y": "{:7d}".format,
-            "Z": "{:7.1f}".format,
-            "Theta": "{:5d}".format,
-            "Alpha": "{:0}".format,
-            "Beta": "{:5d}".format,
-            "Length": "{:6d}".format,
-            "Name": "".format
+        data_str = Rx_data.drop(columns=['Rx']).to_string(formatters={
+            "X": "{:10.6g}".format,
+            "Y": "{:15.15g}".format,
+            "Z": "{:22.15g}".format,
+            "Theta": "{:9.2g}".format,
+            "Alpha": "{:9.2g}".format,
+            "Beta": "{:9.2f}".format,
+            "Length": "{:9.5g}".format,
+            "Name": "{:>10s}".format
+        }, index=False)
+        return data_str
+
+    def tx_block_to_string(self, Tx_data):
+        """Convert the DataFrame to a string"""
+        # Delete Tx column from Tx data
+        # Apply MARE2DEM (DataMan) formatting to the DataFrame
+        data_str = Tx_data.drop(columns=['Tx']).to_string(formatters={
+            "X": "{:10.6g}".format,
+            "Y": "{:15.15g}".format,
+            "Z": "{:22.15g}".format,
+            "Azimuth": "{:9.2g}".format,
+            "Dip": "{:9.2f}".format,
+            "Length": "{:9.5g}".format,
+            "Type": "{:>10s}".format,
+            "Name": "{:>10s}".format
         }, index=False)
         return data_str
 
@@ -192,8 +193,8 @@ class CSEMDataFileReader():
             "Freq #": "{:6d}".format,
             "Tx #": "{:5d}".format,
             "Rx #": "{:5d}".format,
-            "Data": "{:14.6g}".format,
-            "StdErr": "{:14.6g}".format
+            "Data": "{:22.15g}".format,
+            "StdErr": "{:22.15g}".format
         }, index=False)
         return data_str
 
@@ -210,26 +211,51 @@ class CSEMDataFileReader():
         # keep the line breaks
         self.blocks['Data'] = blocks_data_str.splitlines(True)
 
-    def data_block_init(self, data_block:str) -> pd.DataFrame:
-        """Initialize the Data block. Convert extracted data to DataFrame."""
-        # Extract data
-        print(type(data_block))
-        data_extracted = self.extract_data_block(data_block)
-        data = pd.DataFrame.from_dict(data_extracted)
-        data = data.astype({'Type': 'category',
-                            'Freq': 'category',
-                            'Tx': 'int',
-                            'Rx': 'int',
-                            'Data': 'float',
-                            'StdErr': 'float',})
-        return data
-    
+    def update_rx_block(self, rx_data_filtered: pd.DataFrame):
+        """Update the Rx block with the filtered data."""
+        # Convert data back to string format
+        data_str = self.rx_block_to_string(rx_data_filtered)
+        # Regular expression to find the number
+        number_pattern = re.compile(r'(CSEM Receivers: *)(\d+)')
+        # Replace the original number with the new number
+        new_header = number_pattern.sub(r'\g<1>' + str(len(rx_data_filtered)), self.blocks['Rx'][0])
+        # Convert data_columns back to string format (remember to add first line info!)
+        blocks_data_str = new_header + '!' + " " * 2 + data_str.replace("\n", "\n" + " " * 3) + "\n"
+        # keep the line breaks
+        self.blocks['Rx'] = blocks_data_str.splitlines(True)
+
+    def update_tx_block(self, tx_data_filtered: pd.DataFrame):
+        """Update the Tx block with the filtered data."""
+        # Convert data back to string format
+        data_str = self.tx_block_to_string(tx_data_filtered)
+        # Regular expression to find the number
+        number_pattern = re.compile(r'(Transmitters: *)(\d+)')
+        # Replace the original number with the new number
+        new_header = number_pattern.sub(r'\g<1>' + str(len(tx_data_filtered)), self.blocks['Tx'][0])
+        # Convert data_columns back to string format (remember to add first line info!)
+        blocks_data_str = new_header + '!' + " " * 2 + data_str.replace("\n", "\n" + " " * 3) + "\n"
+        # keep the line breaks
+        self.blocks['Tx'] = blocks_data_str.splitlines(True)
+
     def add_freq_column(self, table:pd.DataFrame, freq_dict:dict) -> pd.DataFrame:
         """Add a frequency column to the data table."""
         table['Freq'] = table['Freq_id'].map(freq_dict)
         return table
 
-    def tx_data_block_init(self, tx_data_block:str) -> dict:
+    def data_block_init(self, data_block:str) -> pd.DataFrame:
+        """Initialize the Data block. Convert extracted data to DataFrame."""
+        # Extract data
+        data_extracted = self.extract_data_block(data_block)
+        data = pd.DataFrame.from_dict(data_extracted)
+        data = data.astype({'Type': 'int',
+                            'Freq': 'int',
+                            'Tx': 'int',
+                            'Rx': 'int',
+                            'Data': 'float',
+                            'StdErr': 'float'})
+        return data
+
+    def tx_data_block_init(self, tx_data_block:str) -> pd.DataFrame:
         """Initialize the Tx Data block. Convert extracted data to DataFrame."""
         Tx_data_extracted = self.extract_data_block(tx_data_block)
         Tx_data = pd.DataFrame.from_dict(Tx_data_extracted)
@@ -245,7 +271,7 @@ class CSEMDataFileReader():
         Tx_data.insert(0, "Tx", pd.Series(range(1, len(Tx_data)+1)))
         return Tx_data
 
-    def rx_data_block_init(self, rx_data_block:str) -> dict:
+    def rx_data_block_init(self, rx_data_block:str) -> pd.DataFrame:
         """Initialize the Rx Data block. Convert extracted data to DataFrame."""
         Rx_data_extracted = self.extract_data_block(rx_data_block)
         Rx_data = pd.DataFrame.from_dict(Rx_data_extracted)
@@ -289,9 +315,10 @@ class CSEMDataFileReader():
         e, n = self.inv_rotate_coords(data_df['Y'], data_df['X'], -strike, # be careful with the mare2dem coordinate system
                                       (float(geometry_info['East']), float(geometry_info['North'])))
         lat, lon = self.utm_to_latlon(e, n, utm_zone, northern_hemisphere)
-        data_df['Lat'] = lat
-        data_df['Lon'] = lon
-        return data_df
+        data_df_n = data_df.copy()
+        data_df_n['Lat'] = lat
+        data_df_n['Lon'] = lon
+        return data_df_n
 
     def merge_data_rx_tx(self, data, rx_data, tx_data):
         """Merge the data, Rx and Tx blocks."""
