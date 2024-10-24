@@ -5,10 +5,12 @@ import "ag-grid-community/styles/ag-theme-quartz.css"; // Optional theme for the
 import { useDataTableStore } from '@/store/settingFormStore';
 import { Checkbox } from '@/components/ui/checkbox'; // Import shadcn/ui Checkbox
 import { Label } from '@/components/ui/label'; // Import shadcn/ui Label
+import { Button } from '@/components/ui/button'; // Import shadcn/ui Button
+import axios from 'axios';
 
 export function DataPage() {
   const gridRef = useRef<AgGridReact>(null);
-  const { data, colDefs, setFilteredData, setFilterModel } = useDataTableStore();
+  const { data, colDefs, filteredData, dataBlocks, setDataFileString, setFilteredData, setFilterModel } = useDataTableStore();
   const [visibleColumns, setVisibleColumns] = useState(colDefs.map(col => col.field)); // Track visible columns
   const [loading, setLoading] = useState<boolean>(true);
   // // On component mount, initialize visible columns with defaults
@@ -31,6 +33,60 @@ export function DataPage() {
       }
     });
   };
+
+  const handleSave = async() => {
+    try {
+      // Show the file picker dialog to select a file to save
+      const fileHandle = await (window as any).showSaveFilePicker({
+        suggestedName: 'myDataFile.data',
+        types: [
+          {
+            description: 'MARE2DEM Data Files',
+            accept: {
+              'application/octet-stream': ['.data', '.emdata'],
+            },
+          },
+        ],
+      });
+      const fileName = fileHandle.name; // Get file name to send to the backend
+      // console.log('fileHandle: ', fileHandle);
+      const content = JSON.stringify(filteredData);
+      console.log('filteredData: ', filteredData);
+      // console.log('datafilestring before: ', dataFileString);
+      // console.log('filteredData (string): ', content);
+      
+      // Send the file name to the backend
+      // Send the content and file name to the backend using axios
+      const response = await axios.post('http://127.0.0.1:3354/api/write-data-file', {
+        content,
+        fileName,
+        dataBlocks,
+      })
+      // .then(response => {
+      //   setDataFileString(response.data);
+      // })
+      // .catch(error => console.error('Error getting data file string:', error));
+      setDataFileString(response.data);
+
+      // console.log('fileName: ', fileName);
+      // console.log('dataBlocks: ', dataBlocks);
+
+      // If dataFileString is successfully set, save the file
+      if (response.data) {
+        // Create a writable stream and save the content
+        // console.log('datafilestring after: ', response.data);
+        const writableStream = await fileHandle.createWritable();
+        await writableStream.write(response.data);
+        await writableStream.close();
+      }
+
+      alert('File saved successfully on the server!');
+    } catch (error) {
+      console.error('Error saving the file:', error);
+      alert('Failed to save the file.');
+    }
+  };
+
 
   // Update column definitions based on visible columns
   const getFilteredColDefs = () => {
@@ -65,7 +121,7 @@ export function DataPage() {
       setFilteredData(filteredData);
       setLoading(false);
       console.log('filterModel', api.getFilterModel());
-      console.log('filteredData', filteredData);
+      // console.log('filteredData', filteredData);
     }
   }, [setFilteredData, setFilterModel, setLoading]);
 
@@ -95,6 +151,11 @@ export function DataPage() {
               <span>{col.headerName}</span>
             </Label>
           ))}
+          <div className="flex">
+            <Button onClick={handleSave} className="full">
+              Export data file
+            </Button>
+          </div>
         </div>
       </div>
 

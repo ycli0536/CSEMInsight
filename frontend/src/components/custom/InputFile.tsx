@@ -7,10 +7,32 @@ import { useDataTableStore, CsemData, GeometryData,
     useInv2DStore, xyzData } from '@/store/settingFormStore';
 
 export function InputFile() {
-    const { setData, setGeometryInfo } = useDataTableStore();
+    const { setData, setGeometryInfo, setDataBlocks } = useDataTableStore();
     const { setInvResult } = useInv2DStore();
     const [dataFiles, setDataFiles] = useState<string | null>(null);
     const [modelFiles, setModelFiles] = useState<string | null>(null);
+
+    const readData = (files: File[]) => {
+        const formData = new FormData();
+        files.forEach((file, index) => {
+            formData.append(`file${index}`, file);
+        });
+
+        axios.post('http://127.0.0.1:3354/api/upload-data', formData)
+        .then(response => {
+                console.log('response.json: ', response)
+                const geometryData: GeometryData = response.data[0];
+                const responseData: CsemData[] = JSON.parse(response.data[1]).data;
+                const dataBlocks = response.data[2];
+                console.log('responseData', responseData)
+                setData(responseData);
+                setDataBlocks(dataBlocks);
+                setGeometryInfo(geometryData);
+        })
+        .catch(error => console.error('Error uploading file:', error));
+        
+        // console.log('test: ', dataItems.filter((item) => item.type === '24'));
+    }
 
 return (
     <div className="grid gap-6 rounded-lg border p-4">
@@ -23,34 +45,21 @@ return (
             ) as FileDropItem[];
             const filenames = files.map((file) => file.name);
             setDataFiles(filenames.join(", "));
+            Promise.all(files.map(file => file.getFile())).then(resolvedFiles => {
+                readData(resolvedFiles);
+            });
         }}
         >
         <FileTrigger
             // allowsMultiple
             acceptedFileTypes={[".data", ".emdata"]}
             onSelect={(e) => {
-            if (e) {
-                const files = Array.from(e);
-                const filenames = files.map((file) => file.name);
-                setDataFiles(filenames.join(", "));
-                const formData = new FormData();
-                files.forEach((file, index) => {
-                    formData.append(`file${index}`, file);
-                });
-
-                axios.post('http://127.0.0.1:3354/api/upload-data', formData)
-                .then(response => {
-                        console.log('response.json: ', response)
-                        const geomtryData: GeometryData = response.data[0];
-                        const responseData: CsemData[] = JSON.parse(response.data[1]).data;
-                        console.log('responseData', responseData)
-                        setData(responseData);
-                        setGeometryInfo(geomtryData);
-                })
-                .catch(error => console.error('Error uploading file:', error));
-                
-                // console.log('test: ', dataItems.filter((item) => item.type === '24'));
-            }
+                if (e) {
+                    const files = Array.from(e);
+                    const filenames = files.map((file) => file.name);
+                    setDataFiles(filenames.join(", "));
+                    readData(files);
+                }
             }}
         >
             <Button
@@ -59,8 +68,8 @@ return (
               focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50"
             >{dataFiles || "Click to upload or drag and drop data file here"}
             </Button>
-            
         </FileTrigger>
+
     </DropZone>
     <DropZone
     className="h-full text-base text-center justify-center 

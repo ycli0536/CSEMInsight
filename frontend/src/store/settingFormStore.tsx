@@ -120,12 +120,16 @@ type DataTableStore = {
   filteredData: CsemData[];
   subDatasets: CsemData[][],
   colDefs: ColDef[];
+  dataBlocks: [];
+  dataFileString: string;
   geometryInfo: GeometryData;
   filterModel: FilterModel | null,
   setData: (data: CsemData[]) => void;
   setTxData: (txData: TxData[]) => void;
   setRxData: (rxData: RxData[]) => void;
   setColDefs: (newColDefs: ColDef[]) => void;
+  setDataBlocks: (dataBlocks: []) => void;
+  setDataFileString: (dataFileString: string) => void;
   setGeometryInfo: (newGeometryInfo: GeometryData) => void;
   setFilteredData: (newFilteredData: CsemData[]) => void;
   setFilterModel: (newFilterModel: FilterModel | null) => void;
@@ -179,12 +183,16 @@ export const useDataTableStore = create<DataTableStore>()((set) => ({
     { headerName: 'Name (rx)', field: "Name_rx", filter: true, floatingFilter: true},
 
   ],
+  dataBlocks: [],
+  dataFileString: '',
   filterModel: null,
   geometryInfo: { UTM_zone: 0, Hemisphere: 'N', North: 0, East: 0, Strike: 0 },
   setData: (data) => set({ data: data }),
   setTxData: (txData) => set({ txData: txData }),
   setRxData: (rxData) => set({ rxData: rxData }),
   setColDefs: (newColDefs) => set({ colDefs: newColDefs }),
+  setDataBlocks: (dataBlocks) => set({ dataBlocks: dataBlocks }),
+  setDataFileString: (dataFileString) => set({ dataFileString }),
   setFilteredData: (newFilteredData) => set({ filteredData: newFilteredData }),
   setFilterModel: (newFilterModel) => set({ filterModel: newFilterModel }),
   setSubDatasets: (newSubDatasets) => set({ subDatasets: newSubDatasets }),

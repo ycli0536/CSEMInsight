@@ -3,10 +3,13 @@ from flask import Flask, request, jsonify
 from flask_cors import CORS
 from suesi_depth_reader import process_SuesiDepth_mat_file
 from csem_datafile_parser import CSEMDataFileReader
+from csem_datafile_parser import CSEMDataFileManager
 from xyz_datafile_parser import XYZDataFileReader
 
 app = Flask(__name__)
 CORS(app)
+# Disable sorting of keys in JSON responses
+app.json.sort_keys = False
 
 @app.route('/api/upload-xyz', methods=['POST'])
 def upload_xyz_file():
@@ -51,11 +54,11 @@ def upload_data_file():
 
         if file and file.filename.endswith('.data') or file.filename.endswith('.emdata'):
             path = os.path.join('/tmp', file.filename)
-            print(path)
+            # print(path)
             file.save(path)
             csem_datafile_reader = CSEMDataFileReader(path)
-            geometry_info = csem_datafile_reader.extract_geometry_info()
             csem_data = csem_datafile_reader.blocks
+            geometry_info = csem_datafile_reader.extract_geometry_info()
             data_df = csem_datafile_reader.data_block_init(csem_data['Data'])
             rx_data_df = csem_datafile_reader.rx_data_block_init(csem_data['Rx'])
             tx_data_df = csem_datafile_reader.tx_data_block_init(csem_data['Tx'])
@@ -70,10 +73,37 @@ def upload_data_file():
             # base_name, _ = os.path.splitext(file_name)
             # df.to_json(os.path.join(directory, base_name, '.json'), orient='records', date_format='epoch', date_unit='s')
             
-            # Return geometry info and data
-            return jsonify(geometry_info, data_js)
+            # Return geometry info, data, and csem data blocks strings
+            return jsonify(geometry_info, data_js, csem_data)
 
     return 'Invalid file format'
+
+@app.route('/api/write-data-file', methods=['POST', 'OPTIONS'])
+def write_data_file():
+    if request.method == 'OPTIONS':
+        # Handle preflight requests here
+        response = jsonify({'message': 'CORS preflight'})
+        response.headers.add('Access-Control-Allow-Origin', '*')
+        response.headers.add('Access-Control-Allow-Methods', 'POST, OPTIONS')
+        response.headers.add('Access-Control-Allow-Headers', 'Content-Type')
+        return response
+    elif request.method == 'POST':
+        # Handle the actual POST request
+        data = request.get_json()
+        # Get content and file name from the request
+        content = data.get('content')
+        file_name = data.get('fileName')
+        csem_data = data.get('dataBlocks')
+
+        csem_datafile_manager = CSEMDataFileManager()
+        data_df_from_content = csem_datafile_manager.json_to_df(content)
+        updated_blocks = csem_datafile_manager.update_blocks(data_df_from_content, csem_data)
+        datafile_str = csem_datafile_manager.blocks_to_str(updated_blocks)
+
+        try:
+            return jsonify(datafile_str)
+        except Exception as e:
+            return jsonify({'error': str(e)})
 
 @app.route('/api/upload-mat', methods=['POST'])
 def upload_mat_file():
@@ -98,4 +128,4 @@ def upload_mat_file():
     return 'Invalid file format'
 
 if __name__ == '__main__':
-    app.run(debug=False, port=3354)
+    app.run(debug=True, port=3354)

@@ -2,7 +2,7 @@ import re
 import pandas as pd
 import numpy as np
 import utm
-from os import path
+from io import StringIO
 
 class CSEMDataFileReader():
     """_summary_
@@ -91,7 +91,7 @@ class CSEMDataFileReader():
             # Strip the newline and convert the string to a float
             freq_v = float(line.strip())
             # Add the value to the dictionary with its index
-            freq_data[str(index)] = freq_v
+            freq_data[index] = freq_v
         return freq_data
 
     def extract_data_block(self, lines:str) -> dict:
@@ -117,126 +117,6 @@ class CSEMDataFileReader():
 
         return data_table
 
-    def data_block_to_string(self, data:pd.DataFrame) -> str:
-        """Convert the data block to a string.
-
-        Args:
-            data (pd.DataFrame): The data block as a DataFrame.
-
-        Returns:
-            str: The data block as a string.
-        """
-        # Rename the columns
-        data.rename(columns={'Freq': 'Freq #',
-                             'Tx': 'Tx #',
-                             'Rx': 'Tx #'}, inplace=True)
-
-        # Apply MARE2DEM (DataMan) formatting to the DataFrame
-        data_str = data.to_string(formatters={
-            "Type": "{:4d}".format,
-            "Freq #": "{:7d}".format,
-            "Tx #": "{:7d}".format,
-            "Rx #": "{:7d}".format,
-            "Data": "{:22.15g}".format,
-            "StdErr": "{:22.15g}".format
-        }, index=False)
-        return data_str
-
-    def rx_block_to_string(self, Rx_data):
-        """Convert the DataFrame to a string"""
-        # Delete Rx column from Rx data
-        # Apply MARE2DEM (DataMan) formatting to the DataFrame
-        data_str = Rx_data.drop(columns=['Rx']).to_string(formatters={
-            "X": "{:10.6g}".format,
-            "Y": "{:15.15g}".format,
-            "Z": "{:22.15g}".format,
-            "Theta": "{:9.2g}".format,
-            "Alpha": "{:9.2g}".format,
-            "Beta": "{:9.2f}".format,
-            "Length": "{:9.5g}".format,
-            "Name": "{:>10s}".format
-        }, index=False)
-        return data_str
-
-    def tx_block_to_string(self, Tx_data):
-        """Convert the DataFrame to a string"""
-        # Delete Tx column from Tx data
-        # Apply MARE2DEM (DataMan) formatting to the DataFrame
-        data_str = Tx_data.drop(columns=['Tx']).to_string(formatters={
-            "X": "{:10.6g}".format,
-            "Y": "{:15.15g}".format,
-            "Z": "{:22.15g}".format,
-            "Azimuth": "{:9.2g}".format,
-            "Dip": "{:9.2f}".format,
-            "Length": "{:9.5g}".format,
-            "Type": "{:>10s}".format,
-            "Name": "{:>10s}".format
-        }, index=False)
-        return data_str
-
-    def MT_data_block_to_string(self, MT_data):
-        # Convert the DataFrame to a string
-        MT_data = MT_data.astype({'Type': 'int',
-                            'Freq': 'int',
-                            'Tx': 'int',
-                            'Rx': 'int',
-                            'Data': 'float',
-                            'StdErr': 'float',})
-
-        MT_data.rename(columns={'Freq': 'Freq #',
-                                'Tx': 'Tx #',
-                                'Rx': 'Tx #'}, inplace=True)
-
-        # Apply MARE2DEM (DataMan) formatting to the DataFrame
-        data_str = MT_data.to_string(formatters={
-            "Type": "{:5d}".format,
-            "Freq #": "{:6d}".format,
-            "Tx #": "{:5d}".format,
-            "Rx #": "{:5d}".format,
-            "Data": "{:22.15g}".format,
-            "StdErr": "{:22.15g}".format
-        }, index=False)
-        return data_str
-
-    def update_data_block(self, data_filtered: pd.DataFrame):
-        """Update the Data block with the filtered data."""
-        # Convert data back to string format
-        data_str = self.data_block_to_string(data_filtered)
-        # Regular expression to find the number
-        number_pattern = re.compile(r'(Data: *)(\d+)')
-        # Replace the original number with the new number
-        new_header = number_pattern.sub(r'\g<1>' + str(len(data_filtered)), self.blocks['Data'][0])
-        # Convert data_columns back to string format (remember to add first line info!)
-        blocks_data_str = new_header + '!' + " " * 2 + data_str.replace("\n", "\n" + " " * 3)
-        # keep the line breaks
-        self.blocks['Data'] = blocks_data_str.splitlines(True)
-
-    def update_rx_block(self, rx_data_filtered: pd.DataFrame):
-        """Update the Rx block with the filtered data."""
-        # Convert data back to string format
-        data_str = self.rx_block_to_string(rx_data_filtered)
-        # Regular expression to find the number
-        number_pattern = re.compile(r'(CSEM Receivers: *)(\d+)')
-        # Replace the original number with the new number
-        new_header = number_pattern.sub(r'\g<1>' + str(len(rx_data_filtered)), self.blocks['Rx'][0])
-        # Convert data_columns back to string format (remember to add first line info!)
-        blocks_data_str = new_header + '!' + " " * 2 + data_str.replace("\n", "\n" + " " * 3) + "\n"
-        # keep the line breaks
-        self.blocks['Rx'] = blocks_data_str.splitlines(True)
-
-    def update_tx_block(self, tx_data_filtered: pd.DataFrame):
-        """Update the Tx block with the filtered data."""
-        # Convert data back to string format
-        data_str = self.tx_block_to_string(tx_data_filtered)
-        # Regular expression to find the number
-        number_pattern = re.compile(r'(Transmitters: *)(\d+)')
-        # Replace the original number with the new number
-        new_header = number_pattern.sub(r'\g<1>' + str(len(tx_data_filtered)), self.blocks['Tx'][0])
-        # Convert data_columns back to string format (remember to add first line info!)
-        blocks_data_str = new_header + '!' + " " * 2 + data_str.replace("\n", "\n" + " " * 3) + "\n"
-        # keep the line breaks
-        self.blocks['Tx'] = blocks_data_str.splitlines(True)
-
     def add_freq_column(self, table:pd.DataFrame, freq_dict:dict) -> pd.DataFrame:
         """Add a frequency column to the data table."""
         table['Freq'] = table['Freq_id'].map(freq_dict)
@@ -247,7 +127,7 @@ class CSEMDataFileReader():
         # Extract data
         data_extracted = self.extract_data_block(data_block)
         data = pd.DataFrame.from_dict(data_extracted)
-        data = data.astype({'Type': 'int',
+        data = data.astype({'Type': 'category',
                             'Freq': 'int',
                             'Tx': 'int',
                             'Rx': 'int',
@@ -333,27 +213,204 @@ class CSEMDataFileReader():
         merged_df = self.add_freq_column(merged_df, freq_dict)
         return merged_df
 
-    def anti_merge_data_rx_tx(self, merged_df):
-        """Anti-merge the data, Rx and Tx blocks."""
+    def df_to_json(self, df):
+        """Convert DataFrame to JSON."""
+        # result = df.to_json(orient='records', date_format='epoch', date_unit='s')
+        result = df.to_json(orient='table', index=True)
+        # test pivot table
+        # pivoted_df = df.pivot_table(index=['Type', 'Tx', 'Rx'], columns='Freq', values='Data')
+        # result = pivoted_df.to_json(orient='table', index=True)
+        # result = pivoted_df.to_json(orient='records', index=True)
+        return result
+
+class CSEMDataFileManager():
+    def __init__(self):
+        pass
+
+    def split_data_rx_tx(self, merged_df:pd.DataFrame):
+        """Anti-merge the data, Rx and Tx blocks. Re-index Rx and Tx columns."""
+        # re-index Rx and Tx columns
+        
         data = merged_df[['Type', 'Freq_id', 'Tx_id', 'Rx_id', 'Data', 'StdErr']].copy()
         data.rename(columns={'Freq_id': 'Freq #',
                              'Tx_id': 'Tx #',
                              'Rx_id': 'Rx #'}, inplace=True)
-        rx_data = merged_df[['Rx_id', 'X_rx', 'Y_tx', 'Z_rx', 'Theta', 'Alpha', 'Beta', 'Length_rx', 'Name_rx']].copy()
+
+        rx_data = merged_df[['Rx_id', 'X_rx', 'Y_rx', 'Z_rx', 'Theta', 'Alpha', 'Beta', 'Length_rx', 'Name_rx']].copy()
         rx_data.rename(columns={'X_rx': 'X',
                                 'Y_rx': 'Y',
                                 'Z_rx': 'Z',
                                 'Rx_id': 'Rx #',
                                 'Length_rx': 'Length',
                                 'Name_rx': 'Name'}, inplace=True)
+        rx_data = rx_data.drop_duplicates()
+
         tx_data = merged_df[['Tx_id', 'X_tx', 'Y_tx', 'Z_tx', 'Azimuth', 'Dip', 'Length_tx', 'Type_tx', 'Name_tx']].copy()
         tx_data.rename(columns={'X_tx': 'X',
                                 'Y_tx': 'Y',
                                 'Z_tx': 'Z',
                                 'Tx_id': 'Tx #',
                                 'Length_tx': 'Length',
+                                'Type_tx': 'Type',
                                 'Name_tx': 'Name'}, inplace=True)
+        tx_data = tx_data.drop_duplicates()
         return data, rx_data, tx_data
+
+    def reindex_rx_tx_in_data(self, data:pd.DataFrame):
+        """Re-index Rx and Tx columns."""
+        tx_ids = data['Tx #'].unique()
+        rx_ids = data['Rx #'].unique()
+        tx_id_map = {tx_id: i + 1 for i, tx_id in enumerate(tx_ids)}
+        rx_id_map = {rx_id: i + 1 for i, rx_id in enumerate(rx_ids)}
+        data['Tx #'] = data['Tx #'].map(tx_id_map)
+        data['Rx #'] = data['Rx #'].map(rx_id_map)
+        return data
+
+    def json_to_df(self, json_str):
+        """Convert JSON to DataFrame."""
+        # convert json string to DataFrame
+        df = pd.read_json(StringIO(json_str), orient='records', dtype=False)
+        return df
+
+    def data_block_to_string(self, data:pd.DataFrame) -> str:
+        """Convert the data block to a string.
+
+        Args:
+            data (pd.DataFrame): The data block as a DataFrame.
+
+        Returns:
+            str: The data block as a string.
+        """
+        # Rename the columns
+        data.rename(columns={'Freq': 'Freq #',
+                             'Tx': 'Tx #',
+                             'Rx': 'Tx #'}, inplace=True)
+
+        # Apply MARE2DEM (DataMan) formatting to the DataFrame
+        data_str = data.to_string(formatters={
+            "Type": "{:>4s}".format,
+            "Freq #": "{:7d}".format,
+            "Tx #": "{:7d}".format,
+            "Rx #": "{:7d}".format,
+            "Data": "{:22.15g}".format,
+            "StdErr": "{:22.15g}".format
+        }, index=False)
+        return data_str
+
+    def rx_block_to_string(self, Rx_data):
+        """Convert the DataFrame to a string"""
+        # Delete Rx column from Rx data
+        # Apply MARE2DEM (DataMan) formatting to the DataFrame
+        data_str = Rx_data.drop(columns=['Rx #']).to_string(formatters={
+            "X": "{:10.6g}".format,
+            "Y": "{:15.15g}".format,
+            "Z": "{:22.15g}".format,
+            "Theta": "{:9.2f}".format,
+            "Alpha": "{:9.2f}".format,
+            "Beta": "{:9.2f}".format,
+            "Length": "{:9.5g}".format,
+            "Name": "{:>10s}".format
+        }, index=False)
+        return data_str
+
+    def tx_block_to_string(self, Tx_data: pd.DataFrame):
+        """Convert the DataFrame to a string"""
+        # Delete Tx column from Tx data
+        # Apply MARE2DEM (DataMan) formatting to the DataFrame
+        data_str = Tx_data.drop(columns=['Tx #']).to_string(formatters={
+            "X": "{:10.6g}".format,
+            "Y": "{:15.15g}".format,
+            "Z": "{:22.15g}".format,
+            "Azimuth": "{:9.2f}".format,
+            "Dip": "{:9.2f}".format,
+            "Length": "{:9.5g}".format,
+            "Type": "{:>10s}".format,
+            "Name": "{:>10s}".format
+        }, index=False)
+        return data_str
+
+    def update_data_block(self, data_filtered: pd.DataFrame, data_blocks: dict):
+        """Update the Data block with the filtered data."""
+        # Convert data back to string format
+        data_str = self.data_block_to_string(data_filtered)
+        # Regular expression to find the number
+        number_pattern = re.compile(r'(Data: *)(\d+)')
+        # Replace the original number with the new number
+        new_header = number_pattern.sub(r'\g<1>' + str(len(data_filtered)), data_blocks['Data'][0])
+        # Convert data_columns back to string format (remember to add first line info!)
+        blocks_data_str = new_header + '!' + " " * 2 + data_str.replace("\n", "\n" + " " * 3)
+        # keep the line breaks
+        return blocks_data_str.splitlines(True)
+
+    def update_rx_block(self, rx_data_filtered: pd.DataFrame, data_blocks: dict):
+        """Update the Rx block with the filtered data."""
+        # Convert data back to string format
+        data_str = self.rx_block_to_string(rx_data_filtered)
+        # Regular expression to find the number
+        number_pattern = re.compile(r'(CSEM Receivers: *)(\d+)')
+        # Replace the original number with the new number
+        new_header = number_pattern.sub(r'\g<1>' + str(len(rx_data_filtered)), data_blocks['Rx'][0])
+        # Convert data_columns back to string format (remember to add first line info!)
+        blocks_data_str = new_header + '!' + " " * 2 + data_str.replace("\n", "\n" + " " * 3) + "\n"
+        # keep the line breaks
+        return blocks_data_str.splitlines(True)
+
+    def update_tx_block(self, tx_data_filtered: pd.DataFrame, data_blocks: dict):
+        """Update the Tx block with the filtered data."""
+        # Convert data back to string format
+        data_str = self.tx_block_to_string(tx_data_filtered)
+        # Regular expression to find the number
+        number_pattern = re.compile(r'(Transmitters: *)(\d+)')
+        # Replace the original number with the new number
+        new_header = number_pattern.sub(r'\g<1>' + str(len(tx_data_filtered)), data_blocks['Tx'][0])
+        # Convert data_columns back to string format (remember to add first line info!)
+        blocks_data_str = new_header + '!' + " " * 2 + data_str.replace("\n", "\n" + " " * 3) + "\n"
+        # keep the line breaks
+        return blocks_data_str.splitlines(True)
+
+    def update_blocks(self, data_df, data_blocks):
+        print(data_blocks.keys())
+        data, rx_data, tx_data = self.split_data_rx_tx(data_df)
+        data = self.reindex_rx_tx_in_data(data)
+        data_blocks['Data'] = self.update_data_block(data, data_blocks)
+        data_blocks['Tx'] = self.update_tx_block(tx_data, data_blocks)
+        data_blocks['Rx'] = self.update_rx_block(rx_data, data_blocks)
+        return data_blocks
+
+    def blocks_to_str(self, data_blocks):
+        # Define all types of data info string list
+        AllBlocks = []
+
+        for _, info in enumerate(data_blocks):
+            AllBlocks.append(''.join(data_blocks[info]))
+
+        # Join the lines back into a string
+        AllData = ''.join(AllBlocks)
+        return AllData
+
+    def MT_data_block_to_string(self, MT_data: pd.DataFrame):
+        # Convert the DataFrame to a string
+        MT_data = MT_data.astype({'Type': 'int',
+                            'Freq': 'int',
+                            'Tx': 'int',
+                            'Rx': 'int',
+                            'Data': 'float',
+                            'StdErr': 'float',})
+
+        MT_data.rename(columns={'Freq': 'Freq #',
+                                'Tx': 'Tx #',
+                                'Rx': 'Tx #'}, inplace=True)
+
+        # Apply MARE2DEM (DataMan) formatting to the DataFrame
+        data_str = MT_data.to_string(formatters={
+            "Type": "{:5d}".format,
+            "Freq #": "{:6d}".format,
+            "Tx #": "{:5d}".format,
+            "Rx #": "{:5d}".format,
+            "Data": "{:22.15g}".format,
+            "StdErr": "{:22.15g}".format
+        }, index=False)
+        return data_str
 
     def reset_error_floor(self, data, errfloor):
         """Reset the overall error floor."""
@@ -372,37 +429,3 @@ class CSEMDataFileReader():
         data.loc[data['Type'] == '28', ['StdErr']] = eA_log10_n
         data.loc[data['Type'] == '24', ['StdErr']] = eP_n.to_numpy()
         return data
-
-    def df_to_json(self, df):
-        """Convert DataFrame to JSON."""
-        # result = df.to_json(orient='records', date_format='epoch', date_unit='s')
-        result = df.to_json(orient='table', index=True)
-        # test pivot table
-        # pivoted_df = df.pivot_table(index=['Type', 'Tx', 'Rx'], columns='Freq', values='Data')
-        # result = pivoted_df.to_json(orient='table', index=True)
-        # result = pivoted_df.to_json(orient='records', index=True)
-        return result
-
-    def write_file(self):
-        # Define all types of data info string list
-        AllBlocks = []
-
-        for _, info in enumerate(self.blocks):
-            AllBlocks.append(''.join(self.blocks[info]))
-
-        # Join the lines back into a string
-        AllData = ''.join(AllBlocks)
-
-        datafile_pathname = path.split(self.file_path)[0]
-        datafile = path.split(self.file_path)[1]
-        datafilename = path.splitext(datafile)[0]
-
-        datafilename_n = datafilename + '_m.data'
-        new_file_path = path.join(datafile_pathname, datafilename_n)
-
-        # Write the modified data back to another file
-        with open(new_file_path, "w", encoding="utf-8") as file:
-            file.write(AllData)
-
-        # # Print a message indicating that the file has been updated
-        print(f"The file '{self.file_path}' has been modified with modified data and saved to a new file '{new_file_path}'.")
