@@ -20,18 +20,20 @@ export function InputFile() {
 
         axios.post('http://127.0.0.1:3354/api/upload-data', formData)
         .then(response => {
-                console.log('response.json: ', response)
-                const geometryData: GeometryData = response.data[0];
-                const responseData: CsemData[] = JSON.parse(response.data[1]).data;
-                const dataBlocks = response.data[2];
-                console.log('responseData', responseData)
-                setData(responseData);
-                setDataBlocks(dataBlocks);
-                setGeometryInfo(geometryData);
+            console.log('response.json: ', response)
+            const geometryData: GeometryData = response.data[0];
+            const responseData: CsemData[] = JSON.parse(response.data[1]).data;
+            const dataBlocks = response.data[2];
+            console.log('responseData', responseData)
+            setData(responseData);
+            setDataBlocks(dataBlocks);
+            setGeometryInfo(geometryData);
+            alert('Data uploaded successfully!');
         })
-        .catch(error => console.error('Error uploading file:', error));
-        
-        // console.log('test: ', dataItems.filter((item) => item.type === '24'));
+        .catch(error => {
+            console.error('Error uploading file:', error);
+            alert(`Error uploading file (backend processing): ${error.response.data.error}. Unsupported or wrong file format.`);
+        });
     }
 
 return (

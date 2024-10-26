@@ -48,7 +48,7 @@ export function DataPage() {
           },
         ],
       });
-      const fileName = fileHandle.name; // Get file name to send to the backend
+      // const fileName = fileHandle.name; // Get file name to send to the backend
       // console.log('fileHandle: ', fileHandle);
       const content = JSON.stringify(filteredData);
       console.log('filteredData: ', filteredData);
@@ -59,13 +59,8 @@ export function DataPage() {
       // Send the content and file name to the backend using axios
       const response = await axios.post('http://127.0.0.1:3354/api/write-data-file', {
         content,
-        fileName,
         dataBlocks,
       })
-      // .then(response => {
-      //   setDataFileString(response.data);
-      // })
-      // .catch(error => console.error('Error getting data file string:', error));
       setDataFileString(response.data);
 
       // console.log('fileName: ', fileName);

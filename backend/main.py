@@ -1,3 +1,4 @@
+import traceback
 import os
 from flask import Flask, request, jsonify
 from flask_cors import CORS
@@ -46,35 +47,32 @@ def upload_data_file():
         print("request file: ", request.files[key])
         # Check if the post request has the file part
         if 'file' not in key:
-            return 'No file part'
+            return jsonify({'error': 'No file part'}), 400
 
         file = request.files[key]
         if file.filename == '':
-            return 'No selected file'
+            return jsonify({'error': 'No selected file'}), 400
 
         if file and file.filename.endswith('.data') or file.filename.endswith('.emdata'):
-            path = os.path.join('/tmp', file.filename)
-            # print(path)
-            file.save(path)
-            csem_datafile_reader = CSEMDataFileReader(path)
-            csem_data = csem_datafile_reader.blocks
-            geometry_info = csem_datafile_reader.extract_geometry_info()
-            data_df = csem_datafile_reader.data_block_init(csem_data['Data'])
-            rx_data_df = csem_datafile_reader.rx_data_block_init(csem_data['Rx'])
-            tx_data_df = csem_datafile_reader.tx_data_block_init(csem_data['Tx'])
-            rx_data_lonlat_df = csem_datafile_reader.ne2latlon(rx_data_df, geometry_info)
-            tx_data_lonlat_df = csem_datafile_reader.ne2latlon(tx_data_df, geometry_info)
-            data_rx_tx_df = csem_datafile_reader.merge_data_rx_tx(data_df, rx_data_lonlat_df, tx_data_lonlat_df)
-            data_js = csem_datafile_reader.df_to_json(data_rx_tx_df)
-            
-            #  # Split the path into directory and file components
-            # directory, file_name = os.path.split(self.file_path)
-            # # Split the file name into base name and extension
-            # base_name, _ = os.path.splitext(file_name)
-            # df.to_json(os.path.join(directory, base_name, '.json'), orient='records', date_format='epoch', date_unit='s')
-            
-            # Return geometry info, data, and csem data blocks strings
-            return jsonify(geometry_info, data_js, csem_data)
+            try:
+                path = os.path.join('/tmp', file.filename)
+                # print(path)
+                file.save(path)
+                csem_datafile_reader = CSEMDataFileReader(path)
+                csem_data = csem_datafile_reader.blocks
+                geometry_info = csem_datafile_reader.extract_geometry_info()
+                data_df = csem_datafile_reader.data_block_init(csem_data['Data'])
+                rx_data_df = csem_datafile_reader.rx_data_block_init(csem_data['Rx'])
+                tx_data_df = csem_datafile_reader.tx_data_block_init(csem_data['Tx'])
+                rx_data_lonlat_df = csem_datafile_reader.ne2latlon(rx_data_df, geometry_info)
+                tx_data_lonlat_df = csem_datafile_reader.ne2latlon(tx_data_df, geometry_info)
+                data_rx_tx_df = csem_datafile_reader.merge_data_rx_tx(data_df, rx_data_lonlat_df, tx_data_lonlat_df)
+                data_js = csem_datafile_reader.df_to_json(data_rx_tx_df)
+                # Return geometry info, data, and csem data blocks strings
+                return jsonify(geometry_info, data_js, csem_data)
+            except Exception:
+                traceback.print_exc()
+                return jsonify({'error': traceback.format_exc()}), 500
 
     return 'Invalid file format'
 
@@ -92,7 +90,6 @@ def write_data_file():
         data = request.get_json()
         # Get content and file name from the request
         content = data.get('content')
-        file_name = data.get('fileName')
         csem_data = data.get('dataBlocks')
 
         csem_datafile_manager = CSEMDataFileManager()
@@ -108,23 +105,23 @@ def write_data_file():
 @app.route('/api/upload-mat', methods=['POST'])
 def upload_mat_file():
     print('Start processing file...')
-    
+
     for key in request.files.keys():
         print("request file: ", request.files[key])
         # Check if the post request has the file part
         if 'file' not in key:
             return 'No file part'
-        
+
         file = request.files[key]
         if file.filename == '':
             return 'No selected file'
-        
+
         if file and file.filename.endswith('.mat'):
             path = os.path.join('/tmp', file.filename)
             print(path)
             file.save(path)
             return process_SuesiDepth_mat_file(path)
-    
+
     return 'Invalid file format'
 
 if __name__ == '__main__':
