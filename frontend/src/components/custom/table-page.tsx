@@ -1,12 +1,18 @@
 import { useRef, useState, useCallback, useEffect } from 'react';
-import { AgGridReact } from 'ag-grid-react'; // React Data Grid Component
-import "ag-grid-community/styles/ag-grid.css"; // Mandatory CSS required by the Data Grid
-import "ag-grid-community/styles/ag-theme-quartz.css"; // Optional theme for the Data Grid
+// import { AgGridReact } from 'ag-grid-react'; // React Data Grid Component
+import { AgGridReact } from '@ag-grid-community/react';
+import { ClientSideRowModelModule } from "@ag-grid-community/client-side-row-model";
+import { ModuleRegistry } from "@ag-grid-community/core";
+import "@ag-grid-community/styles/ag-grid.css"; // Mandatory CSS required by the Data Grid
+import "@ag-grid-community/styles/ag-theme-quartz.css"; // Optional theme for the Data Grid
 import { useDataTableStore } from '@/store/settingFormStore';
 import { Checkbox } from '@/components/ui/checkbox'; // Import shadcn/ui Checkbox
 import { Label } from '@/components/ui/label'; // Import shadcn/ui Label
 import { Button } from '@/components/ui/button'; // Import shadcn/ui Button
 import axios from 'axios';
+
+// Register the ClientSideRowModelModule
+ModuleRegistry.register(ClientSideRowModelModule);
 
 export function DataPage() {
   const gridRef = useRef<AgGridReact>(null);
@@ -126,7 +132,7 @@ export function DataPage() {
   const style = {
     height: 300,
     width: '100%',
-    '--ag-grid-size': '5px' as string,
+    '--ag-grid-size': '6px' as string,
   };
 
   return (

@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import type {Selection} from 'react-aria-components';
-import { ColDef, FilterModel } from 'ag-grid-community'; // Import ColDef type
-import { ITextFilterParams, INumberFilterParams } from 'ag-grid-community'; // Import ITextFilterParams type
+import { ColDef, FilterModel } from '@ag-grid-community/core'; // Import ColDef type
+import { ITextFilterParams, INumberFilterParams } from '@ag-grid-community/core'; // Import ITextFilterParams type
 import NumberFloatingFilterComponent from '@/components/custom/numberFloatingFilterComponent';
 
 interface SettingFormState {
