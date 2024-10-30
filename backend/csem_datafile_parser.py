@@ -229,8 +229,6 @@ class CSEMDataFileManager():
 
     def split_data_rx_tx(self, merged_df:pd.DataFrame):
         """Anti-merge the data, Rx and Tx blocks. Re-index Rx and Tx columns."""
-        # re-index Rx and Tx columns
-        
         data = merged_df[['Type', 'Freq_id', 'Tx_id', 'Rx_id', 'Data', 'StdErr']].copy()
         data.rename(columns={'Freq_id': 'Freq #',
                              'Tx_id': 'Tx #',
@@ -243,6 +241,8 @@ class CSEMDataFileManager():
                                 'Rx_id': 'Rx #',
                                 'Length_rx': 'Length',
                                 'Name_rx': 'Name'}, inplace=True)
+        ## reorder rx_data based on Rx #
+        rx_data = rx_data.sort_values(by='Rx #')
         rx_data = rx_data.drop_duplicates()
 
         tx_data = merged_df[['Tx_id', 'X_tx', 'Y_tx', 'Z_tx', 'Azimuth', 'Dip', 'Length_tx', 'Type_tx', 'Name_tx']].copy()
@@ -253,13 +253,15 @@ class CSEMDataFileManager():
                                 'Length_tx': 'Length',
                                 'Type_tx': 'Type',
                                 'Name_tx': 'Name'}, inplace=True)
+        ## reorder tx_data based on Rx #
+        tx_data = tx_data.sort_values(by='Tx #')
         tx_data = tx_data.drop_duplicates()
         return data, rx_data, tx_data
 
     def reindex_rx_tx_in_data(self, data:pd.DataFrame):
         """Re-index Rx and Tx columns."""
-        tx_ids = data['Tx #'].unique()
-        rx_ids = data['Rx #'].unique()
+        tx_ids = data['Tx #'].sort_values().unique()
+        rx_ids = data['Rx #'].sort_values().unique()
         tx_id_map = {tx_id: i + 1 for i, tx_id in enumerate(tx_ids)}
         rx_id_map = {rx_id: i + 1 for i, rx_id in enumerate(rx_ids)}
         data['Tx #'] = data['Tx #'].map(tx_id_map)
