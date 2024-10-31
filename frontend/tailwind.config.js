@@ -1,5 +1,8 @@
 /** @type {import('tailwindcss').Config} */
-module.exports = {
+import tailwindcssAnimate from 'tailwindcss-animate';
+import tailwindcssReactAriaComponents from 'tailwindcss-react-aria-components';
+
+export default {
   darkMode: ["class"],
   content: [
     './pages/**/*.{ts,tsx}',
@@ -73,7 +76,5 @@ module.exports = {
       },
     },
   },
-  plugins: [require("tailwindcss-animate"),
-    require('tailwindcss-react-aria-components')
-  ],
+  plugins: [tailwindcssAnimate, tailwindcssReactAriaComponents],
 }
