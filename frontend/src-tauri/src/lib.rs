@@ -25,8 +25,6 @@ pub fn run() {
             WindowEvent::CloseRequested { api, .. } => {
                 if window.label() == "main" {
                     info!("Close requested - exiting app");
-                    kill_process(3354);
-                    window.app_handle().exit(0);
                 }
             }
             WindowEvent::Destroyed => {
@@ -34,6 +32,7 @@ pub fn run() {
                     info!("Window destroyed - exiting app");
                     kill_process(3354);
                     window.app_handle().exit(0);
+                    std::process::exit(0);
                 }
             }
             _ => {}
