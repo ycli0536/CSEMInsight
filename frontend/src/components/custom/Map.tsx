@@ -6,19 +6,22 @@ import { Label } from '@/components/ui/label';
 
 const MapComponent = () => {
     const MapViewRef = useRef<HTMLDivElement>(null);
-    const { geometryInfo, txData } = useDataTableStore();
+    const { geometryInfo, txData, rxData } = useDataTableStore();
 
     const [txLoc, setTxLoc] = useState<[number, number][]>([]);
+    const [rxLoc, setRxLoc] = useState<[number, number][]>([]);
     const [txSite, setTxSite] = useState<string[]>([]);
 
     useEffect(() => {
         const newTxLoc: [number, number][] = txData.map((tx) => [tx.Lat_tx, tx.Lon_tx] as [number, number]);
+        const newRxLoc: [number, number][] = rxData.map((rx) => [rx.Lat_rx, rx.Lon_rx] as [number, number]);
         const newTxSite = txData.map((tx) => tx.Name_tx);
+        setRxLoc(newRxLoc);
         setTxLoc(newTxLoc);
         setTxSite(newTxSite);
-    }, [txData]);
+    }, [txData, rxData]);
 
-    const position = useMemo(() => {
+    const txPosition = useMemo(() => {
         const defaultPosition: [number, number] = [0, 0];
         return txLoc.length > 0 
             ? [txLoc[Math.floor(txLoc.length / 2)][0], txLoc[Math.floor(txLoc.length / 2)][1]] as [number, number]
@@ -35,12 +38,19 @@ const MapComponent = () => {
                 <span>Strike: {geometryInfo.Strike}</span>
             </Label>
             <div className="z-0" ref={MapViewRef}>
-                <MapContainer center={position} zoom={5} style={{ height: '600px', width: '100%' }}>
+                <MapContainer center={txPosition} zoom={7} style={{ height: '600px', width: '100%' }}>
                     <TileLayer
                         url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
                         attribution='&copy; <a href="https://www.esri.com/">Esri</a>, USGS, NOAA'
                     />
-                    <MapUpdater position={position} />
+                    <MapUpdater position={txPosition} />
+                    {rxLoc.length > 0 && rxLoc.map((loc, index) => (
+                        <CircleMarker key={index} center={loc} radius={0.5} color="blue" fillOpacity={0.5}>
+                            <Popup>
+                                Rx Location: {loc[0].toFixed(2)}, {loc[1].toFixed(2)}
+                            </Popup>
+                        </CircleMarker>
+                    ))}
                     {txLoc.length > 0 && txLoc.map((loc, index) => (
                         <CircleMarker key={index} center={loc} radius={2} color="red" fillColor="red" fillOpacity={1}>
                             <Popup>
