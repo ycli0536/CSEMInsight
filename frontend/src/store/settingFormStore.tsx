@@ -3,6 +3,7 @@ import type {Selection} from 'react-aria-components';
 import { ColDef, FilterModel } from '@ag-grid-community/core'; // Import ColDef type
 import { ITextFilterParams, INumberFilterParams } from '@ag-grid-community/core'; // Import ITextFilterParams type
 import NumberFloatingFilterComponent from '@/components/custom/numberFloatingFilterComponent';
+import TextFloatingFilterComponent from '@/components/custom/textFloatingFilterComponent';
 
 interface SettingFormState {
   showData: boolean;
@@ -183,6 +184,7 @@ export const useDataTableStore = create<DataTableStore>()((set) => ({
       field: "Type",
       filter: true,
       floatingFilter: true,
+      floatingFilterComponent: TextFloatingFilterComponent,
     },
     {
       headerName: "Data",
