@@ -27,7 +27,7 @@ export function Dashboard() {
 return (
     <div className="grid h-screen w-full">
         <div className="flex flex-col gap-2 m-1">
-        <header className="sticky top-0 z-10 flex h-[53px] items-center gap-1 bg-background px-4">
+        <header className="sticky z-10 flex h-[53px] items-center gap-1 bg-background px-4">
         <h1 className="text-xl font-semibold">CSEM viz tool</h1>
         
           <Sheet>
@@ -54,12 +54,12 @@ return (
             className="rounded-lg border"
             >
             <ResizablePanel collapsible={true} minSize={8} defaultSize={25}
-            className="hidden md:flex max-h-[calc(100vh-53px)] overflow-y-scroll">
+            className="hidden md:flex max-h-[calc(100vh-80px)] overflow-y-scroll">
               <SettingForm />
             </ResizablePanel>
             <ResizableHandle withHandle className="hidden md:flex"/>
             <ResizablePanel defaultSize={75}>
-              <div className="grid-flow-col items-center justify-center p-2 max-h-[calc(100vh-53px)] overflow-y-scroll">
+              <div className="grid-flow-col items-center justify-center p-2 max-h-[calc(100vh-80px)] overflow-y-scroll">
                 <fieldset className="grid gap-6 rounded-lg border p-2 m-0">
                   <legend className="-ml-1 px-1 text-base font-bold">
                     Data table
