@@ -5,6 +5,7 @@ import { ITextFilterParams, INumberFilterParams } from '@ag-grid-community/core'
 import NumberFloatingFilterComponent from '@/components/custom/numberFloatingFilterComponent';
 import TextFloatingFilterComponent from '@/components/custom/textFloatingFilterComponent';
 
+
 interface SettingFormState {
   showData: boolean;
   showModel: boolean;
@@ -123,6 +124,7 @@ type DataTableStore = {
   subDatasets: CsemData[][],
   colDefs: ColDef[];
   dataBlocks: [];
+  visibleColumns: Selection;
   dataFileString: string;
   geometryInfo: GeometryData;
   filterModel: FilterModel | null,
@@ -131,6 +133,7 @@ type DataTableStore = {
   setRxData: (rxData: RxData[]) => void;
   setColDefs: (newColDefs: ColDef[]) => void;
   setDataBlocks: (dataBlocks: []) => void;
+  setVisibleColumns: (visibleColumns: Selection) => void;
   setDataFileString: (dataFileString: string) => void;
   setGeometryInfo: (newGeometryInfo: GeometryData) => void;
   setFilteredData: (newFilteredData: CsemData[]) => void;
@@ -148,186 +151,189 @@ export const useInv2DStore = create<Inv2DStore>()((set) => ({
   setInvResult: (invData) => set({ invData }),
 }));
 
+const defaultColDefs: ColDef[] = [
+  {
+    headerName: "Frequency ID",
+    field: "Freq_id",
+    filter: true,
+    filterParams: { maxNumConditions: 5 } as ITextFilterParams,
+    floatingFilter: true,
+    floatingFilterComponent: NumberFloatingFilterComponent,
+  },
+  {
+    headerName: "Rx ID",
+    field: "Rx_id",
+    filter: true,
+    filterParams: { maxNumConditions: 5 } as INumberFilterParams,
+    floatingFilter: true,
+    floatingFilterComponent: NumberFloatingFilterComponent,
+  },
+  {
+    headerName: "Tx ID",
+    field: "Tx_id",
+    filter: true,
+    filterParams: { maxNumConditions: 5 } as INumberFilterParams,
+    floatingFilter: true,
+    floatingFilterComponent: NumberFloatingFilterComponent,
+  },
+  {
+    headerName: "Data Type",
+    field: "Type",
+    filter: true,
+    floatingFilter: true,
+    floatingFilterComponent: TextFloatingFilterComponent,
+  },
+  {
+    headerName: "Data",
+    field: "Data",
+    filter: true,
+    floatingFilter: true,
+  },
+  {
+    headerName: "Std Err",
+    field: "StdErr",
+    filter: true,
+    floatingFilter: true,
+  },
+  {
+    headerName: "Frequency",
+    field: "Freq",
+    filter: "agTextColumnFilter",
+    filterParams: { maxNumConditions: 5 } as ITextFilterParams,
+    floatingFilter: true,
+  },
+  {
+    headerName: "X (rx)",
+    field: "X_rx",
+    filter: true,
+    floatingFilter: true,
+  },
+  {
+    headerName: "Y (rx)",
+    field: "Y_rx",
+    filter: true,
+    floatingFilter: true,
+  },
+  {
+    headerName: "Z (rx)",
+    field: "Z_rx",
+    filter: true,
+    floatingFilter: true,
+  },
+  {
+    headerName: "Lat (rx)",
+    field: "Lat_rx",
+    filter: true,
+    floatingFilter: true,
+  },
+  {
+    headerName: "Lon (rx)",
+    field: "Lon_rx",
+    filter: true,
+    floatingFilter: true,
+  },
+  {
+    headerName: "Theta",
+    field: "Theta",
+    filter: true,
+    floatingFilter: true,
+  },
+  {
+    headerName: "Alpha",
+    field: "Alpha",
+    filter: true,
+    floatingFilter: true,
+  },
+  {
+    headerName: "Beta",
+    field: "Beta",
+    filter: true,
+    floatingFilter: true,
+  },
+  {
+    headerName: "X (tx)",
+    field: "X_tx",
+    filter: true,
+    floatingFilter: true,
+  },
+  {
+    headerName: "Y (tx)",
+    field: "Y_tx",
+    filter: true,
+    floatingFilter: true,
+  },
+  {
+    headerName: "Lat (tx)",
+    field: "Lat_tx",
+    filter: true,
+    floatingFilter: true,
+  },
+  {
+    headerName: "Lon (tx)",
+    field: "Lon_tx",
+    filter: true,
+    floatingFilter: true,
+  },
+  {
+    headerName: "Z (tx)",
+    field: "Z_tx",
+    filter: true,
+    floatingFilter: true,
+  },
+  {
+    headerName: "Azimuth",
+    field: "Azimuth",
+    filter: true,
+    floatingFilter: true,
+  },
+  {
+    headerName: "Dip",
+    field: "Dip",
+    filter: true,
+    floatingFilter: true,
+  },
+  {
+    headerName: "Length (tx)",
+    field: "Length_tx",
+    filter: true,
+    floatingFilter: true,
+  },
+  {
+    headerName: "Type (tx)",
+    field: "Type_tx",
+    filter: true,
+    floatingFilter: true,
+  },
+  {
+    headerName: "Name (tx)",
+    field: "Name_tx",
+    filter: true,
+    floatingFilter: true,
+  },
+  {
+    headerName: "Length (rx)",
+    field: "Length_rx",
+    filter: true,
+    floatingFilter: true,
+  },
+  {
+    headerName: "Name (rx)",
+    field: "Name_rx",
+    filter: true,
+    floatingFilter: true,
+  },
+  { headerName: "Index", field: "index" },
+];
+
 export const useDataTableStore = create<DataTableStore>()((set) => ({
   data: [],
   txData: [],
   rxData: [],
   filteredData: [],
   subDatasets: [],
-  colDefs: [
-    {
-      headerName: "Frequency ID",
-      field: "Freq_id",
-      filter: true,
-      filterParams: { maxNumConditions: 5 } as ITextFilterParams,
-      floatingFilter: true,
-      floatingFilterComponent: NumberFloatingFilterComponent,
-    },
-    {
-      headerName: "Rx ID",
-      field: "Rx_id",
-      filter: true,
-      filterParams: { maxNumConditions: 5 } as INumberFilterParams,
-      floatingFilter: true,
-      floatingFilterComponent: NumberFloatingFilterComponent,
-    },
-    {
-      headerName: "Tx ID",
-      field: "Tx_id",
-      filter: true,
-      filterParams: { maxNumConditions: 5 } as INumberFilterParams,
-      floatingFilter: true,
-      floatingFilterComponent: NumberFloatingFilterComponent,
-    },
-    {
-      headerName: "Data Type",
-      field: "Type",
-      filter: true,
-      floatingFilter: true,
-      floatingFilterComponent: TextFloatingFilterComponent,
-    },
-    {
-      headerName: "Data",
-      field: "Data",
-      filter: true,
-      floatingFilter: true,
-    },
-    {
-      headerName: "Std Err",
-      field: "StdErr",
-      filter: true,
-      floatingFilter: true,
-    },
-    {
-      headerName: "Frequency",
-      field: "Freq",
-      filter: "agTextColumnFilter",
-      filterParams: { maxNumConditions: 5 } as ITextFilterParams,
-      floatingFilter: true,
-    },
-    {
-      headerName: "X (rx)",
-      field: "X_rx",
-      filter: true,
-      floatingFilter: true,
-    },
-    {
-      headerName: "Y (rx)",
-      field: "Y_rx",
-      filter: true,
-      floatingFilter: true,
-    },
-    {
-      headerName: "Z (rx)",
-      field: "Z_rx",
-      filter: true,
-      floatingFilter: true,
-    },
-    {
-      headerName: "Lat (rx)",
-      field: "Lat_rx",
-      filter: true,
-      floatingFilter: true,
-    },
-    {
-      headerName: "Lon (rx)",
-      field: "Lon_rx",
-      filter: true,
-      floatingFilter: true,
-    },
-    {
-      headerName: "Theta",
-      field: "Theta",
-      filter: true,
-      floatingFilter: true,
-    },
-    {
-      headerName: "Alpha",
-      field: "Alpha",
-      filter: true,
-      floatingFilter: true,
-    },
-    {
-      headerName: "Beta",
-      field: "Beta",
-      filter: true,
-      floatingFilter: true,
-    },
-    {
-      headerName: "X (tx)",
-      field: "X_tx",
-      filter: true,
-      floatingFilter: true,
-    },
-    {
-      headerName: "Y (tx)",
-      field: "Y_tx",
-      filter: true,
-      floatingFilter: true,
-    },
-    {
-      headerName: "Lat (tx)",
-      field: "Lat_tx",
-      filter: true,
-      floatingFilter: true,
-    },
-    {
-      headerName: "Lon (tx)",
-      field: "Lon_tx",
-      filter: true,
-      floatingFilter: true,
-    },
-    {
-      headerName: "Z (tx)",
-      field: "Z_tx",
-      filter: true,
-      floatingFilter: true,
-    },
-    {
-      headerName: "Azimuth",
-      field: "Azimuth",
-      filter: true,
-      floatingFilter: true,
-    },
-    {
-      headerName: "Dip",
-      field: "Dip",
-      filter: true,
-      floatingFilter: true,
-    },
-    {
-      headerName: "Length (tx)",
-      field: "Length_tx",
-      filter: true,
-      floatingFilter: true,
-    },
-    {
-      headerName: "Type (tx)",
-      field: "Type_tx",
-      filter: true,
-      floatingFilter: true,
-    },
-    {
-      headerName: "Name (tx)",
-      field: "Name_tx",
-      filter: true,
-      floatingFilter: true,
-    },
-    {
-      headerName: "Length (rx)",
-      field: "Length_rx",
-      filter: true,
-      floatingFilter: true,
-    },
-    {
-      headerName: "Name (rx)",
-      field: "Name_rx",
-      filter: true,
-      floatingFilter: true,
-    },
-    { headerName: "Index", field: "index" },
-  ],
+  colDefs: defaultColDefs,
   dataBlocks: [],
+  visibleColumns: 'all',
   dataFileString: "",
   filterModel: null,
   geometryInfo: { UTM_zone: 0, Hemisphere: "N", North: 0, East: 0, Strike: 0 },
@@ -336,6 +342,7 @@ export const useDataTableStore = create<DataTableStore>()((set) => ({
   setRxData: (rxData) => set({ rxData: rxData }),
   setColDefs: (newColDefs) => set({ colDefs: newColDefs }),
   setDataBlocks: (dataBlocks) => set({ dataBlocks: dataBlocks }),
+  setVisibleColumns: (visibleColumns) => set({ visibleColumns }),
   setDataFileString: (dataFileString) => set({ dataFileString }),
   setFilteredData: (newFilteredData) => set({ filteredData: newFilteredData }),
   setFilterModel: (newFilterModel) => set({ filterModel: newFilterModel }),

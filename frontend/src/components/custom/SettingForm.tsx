@@ -16,11 +16,12 @@ import { Combobox } from "@/components/custom/Combobox";
 // import { MultiselectList } from "@/components/custom/MultiselectList"
 import { ListBoxItem, ListBox } from "@/components/custom/ListBox";
 
-import { useSettingFormStore } from '@/store/settingFormStore';
+import { useSettingFormStore, useDataTableStore } from '@/store/settingFormStore';
 
 
 export function SettingForm() {
     const { showData, showModel, showResiduals, freqSelected, setShowData, setShowModel, setShowResiduals, setFreqSelected } = useSettingFormStore();
+    const { colDefs, visibleColumns, setVisibleColumns} = useDataTableStore();
 
     return (
       <form className="sticky w-full items-start gap-6 overflow-auto p-4 pt-0">
@@ -32,11 +33,47 @@ export function SettingForm() {
         </fieldset>
         <fieldset className="grid gap-6 rounded-lg border p-4">
           <legend className="-ml-1 px-1 text-base font-medium">
-            Popular options
+            Data table
           </legend>
           <div className="grid grid-cols-2 gap-3">
+            <div className="grid gap-2">
+              <Label htmlFor="toggle-col">Toggle Columns</Label>
+              {/* use ListBox to select columns */}
+              <ListBox aria-label="Toggle Columns" selectionMode="multiple" selectionBehavior="toggle"
+              selectedKeys={visibleColumns}
+              onSelectionChange={setVisibleColumns}
+              autoFocus={true}
+              className='max-h-[200px] text-lg'>
+              {colDefs.map((col) => (
+                <ListBoxItem key={col.field} id={col.field}>{col.headerName}</ListBoxItem>
+              ))}
+              </ListBox>
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="filter">Quick Filter Options</Label>
+              <div className="grid gap-2">
+                  <Label htmlFor="freq">Frequencies (Hz)</Label>
+                  <ListBox aria-label="Freq" selectionMode="multiple" selectionBehavior="toggle"
+                  selectedKeys={freqSelected}
+                  onSelectionChange={setFreqSelected}
+                  autoFocus={true}
+                  className="h-auto text-lg">
+                    <ListBoxItem>0.25</ListBoxItem>
+                    <ListBoxItem>0.25</ListBoxItem>
+                    <ListBoxItem>0.25</ListBoxItem>
+                    <ListBoxItem>0.25</ListBoxItem>
+                  </ListBox>
+              </div>
+            </div>
+          </div>
+        </fieldset>
+        <fieldset className="grid gap-6 rounded-lg border p-4">
+          <legend className="-ml-1 px-1 text-base font-medium">
+            Popular options
+          </legend>
+          <div className="grid gap-3 space-y-100">
             <div className="grid">
-              <div className="flex items-center space-x-2">
+              <div className="items-center space-x-2">
                 <Checkbox id="data" checked={showData} onCheckedChange={(checked) => {
                     setShowData(checked as boolean)}} />
                 <label htmlFor="data"
@@ -44,7 +81,7 @@ export function SettingForm() {
                 Data
                 </label>
               </div>
-              <div className="flex items-center space-x-2">
+              <div className="items-center space-x-2">
                 <Checkbox id="model" checked={showModel} onCheckedChange={(checked) => {
                     setShowModel(checked as boolean)}} />
                 <label htmlFor="model"
@@ -52,7 +89,7 @@ export function SettingForm() {
                 Model
                 </label>
               </div>
-              <div className="flex items-center space-x-2">
+              <div className="items-center space-x-2">
                 <Checkbox id="residuals" checked={showResiduals} onCheckedChange={(checked) => 
                     setShowResiduals(checked as boolean)} />
                     <label
@@ -62,21 +99,8 @@ export function SettingForm() {
                         Residuals
               </label>
               </div>
-              </div>
-              <div className="grid gap-2">
-                <Label htmlFor="freq">Frequencies (Hz)</Label>
-                <ListBox aria-label="Freq" selectionMode="multiple" selectionBehavior="toggle"
-                selectedKeys={freqSelected}
-                onSelectionChange={setFreqSelected}
-                autoFocus={true}
-                className="h-[70px]">
-                  <ListBoxItem>0.25</ListBoxItem>
-                  <ListBoxItem>0.25</ListBoxItem>
-                  <ListBoxItem>0.25</ListBoxItem>
-                  <ListBoxItem>0.25</ListBoxItem>
-                </ListBox>
-              </div>
             </div>
+          </div>
           <div className="grid gap-3">
           <Label htmlFor="plot">Plot</Label>
           <Select defaultValue="response">

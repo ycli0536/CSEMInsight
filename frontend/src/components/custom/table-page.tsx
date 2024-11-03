@@ -6,8 +6,6 @@ import { ModuleRegistry } from "@ag-grid-community/core";
 import "@ag-grid-community/styles/ag-grid.css"; // Mandatory CSS required by the Data Grid
 import "@ag-grid-community/styles/ag-theme-quartz.css"; // Optional theme for the Data Grid
 import { useDataTableStore } from '@/store/settingFormStore';
-import { Checkbox } from '@/components/ui/checkbox'; // Import shadcn/ui Checkbox
-import { Label } from '@/components/ui/label'; // Import shadcn/ui Label
 import { Button } from '@/components/ui/button'; // Import shadcn/ui Button
 import axios from 'axios';
 
@@ -16,8 +14,7 @@ ModuleRegistry.register(ClientSideRowModelModule);
 
 export function DataPage() {
   const gridRef = useRef<AgGridReact>(null);
-  const { data, colDefs, filteredData, dataBlocks, setDataFileString, setFilteredData, setFilterModel } = useDataTableStore();
-  const [visibleColumns, setVisibleColumns] = useState(colDefs.map(col => col.field)); // Track visible columns
+  const { data, colDefs, filteredData, dataBlocks, visibleColumns, setDataFileString, setFilteredData, setFilterModel } = useDataTableStore();
   const [loading, setLoading] = useState<boolean>(true);
   // // On component mount, initialize visible columns with defaults
   // useEffect(() => {
@@ -28,17 +25,6 @@ export function DataPage() {
   //     .filter((field) => field && defaultVisibleColumns.includes(field)); // Set only default visible columns
   //   setVisibleColumns(initialColumns);
   // }, [colDefs]);
-
-  // Handle column visibility change
-  const handleColumnVisibilityChange = (columnField: string) => {
-    setVisibleColumns((prev) => {
-      if (prev.includes(columnField)) {
-        return prev.filter((field) => field !== columnField);
-      } else {
-        return [...prev, columnField];
-      }
-    });
-  };
 
   const handleSave = async() => {
     try {
@@ -54,13 +40,9 @@ export function DataPage() {
           },
         ],
       });
-      // const fileName = fileHandle.name; // Get file name to send to the backend
-      // console.log('fileHandle: ', fileHandle);
       const content = JSON.stringify(filteredData);
       console.log('filteredData: ', filteredData);
-      // console.log('datafilestring before: ', dataFileString);
-      // console.log('filteredData (string): ', content);
-      
+
       // Send the file name to the backend
       // Send the content and file name to the backend using axios
       const response = await axios.post('http://127.0.0.1:3354/api/write-data-file', {
@@ -68,9 +50,6 @@ export function DataPage() {
         dataBlocks,
       })
       setDataFileString(response.data);
-
-      // console.log('fileName: ', fileName);
-      // console.log('dataBlocks: ', dataBlocks);
 
       // If dataFileString is successfully set, save the file
       if (response.data) {
@@ -91,7 +70,14 @@ export function DataPage() {
 
   // Update column definitions based on visible columns
   const getFilteredColDefs = () => {
-    return colDefs.filter(col => visibleColumns.includes(col.field));
+    if (visibleColumns === 'all') {
+      return colDefs;
+    }
+    else {
+      const filteredColDefs = colDefs.filter(col => col.field && Array.from(visibleColumns).includes(col.field));
+      return filteredColDefs;
+  
+    }
   };
 
   const onFilterChanged = useCallback(() => {
@@ -130,7 +116,7 @@ export function DataPage() {
   useEffect(onFilterChanged, [onFilterChanged]);
 
   const style = {
-    height: 300,
+    height: 350,
     width: '100%',
     '--ag-grid-size': '6px' as string,
   };
@@ -141,17 +127,6 @@ export function DataPage() {
       <div className="mb-4 space-y-4">
         {/* Add flex-wrap to allow the checkboxes to wrap */}
         <div className="flex flex-wrap gap-4">
-          <Label htmlFor="toggle-col" className='font-semibold'>Toggle Columns: </Label>
-          {colDefs.map((col) => (
-            <Label key={col.field} className="flex items-center space-x-2">
-              <Checkbox
-                checked={visibleColumns.includes(col.field)}
-                onCheckedChange={() => col.field && handleColumnVisibilityChange(col.field)}
-                id={col.field} // Add id for better accessibility
-              />
-              <span>{col.headerName}</span>
-            </Label>
-          ))}
           <div className="flex">
             <Button onClick={handleSave} className="full">
               Export data file
