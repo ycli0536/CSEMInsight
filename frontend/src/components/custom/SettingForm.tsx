@@ -8,20 +8,14 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Checkbox } from "@/components/ui/checkbox"
-
 import { InputFile } from "@/components/custom/InputFile";
 import { Combobox } from "@/components/custom/Combobox";
-
-
-// import { MultiselectList } from "@/components/custom/MultiselectList"
-import { ListBoxItem, ListBox } from "@/components/custom/ListBox";
-
-import { useSettingFormStore, useDataTableStore } from '@/store/settingFormStore';
+import { DataTableCtrl } from "@/components/custom/DataTableCtrl";
+import { useSettingFormStore} from '@/store/settingFormStore';
 
 
 export function SettingForm() {
-    const { showData, showModel, showResiduals, freqSelected, setShowData, setShowModel, setShowResiduals, setFreqSelected } = useSettingFormStore();
-    const { colDefs, visibleColumns, setVisibleColumns} = useDataTableStore();
+    const { showData, showModel, showResiduals, setShowData, setShowModel, setShowResiduals } = useSettingFormStore();
 
     return (
       <form className="sticky w-full items-start gap-6 overflow-auto p-4 pt-0">
@@ -35,37 +29,7 @@ export function SettingForm() {
           <legend className="-ml-1 px-1 text-base font-medium">
             Data table
           </legend>
-          <div className="grid grid-cols-2 gap-3">
-            <div className="grid gap-2">
-              <Label htmlFor="toggle-col">Toggle Columns</Label>
-              {/* use ListBox to select columns */}
-              <ListBox aria-label="Toggle Columns" selectionMode="multiple" selectionBehavior="toggle"
-              selectedKeys={visibleColumns}
-              onSelectionChange={setVisibleColumns}
-              autoFocus={true}
-              className='max-h-[200px] text-lg'>
-              {colDefs.map((col) => (
-                <ListBoxItem key={col.field} id={col.field}>{col.headerName}</ListBoxItem>
-              ))}
-              </ListBox>
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="filter">Quick Filter Options</Label>
-              <div className="grid gap-2">
-                  <Label htmlFor="freq">Frequencies (Hz)</Label>
-                  <ListBox aria-label="Freq" selectionMode="multiple" selectionBehavior="toggle"
-                  selectedKeys={freqSelected}
-                  onSelectionChange={setFreqSelected}
-                  autoFocus={true}
-                  className="h-auto text-lg">
-                    <ListBoxItem>0.25</ListBoxItem>
-                    <ListBoxItem>0.25</ListBoxItem>
-                    <ListBoxItem>0.25</ListBoxItem>
-                    <ListBoxItem>0.25</ListBoxItem>
-                  </ListBox>
-              </div>
-            </div>
-          </div>
+          <DataTableCtrl />
         </fieldset>
         <fieldset className="grid gap-6 rounded-lg border p-4">
           <legend className="-ml-1 px-1 text-base font-medium">

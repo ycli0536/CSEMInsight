@@ -11,10 +11,14 @@ interface SettingFormState {
   showModel: boolean;
   showResiduals: boolean;
   freqSelected: Selection;
+  txSelected: Selection;
+  rxSelected: Selection;
   setShowData: (showData: boolean) => void;
   setShowModel: (showModel: boolean) => void;
   setShowResiduals: (showResiduals: boolean) => void;
   setFreqSelected: (selected: Selection) => void;
+  setTxSelected: (selected: Selection) => void;
+  setRxSelected: (selected: Selection) => void;
 }
 
 type UPlotData = number | string | null | undefined;
@@ -120,7 +124,10 @@ type DataTableStore = {
   data: CsemData[];
   txData: TxData[];
   rxData: RxData[];
+  tableData: CsemData[];
   filteredData: CsemData[];
+  filteredTxData: TxData[];
+  filteredRxData: RxData[];
   subDatasets: CsemData[][],
   colDefs: ColDef[];
   dataBlocks: [];
@@ -136,7 +143,10 @@ type DataTableStore = {
   setVisibleColumns: (visibleColumns: Selection) => void;
   setDataFileString: (dataFileString: string) => void;
   setGeometryInfo: (newGeometryInfo: GeometryData) => void;
+  setTableData: (tableData: CsemData[]) => void;
   setFilteredData: (newFilteredData: CsemData[]) => void;
+  setFilteredTxData: (newFilteredTxData: TxData[]) => void;
+  setFilteredRxData: (newFilteredRxData: RxData[]) => void;
   setFilterModel: (newFilterModel: FilterModel | null) => void;
   setSubDatasets: (newSubDatasets: []) => void;
 }
@@ -325,15 +335,23 @@ const defaultColDefs: ColDef[] = [
   { headerName: "Index", field: "index" },
 ];
 
+const initialVisibleColumns = ['Freq_id', 'Tx_id', 'Rx_id', 'Data', 'StdErr', 'Type'];
+const initialColumns = defaultColDefs
+.map((col) => col.field)
+.filter((field): field is string => field !== undefined && initialVisibleColumns.includes(field)); // Set only default visible columns
+
 export const useDataTableStore = create<DataTableStore>()((set) => ({
   data: [],
   txData: [],
   rxData: [],
+  tableData: [],
+  filteredTxData: [],
+  filteredRxData: [],
   filteredData: [],
   subDatasets: [],
   colDefs: defaultColDefs,
   dataBlocks: [],
-  visibleColumns: 'all',
+  visibleColumns: new Set<string>(initialColumns),
   dataFileString: "",
   filterModel: null,
   geometryInfo: { UTM_zone: 0, Hemisphere: "N", North: 0, East: 0, Strike: 0 },
@@ -344,7 +362,10 @@ export const useDataTableStore = create<DataTableStore>()((set) => ({
   setDataBlocks: (dataBlocks) => set({ dataBlocks: dataBlocks }),
   setVisibleColumns: (visibleColumns) => set({ visibleColumns }),
   setDataFileString: (dataFileString) => set({ dataFileString }),
+  setTableData: (tableData) => set({ tableData: tableData }),
   setFilteredData: (newFilteredData) => set({ filteredData: newFilteredData }),
+  setFilteredTxData: (newFilteredTxData) => set({ filteredTxData: newFilteredTxData }),
+  setFilteredRxData: (newFilteredRxData) => set({ filteredRxData: newFilteredRxData }),
   setFilterModel: (newFilterModel) => set({ filterModel: newFilterModel }),
   setSubDatasets: (newSubDatasets) => set({ subDatasets: newSubDatasets }),
   setGeometryInfo: (newGeometryInfo) => set({ geometryInfo: newGeometryInfo }),
@@ -355,8 +376,12 @@ export const useSettingFormStore = create<SettingFormState>()((set) => ({
   showModel: true,
   showResiduals: true,
   freqSelected: new Set([]),
+  txSelected: new Set([]),
+  rxSelected: new Set([]),
   setShowData: (showData) => set({ showData }),
   setShowModel: (showModel) => set({ showModel }),
   setShowResiduals: (showResiduals) => set({ showResiduals }),
   setFreqSelected: (freqSelected) => set({ freqSelected }),
+  setTxSelected: (txSelected) => set({ txSelected }),
+  setRxSelected: (rxSelected) => set({ rxSelected }),
 }));

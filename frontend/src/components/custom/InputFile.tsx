@@ -7,7 +7,7 @@ import { useDataTableStore, CsemData, GeometryData,
     useInv2DStore, xyzData } from '@/store/settingFormStore';
 
 export function InputFile() {
-    const { setData, setGeometryInfo, setDataBlocks } = useDataTableStore();
+    const { setData, setTableData, setGeometryInfo, setDataBlocks } = useDataTableStore();
     const { setInvResult } = useInv2DStore();
     const [dataFiles, setDataFiles] = useState<string | null>(null);
     const [modelFiles, setModelFiles] = useState<string | null>(null);
@@ -26,6 +26,7 @@ export function InputFile() {
             const dataBlocks = response.data[2];
             console.log('responseData', responseData)
             setData(responseData);
+            setTableData(responseData);
             setDataBlocks(dataBlocks);
             setGeometryInfo(geometryData);
             alert('Data uploaded successfully!');
