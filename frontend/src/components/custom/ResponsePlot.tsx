@@ -9,6 +9,7 @@ import { useUPlotStore } from '@/store/plotCanvasStore';
 import { wheelZoomPlugin } from '@/components/custom/uplot-wheel-zoom-plugin';
 import { RadioGroupExample } from '@/components/custom/errRadioGroup';
 import { useRadioGroupStore } from '@/store/plotCanvasStore';
+import { debounce } from 'lodash';
 
 export function ResponsesWithErrorBars() {
   const ampChartRef = useRef<HTMLDivElement>(null);
@@ -384,69 +385,71 @@ export function ResponsesWithErrorBars() {
             {
               hooks: {
                 draw: (u) => {
-                  const ctx = u.ctx;
-                  // console.log('u.data: ', u.data);
-                  // console.log('u.scales: ', u.scales);
-    
-                  const minX = u.scales.x.min as number;
-                  const maxX = u.scales.x.max as number;
-    
-                  // Draw in the u-over layer
-                  ctx.save();
-                  ctx.rect(u.bbox.left, u.bbox.top, u.bbox.width, u.bbox.height);
-                  ctx.clip();
-    
-                  const dataX = u.data[0];
-    
-                  const drawErrorBars = (seriesIdx: number, color: string) => {
-                    ctx.strokeStyle = color;
-                    ctx.lineWidth = 1;
-                    const capWidth = 3; // Width of the caps at the ends of the error bars
-    
-                    for (let i = 0; i < dataX.length; i++) {
-                      const x = dataX[i];
-                      const y = u.data[seriesIdx][i];
-                      const upperLimit = u.data[seriesIdx + seriesNum][i] as number;
-                      const lowerLimit = u.data[seriesIdx + seriesNum * 2][i] as number;
-    
-                      if (y !== null && y !== undefined && x >= minX && x <= maxX && y >= lowerLimit && y <= upperLimit) {
-                      const xPos = u.valToPos(x, 'x', true);
-    
-                      const errTopPos = u.valToPos(upperLimit, 'y', true);
-                      const errBottomPos = u.valToPos(lowerLimit, 'y', true);
-    
-                      // const yLow = Math.max(u.bbox.top, lowerLimit);
-                      // const yHigh = Math.min(u.bbox.top + u.bbox.height, upperLimit);
-                      // console.log('yLow, yHigh: ', yLow, yHigh);
-                      
-                      // if (yLow > yHigh) { // for amp yLow > yHigh
-                        ctx.beginPath();
-                        ctx.moveTo(xPos, errTopPos);
-                        ctx.lineTo(xPos, errBottomPos);
-                        ctx.stroke();
-    
-                        // Draw the top cap
-                        ctx.beginPath();
-                        ctx.moveTo(xPos - capWidth, errTopPos);
-                        ctx.lineTo(xPos + capWidth, errTopPos);
-                        ctx.stroke();
-    
-                        // Draw the bottom cap
-                        ctx.beginPath();
-                        ctx.moveTo(xPos - capWidth, errBottomPos);
-                        ctx.lineTo(xPos + capWidth, errBottomPos);
-                        ctx.stroke();
-                      // }
+                  requestAnimationFrame(() => {
+                    const ctx = u.ctx;
+                    // console.log('u.data: ', u.data);
+                    // console.log('u.scales: ', u.scales);
+      
+                    const minX = u.scales.x.min as number;
+                    const maxX = u.scales.x.max as number;
+      
+                    // Draw in the u-over layer
+                    ctx.save();
+                    ctx.rect(u.bbox.left, u.bbox.top, u.bbox.width, u.bbox.height);
+                    ctx.clip();
+      
+                    const dataX = u.data[0];
+      
+                    const drawErrorBars = (seriesIdx: number, color: string) => {
+                      ctx.strokeStyle = color;
+                      ctx.lineWidth = 1;
+                      const capWidth = 3; // Width of the caps at the ends of the error bars
+      
+                      for (let i = 0; i < dataX.length; i++) {
+                        const x = dataX[i];
+                        const y = u.data[seriesIdx][i];
+                        const upperLimit = u.data[seriesIdx + seriesNum][i] as number;
+                        const lowerLimit = u.data[seriesIdx + seriesNum * 2][i] as number;
+      
+                        if (y !== null && y !== undefined && x >= minX && x <= maxX && y >= lowerLimit && y <= upperLimit) {
+                        const xPos = u.valToPos(x, 'x', true);
+      
+                        const errTopPos = u.valToPos(upperLimit, 'y', true);
+                        const errBottomPos = u.valToPos(lowerLimit, 'y', true);
+      
+                        // const yLow = Math.max(u.bbox.top, lowerLimit);
+                        // const yHigh = Math.min(u.bbox.top + u.bbox.height, upperLimit);
+                        // console.log('yLow, yHigh: ', yLow, yHigh);
+                        
+                        // if (yLow > yHigh) { // for amp yLow > yHigh
+                          ctx.beginPath();
+                          ctx.moveTo(xPos, errTopPos);
+                          ctx.lineTo(xPos, errBottomPos);
+                          ctx.stroke();
+      
+                          // Draw the top cap
+                          ctx.beginPath();
+                          ctx.moveTo(xPos - capWidth, errTopPos);
+                          ctx.lineTo(xPos + capWidth, errTopPos);
+                          ctx.stroke();
+      
+                          // Draw the bottom cap
+                          ctx.beginPath();
+                          ctx.moveTo(xPos - capWidth, errBottomPos);
+                          ctx.lineTo(xPos + capWidth, errBottomPos);
+                          ctx.stroke();
+                        // }
+                        }
                       }
                     }
-                  }
-    
-                  // Loop through each series to draw elements
-                  for (let i = 0; i < seriesNum; i++) {
-                    drawErrorBars(i + 1, seriesColors[i]);
-                  }
-    
-                  ctx.restore();
+      
+                    // Loop through each series to draw elements
+                    for (let i = 0; i < seriesNum; i++) {
+                      drawErrorBars(i + 1, seriesColors[i]);
+                    }
+      
+                    ctx.restore();
+                  });
                 },
               },
             },
@@ -553,10 +556,38 @@ export function ResponsesWithErrorBars() {
       const plotAmpInstance = new uPlot(options_amp, ampDataWithBand, ampChartRef.current!)
       const plotPhiInstance = new uPlot(options_phi, phiDataWithBand, phiChartRef.current!)
 
+      // Add resize observer to handle resizing of charts
+      const resizeObserverAmp = new ResizeObserver(
+        debounce(() => {
+          if (ampChartRef.current) {
+            plotAmpInstance.setSize({
+              width: ampChartRef.current.offsetWidth,
+              height: 350, // Set a fixed height to prevent uncontrolled growth
+            });
+          }
+        }, 100)
+      );
+
+      const resizeObserverPhi = new ResizeObserver(
+        debounce(() => {
+          if (phiChartRef.current) {
+            plotPhiInstance.setSize({
+              width: phiChartRef.current.offsetWidth,
+              height: 350, // Set a fixed height to prevent uncontrolled growth
+            });
+          }
+        }, 100)
+      );
+
+      resizeObserverAmp.observe(ampChartRef.current);
+      resizeObserverPhi.observe(phiChartRef.current);
+
       // Cleanup function to destroy plot instances on unmount
       return () => {
         plotAmpInstance.destroy();
         plotPhiInstance.destroy();
+        resizeObserverAmp.disconnect();
+        resizeObserverPhi.disconnect();
       };
     }
   }, [filteredData, dragEnabled, scrollEnabled, legendLiveEnabled, selectedValue, showLegend]);
