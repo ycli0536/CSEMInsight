@@ -7,12 +7,16 @@ import TextFloatingFilterComponent from '@/components/custom/textFloatingFilterC
 
 
 interface SettingFormState {
+  dataFiles: string | null;
+  modelFiles: string | null;
   showData: boolean;
   showModel: boolean;
   showResiduals: boolean;
   freqSelected: Selection;
   txSelected: Selection;
   rxSelected: Selection;
+  setDataFiles: (dataFiles: string | null) => void;
+  setModelFiles: (modelFiles: string | null) => void;
   setShowData: (showData: boolean) => void;
   setShowModel: (showModel: boolean) => void;
   setShowResiduals: (showResiduals: boolean) => void;
@@ -372,12 +376,16 @@ export const useDataTableStore = create<DataTableStore>()((set) => ({
 }));
 
 export const useSettingFormStore = create<SettingFormState>()((set) => ({
+  dataFiles: null,
+  modelFiles: null,
   showData: true,
   showModel: true,
   showResiduals: true,
   freqSelected: new Set([]),
   txSelected: new Set([]),
   rxSelected: new Set([]),
+  setDataFiles: (dataFiles) => set({ dataFiles }),
+  setModelFiles: (modelFiles) => set({ modelFiles }),
   setShowData: (showData) => set({ showData }),
   setShowModel: (showModel) => set({ showModel }),
   setShowResiduals: (showResiduals) => set({ showResiduals }),

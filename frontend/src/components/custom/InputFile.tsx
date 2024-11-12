@@ -1,16 +1,18 @@
 import axios from 'axios';
-import { useState } from 'react';
 import { Button, FileTrigger, DropZone } from "react-aria-components";
 import type { FileDropItem } from "react-aria";
 
-import { useDataTableStore, CsemData, GeometryData,
-    useInv2DStore, xyzData } from '@/store/settingFormStore';
+import { useDataTableStore, 
+         useSettingFormStore,
+         useInv2DStore,
+         CsemData,
+         GeometryData,
+         xyzData } from '@/store/settingFormStore';
 
 export function InputFile() {
     const { setData, setTableData, setGeometryInfo, setDataBlocks } = useDataTableStore();
     const { setInvResult } = useInv2DStore();
-    const [dataFiles, setDataFiles] = useState<string | null>(null);
-    const [modelFiles, setModelFiles] = useState<string | null>(null);
+    const { dataFiles, modelFiles, setDataFiles, setModelFiles } = useSettingFormStore();
 
     const readData = (files: File[]) => {
         const formData = new FormData();
