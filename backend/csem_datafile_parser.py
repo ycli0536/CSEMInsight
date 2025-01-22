@@ -286,7 +286,7 @@ class CSEMDataFileManager():
         # Rename the columns
         data.rename(columns={'Freq': 'Freq #',
                              'Tx': 'Tx #',
-                             'Rx': 'Tx #'}, inplace=True)
+                             'Rx': 'Rx #'}, inplace=True)
 
         # Apply MARE2DEM (DataMan) formatting to the DataFrame
         data_str = data.to_string(formatters={
@@ -414,20 +414,37 @@ class CSEMDataFileManager():
         }, index=False)
         return data_str
 
-    def reset_error_floor(self, data, errfloor):
-        """Reset the overall error floor."""
-        # extract amplitude error in log10(Ey Amplitude)
-        eA_log10 = data.loc[data['Type'] == '28', ['StdErr']]
-        # extract amplitude error
-        eP = data.loc[data['Type'] == '24', ['StdErr']]
-        UncA = eA_log10 * np.log(10)
-        UncP = 2 * np.sin(np.deg2rad(eP / 2))
+    def increase_error_floor(self, data_df, errfloor, rcvs):
+        """Increase the error floor for certain receivers."""
+        data_df_n = data_df.copy()
+        if rcvs == 'all':
+            # extract amplitude error in log10(Ey Amplitude)
+            eA_log10 = data_df_n.loc[data_df_n['Type'] == '28', ['StdErr']]
+            # extract amplitude error
+            eP = data_df_n.loc[data_df_n['Type'] == '24', ['StdErr']]
+            UncA = eA_log10 * np.log(10)
+            UncP = 2 * np.sin(np.deg2rad(eP / 2))
 
-        UncA_n = np.fmax(UncA, errfloor)
-        eA_log10_n = UncA_n / np.log(10)
-        # UncA = UncP here (which requires that len(UncA) = len(UncP))
-        eP_n = 2 * np.rad2deg(np.arcsin(UncA_n / 2))
+            UncA_n = np.fmax(UncA, errfloor)
+            eA_log10_n = UncA_n / np.log(10)
+            # UncA = UncP here (which requires that len(UncA) = len(UncP))
+            eP_n = 2 * np.rad2deg(np.arcsin(UncA_n / 2))
 
-        data.loc[data['Type'] == '28', ['StdErr']] = eA_log10_n
-        data.loc[data['Type'] == '24', ['StdErr']] = eP_n.to_numpy()
-        return data
+            data_df_n.loc[data_df_n['Type'] == '28', ['StdErr']] = eA_log10_n
+            data_df_n.loc[data_df_n['Type'] == '24', ['StdErr']] = eP_n.to_numpy()
+        else:
+            # extract amplitude error in log10(Ey Amplitude)
+            eA_log10 = data_df_n.loc[(data_df_n['Type'] == '28') & (data_df_n['Tx'].isin(rcvs)), ['StdErr']]
+            # extract amplitude error
+            eP = data_df_n.loc[(data_df_n['Type'] == '24') & (data_df_n['Tx'].isin(rcvs)), ['StdErr']]
+            UncA = eA_log10 * np.log(10)
+            UncP = 2 * np.sin(np.deg2rad(eP / 2))
+
+            UncA_n = np.fmax(UncA, errfloor)
+            eA_log10_n = UncA_n / np.log(10)
+            # UncA = UncP here (which requires that len(UncA) = len(UncP))
+            eP_n = 2 * np.rad2deg(np.arcsin(UncA_n / 2))
+
+            data_df_n.loc[(data_df_n['Type'] == '28') & (data_df_n['Tx'].isin(rcvs)), ['StdErr']] = eA_log10_n
+            data_df_n.loc[(data_df_n['Type'] == '24') & (data_df_n['Tx'].isin(rcvs)), ['StdErr']] = eP_n.to_numpy()
+        return data_df_n
