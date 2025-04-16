@@ -23,6 +23,7 @@ class CSEMDataFileReader():
         self.blocks = {info: [] for info in self.block_infos}
         self.data = None
         self.read_file()
+        self.format, self.version = self.extract_file_info()
 
     def read_file(self):
         """Read the file and extract the data blocks."""
@@ -51,9 +52,22 @@ class CSEMDataFileReader():
             # extracted_blocks.append(''.join(current_block))
             extracted_blocks.append(current_block)
             # Filter the extracted blocks based on the patterns
-            for i, block in enumerate(extracted_blocks):
+            for block in extracted_blocks:
                 # assume for each pattern we can only find single match (if any)
-                self.blocks[self.block_infos[i]] = block
+                # match the block info with each block
+                for info in self.block_infos:
+                    if info == 'Geometry' and re.search('UTM', block[0], re.IGNORECASE):
+                        self.blocks[info] = block
+                        break
+                    if info =='Tx' and re.search('Transmitters', block[0], re.IGNORECASE):
+                        self.blocks[info] = block
+                        break
+                    if info == 'Rx' and re.search('Receivers', block[0], re.IGNORECASE):
+                        self.blocks[info] = block
+                        break
+                    elif re.search(info, block[0], re.IGNORECASE):
+                        self.blocks[info] = block
+                        break
 
     def extract_file_info(self):
         """Extract file information."""
@@ -127,12 +141,32 @@ class CSEMDataFileReader():
         # Extract data
         data_extracted = self.extract_data_block(data_block)
         data = pd.DataFrame.from_dict(data_extracted)
-        data = data.astype({'Type': 'category',
-                            'Freq': 'int',
-                            'Tx': 'int',
-                            'Rx': 'int',
-                            'Data': 'float',
-                            'StdErr': 'float'})
+        if self.format == 'emdata':
+            data = data.astype({'Type': 'category',
+                                'Freq': 'int',
+                                'Tx': 'int',
+                                'Rx': 'int',
+                                'Data': 'float',
+                                'StdErr': 'float'})
+        elif self.format == 'emresp':
+            if 'StdError' in data.columns:
+                data = data.astype({'Type': 'category',
+                                    'Freq': 'int',
+                                    'Tx': 'int',
+                                    'Rx': 'int',
+                                    'Data': 'float',
+                                    'StdError': 'float',
+                                    'Response': 'float',
+                                    'Residual': 'float'})
+            elif 'StdErr' in data.columns:
+                data = data.astype({'Type': 'category',
+                                    'Freq': 'int',
+                                    'Tx': 'int',
+                                    'Rx': 'int',
+                                    'Data': 'float',
+                                    'StdErr': 'float',
+                                    'Response': 'float',
+                                    'Residual': 'float'})
         return data
 
     def tx_data_block_init(self, tx_data_block:str) -> pd.DataFrame:
@@ -303,32 +337,56 @@ class CSEMDataFileManager():
         """Convert the DataFrame to a string"""
         # Delete Rx column from Rx data
         # Apply MARE2DEM (DataMan) formatting to the DataFrame
-        data_str = Rx_data.drop(columns=['Rx #']).to_string(formatters={
-            "X": "{:10.6g}".format,
-            "Y": "{:15.15g}".format,
-            "Z": "{:22.15g}".format,
-            "Theta": "{:9.2f}".format,
-            "Alpha": "{:9.2f}".format,
-            "Beta": "{:9.2f}".format,
-            "Length": "{:9.5g}".format,
-            "Name": "{:>10s}".format
-        }, index=False)
+        if 'Rx #' in Rx_data.columns:
+            data_str = Rx_data.drop(columns=['Rx #']).to_string(formatters={
+                "X": "{:10.6g}".format,
+                "Y": "{:15.15g}".format,
+                "Z": "{:22.15g}".format,
+                "Theta": "{:9.2f}".format,
+                "Alpha": "{:9.2f}".format,
+                "Beta": "{:9.2f}".format,
+                "Length": "{:9.5g}".format,
+                    "Name": "{:>10s}".format
+                }, index=False)
+        else:
+            data_str = Rx_data.drop(columns=['Rx']).to_string(formatters={
+                "X": "{:10.6g}".format,
+                "Y": "{:15.15g}".format,
+                "Z": "{:22.15g}".format,
+                "Theta": "{:9.2f}".format,
+                "Alpha": "{:9.2f}".format,
+                "Beta": "{:9.2f}".format,
+                "Length": "{:9.5g}".format,
+                "Name": "{:>10s}".format
+            }, index=False)
         return data_str
 
     def tx_block_to_string(self, Tx_data: pd.DataFrame):
         """Convert the DataFrame to a string"""
         # Delete Tx column from Tx data
         # Apply MARE2DEM (DataMan) formatting to the DataFrame
-        data_str = Tx_data.drop(columns=['Tx #']).to_string(formatters={
-            "X": "{:10.6g}".format,
-            "Y": "{:15.15g}".format,
-            "Z": "{:22.15g}".format,
-            "Azimuth": "{:9.2f}".format,
-            "Dip": "{:9.2f}".format,
-            "Length": "{:9.5g}".format,
-            "Type": "{:>10s}".format,
-            "Name": "{:>10s}".format
-        }, index=False)
+        if 'Tx #' in Tx_data.columns:
+            data_str = Tx_data.drop(columns=['Tx #']).to_string(formatters={
+                "X": "{:10.6g}".format,
+                "Y": "{:15.15g}".format,
+                "Z": "{:22.15g}".format,
+                "Azimuth": "{:9.2f}".format,
+                "Dip": "{:9.2f}".format,
+                "Length": "{:9.5g}".format,
+                "Type": "{:>10s}".format,
+                    "Name": "{:>10s}".format
+                }, index=False)
+        else:
+            data_str = Tx_data.drop(columns=['Tx']).to_string(formatters={
+                "X": "{:10.6g}".format,
+                "Y": "{:15.15g}".format,
+                "Z": "{:22.15g}".format,
+                "Azimuth": "{:9.2f}".format,
+                "Dip": "{:9.2f}".format,
+                "Length": "{:9.5g}".format,
+                "Type": "{:>10s}".format,
+                "Name": "{:>10s}".format
+            }, index=False)
         return data_str
 
     def update_data_block(self, data_filtered: pd.DataFrame, data_blocks: dict):
@@ -413,11 +471,11 @@ class CSEMDataFileManager():
             "StdErr": "{:22.15g}".format
         }, index=False)
         return data_str
-
-    def increase_error_floor(self, data_df, errfloor, rcvs):
-        """Increase the error floor for certain receivers."""
+    
+    def increase_error_floor_rx(self, data_df, errfloor, rx):
+        """Increase the error floor for certain transmitters/receivers (depends on if reciprocity is applied)."""
         data_df_n = data_df.copy()
-        if rcvs == 'all':
+        if rx == 'all':
             # extract amplitude error in log10(Ey Amplitude)
             eA_log10 = data_df_n.loc[data_df_n['Type'] == '28', ['StdErr']]
             # extract amplitude error
@@ -434,9 +492,9 @@ class CSEMDataFileManager():
             data_df_n.loc[data_df_n['Type'] == '24', ['StdErr']] = eP_n.to_numpy()
         else:
             # extract amplitude error in log10(Ey Amplitude)
-            eA_log10 = data_df_n.loc[(data_df_n['Type'] == '28') & (data_df_n['Tx'].isin(rcvs)), ['StdErr']]
+            eA_log10 = data_df_n.loc[(data_df_n['Type'] == '28') & (data_df_n['Rx'].isin(rx)), ['StdErr']]
             # extract amplitude error
-            eP = data_df_n.loc[(data_df_n['Type'] == '24') & (data_df_n['Tx'].isin(rcvs)), ['StdErr']]
+            eP = data_df_n.loc[(data_df_n['Type'] == '24') & (data_df_n['Rx'].isin(rx)), ['StdErr']]
             UncA = eA_log10 * np.log(10)
             UncP = 2 * np.sin(np.deg2rad(eP / 2))
 
@@ -445,6 +503,41 @@ class CSEMDataFileManager():
             # UncA = UncP here (which requires that len(UncA) = len(UncP))
             eP_n = 2 * np.rad2deg(np.arcsin(UncA_n / 2))
 
-            data_df_n.loc[(data_df_n['Type'] == '28') & (data_df_n['Tx'].isin(rcvs)), ['StdErr']] = eA_log10_n
-            data_df_n.loc[(data_df_n['Type'] == '24') & (data_df_n['Tx'].isin(rcvs)), ['StdErr']] = eP_n.to_numpy()
+            data_df_n.loc[(data_df_n['Type'] == '28') & (data_df_n['Rx'].isin(rx)), ['StdErr']] = eA_log10_n
+            data_df_n.loc[(data_df_n['Type'] == '24') & (data_df_n['Rx'].isin(rx)), ['StdErr']] = eP_n.to_numpy()
+        return data_df_n
+            
+    def increase_error_floor_tx(self, data_df, errfloor, tx):
+        """Increase the error floor for certain receivers/transmitters (depends on if reciprocity is applied).."""
+        data_df_n = data_df.copy()
+        if tx == 'all':
+            # extract amplitude error in log10(Ey Amplitude)
+            eA_log10 = data_df_n.loc[data_df_n['Type'] == '28', ['StdErr']]
+            # extract amplitude error
+            eP = data_df_n.loc[data_df_n['Type'] == '24', ['StdErr']]
+            UncA = eA_log10 * np.log(10)
+            UncP = 2 * np.sin(np.deg2rad(eP / 2))
+
+            UncA_n = np.fmax(UncA, errfloor)
+            eA_log10_n = UncA_n / np.log(10)
+            # UncA = UncP here (which requires that len(UncA) = len(UncP))
+            eP_n = 2 * np.rad2deg(np.arcsin(UncA_n / 2))
+
+            data_df_n.loc[data_df_n['Type'] == '28', ['StdErr']] = eA_log10_n
+            data_df_n.loc[data_df_n['Type'] == '24', ['StdErr']] = eP_n.to_numpy()
+        else:
+            # extract amplitude error in log10(Ey Amplitude)
+            eA_log10 = data_df_n.loc[(data_df_n['Type'] == '28') & (data_df_n['Tx'].isin(tx)), ['StdErr']]
+            # extract amplitude error
+            eP = data_df_n.loc[(data_df_n['Type'] == '24') & (data_df_n['Tx'].isin(tx)), ['StdErr']]
+            UncA = eA_log10 * np.log(10)
+            UncP = 2 * np.sin(np.deg2rad(eP / 2))
+
+            UncA_n = np.fmax(UncA, errfloor)
+            eA_log10_n = UncA_n / np.log(10)
+            # UncA = UncP here (which requires that len(UncA) = len(UncP))
+            eP_n = 2 * np.rad2deg(np.arcsin(UncA_n / 2))
+
+            data_df_n.loc[(data_df_n['Type'] == '28') & (data_df_n['Tx'].isin(tx)), ['StdErr']] = eA_log10_n
+            data_df_n.loc[(data_df_n['Type'] == '24') & (data_df_n['Tx'].isin(tx)), ['StdErr']] = eP_n.to_numpy()
         return data_df_n
