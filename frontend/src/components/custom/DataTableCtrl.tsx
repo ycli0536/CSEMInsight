@@ -4,7 +4,7 @@ import { ListBoxItem, ListBox as MyListBox } from "@/components/custom/ListBox";
 import { Item, ListBox, Provider, lightTheme } from "@adobe/react-spectrum";
 import { useCallback } from "react";
 import type { Selection } from 'react-aria-components';
-import { FilterModel } from "@ag-grid-community/core";
+// import { FilterModel } from "@ag-grid-community/core";
 
 import {
   useSettingFormStore,
@@ -126,7 +126,7 @@ export function DataTableCtrl() {
         await writableStream.close();
       }
 
-      alert("File saved successfully on the server!");
+      alert("File saved successfully on the server! (Only support EMData_2.2 format for now)");
     } catch (error) {
       console.error("Error saving the file:", error);
       alert("Failed to save the file.");
@@ -162,7 +162,7 @@ export function DataTableCtrl() {
             <Label htmlFor="freq">Frequencies (Hz)</Label>
             <Provider theme={lightTheme} colorScheme="light">
               <ListBox
-                UNSAFE_className="max-h-[100px]"
+                maxHeight="100px"
                 aria-label="Freq"
                 selectionMode="multiple"
                 selectedKeys={freqSelected}

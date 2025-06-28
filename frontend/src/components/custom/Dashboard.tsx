@@ -33,11 +33,11 @@ return (
           <Sheet>
             <SheetTrigger asChild>
                 <Button variant="ghost" size="icon">
-                <Settings className="size-4" />
+                <Settings className="size-5" />
                 <span className="sr-only">Settings</span>
               </Button>
             </SheetTrigger>
-            <SheetContent className="overflow-auto w-[350px] sm:w-[550px]" side={"left"}>
+            <SheetContent className="overflow-auto w-[425px] sm:w-[550px]" side={"left"}>
               <SheetHeader>
                 <SheetTitle>Control Panel</SheetTitle>
                 <SheetDescription>
@@ -53,8 +53,8 @@ return (
             direction="horizontal"
             className="rounded-lg border"
             >
-            <ResizablePanel collapsible={true} minSize={8} defaultSize={25}
-            className="hidden md:flex max-h-[calc(100vh-80px)] overflow-y-scroll">
+            <ResizablePanel collapsible={true} minSize={10} defaultSize={20}
+            className="hidden xl:flex max-h-[calc(100vh-80px)] overflow-y-scroll">
               <SettingForm />
             </ResizablePanel>
             <ResizableHandle withHandle className="hidden md:flex"/>
@@ -85,17 +85,17 @@ return (
                 </fieldset>
                 <fieldset className="grid gap-6 rounded-lg border p-2 m-0">
                   <legend className="-ml-1 px-1 text-base font-bold">
+                    Rx Tx positions on Map
+                  </legend>
+                  <Map />
+                </fieldset>
+                <fieldset className="grid gap-6 rounded-lg border p-2 m-0">
+                  <legend className="-ml-1 px-1 text-base font-bold">
                     Inversion results
                   </legend>
                   <HeatmapComponent />
                 </fieldset>
                 </div>
-                <fieldset className="grid gap-6 rounded-lg border p-2 m-0">
-                  <legend className="-ml-1 px-1 text-base font-bold">
-                    Rx Tx positions on Map
-                  </legend>
-                  <Map />
-                </fieldset>
               </div>
 
             </ResizablePanel>

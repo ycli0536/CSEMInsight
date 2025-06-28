@@ -24,7 +24,8 @@ export function DataPage() {
   >(() => {
     return {
       mode: "multiRow",
-      groupSelects: "descendants",
+      // groupSelects: "descendants",
+      selectAll: "filtered",
     };
   }, []);
 
