@@ -7,19 +7,45 @@ from io import StringIO
 class CSEMDataFileReader():
     """_summary_
     """
-    def __init__(self, file_path):
+    def __init__(self, file_path, data_type='CSEM'):
         self.file_path = file_path
         self.extracted_blocks = []
-        self.block_infos = [
-            "Format",
-            "Geometry",
-            "Phase",
-            "Reciprocity",
-            "Frequencies",
-            "Tx",
-            "Rx",
-            "Data",
-        ]
+        self.data_type = data_type
+        if self.data_type == 'CSEM':
+            self.block_infos = [
+                "Format",
+                "Geometry",
+                "Phase",
+                "Reciprocity",
+                "Frequencies",
+                "Tx",
+                "Rx",
+                "Data",
+            ]
+        elif self.data_type == 'MT':
+            self.block_infos = [
+                "Format",
+                "Geometry",
+                "Reciprocity",
+                "Frequencies",
+                "Rx",
+                "Data",
+            ]
+        elif self.data_type == 'joint':
+            self.block_infos = [
+                "Format",
+                "Geometry",
+                "Phase",
+                "Reciprocity",
+                "Frequencies_CSEM",
+                "Frequencies_MT",
+                "Tx",
+                "Rx_CSEM",
+                "Rx_MT",
+                "Data",
+            ]
+        else:
+            raise ValueError(f"Invalid data type: {self.data_type}")
         self.blocks = {info: [] for info in self.block_infos}
         self.data = None
         self.read_file()
@@ -59,10 +85,25 @@ class CSEMDataFileReader():
                     if info == 'Geometry' and re.search('UTM', block[0], re.IGNORECASE):
                         self.blocks[info] = block
                         break
+                    if info =='Frequencies' and (re.search('CSEM Frequencies', block[0], re.IGNORECASE) or re.search('MT Frequencies', block[0], re.IGNORECASE)):
+                        self.blocks[info] = block
+                        break
+                    if info == 'Frequencies_CSEM' and re.search('CSEM Frequencies', block[0], re.IGNORECASE):
+                        self.blocks[info] = block
+                        break
+                    if info == 'Frequencies_MT' and re.search('MT Frequencies', block[0], re.IGNORECASE):
+                        self.blocks[info] = block
+                        break
                     if info =='Tx' and re.search('Transmitters', block[0], re.IGNORECASE):
                         self.blocks[info] = block
                         break
-                    if info == 'Rx' and re.search('Receivers', block[0], re.IGNORECASE):
+                    if info == 'Rx' and (re.search('CSEM Receivers', block[0], re.IGNORECASE) or re.search('MT Receivers', block[0], re.IGNORECASE)):
+                        self.blocks[info] = block
+                        break
+                    if info == 'Rx_MT' and re.search('MT Receivers', block[0], re.IGNORECASE):
+                        self.blocks[info] = block
+                        break
+                    if info == 'Rx_CSEM' and re.search('CSEM Receivers', block[0], re.IGNORECASE):
                         self.blocks[info] = block
                         break
                     elif re.search(info, block[0], re.IGNORECASE):
@@ -185,19 +226,32 @@ class CSEMDataFileReader():
         Tx_data.insert(0, "Tx", pd.Series(range(1, len(Tx_data)+1)))
         return Tx_data
 
-    def rx_data_block_init(self, rx_data_block:str) -> pd.DataFrame:
+    def rx_data_block_init(self, rx_data_block:str, rx_type:str='CSEM') -> pd.DataFrame:
         """Initialize the Rx Data block. Convert extracted data to DataFrame."""
         Rx_data_extracted = self.extract_data_block(rx_data_block)
         Rx_data = pd.DataFrame.from_dict(Rx_data_extracted)
 
-        Rx_data = Rx_data.astype({'X': 'float',
-                                  'Y': 'float',
-                                  'Z': 'float',
-                                  'Theta': 'float',
-                                  'Alpha': 'float',
-                                  'Beta': 'float',
-                                  'Length': 'float',
-                                  'Name': 'string',})
+        if rx_type == 'CSEM':
+            Rx_data = Rx_data.astype({'X': 'float',
+                                    'Y': 'float',
+                                    'Z': 'float',
+                                    'Theta': 'float',
+                                    'Alpha': 'float',
+                                    'Beta': 'float',
+                                    'Length': 'float',
+                                    'Name': 'string',})
+        elif rx_type == 'MT':
+            Rx_data = Rx_data.astype({'X': 'float',
+                                    'Y': 'float',
+                                    'Z': 'float',
+                                    'Theta': 'float',
+                                    'Alpha': 'float',
+                                    'Beta': 'float',
+                                    'Length': 'float',
+                                    'SolveStatic': 'float',
+                                    'Name': 'string',})
+        else:
+            raise ValueError(f"Invalid Rx type: {rx_type}")
         Rx_data.insert(0, "Rx", pd.Series(range(1, len(Rx_data)+1)))
         return Rx_data
 
@@ -258,8 +312,8 @@ class CSEMDataFileReader():
         return result
 
 class CSEMDataFileManager():
-    def __init__(self):
-        pass
+    def __init__(self, data_type:str='CSEM'):
+        self.data_type = data_type
 
     def split_data_rx_tx(self, merged_df:pd.DataFrame):
         """Anti-merge the data, Rx and Tx blocks. Re-index Rx and Tx columns."""
@@ -402,14 +456,29 @@ class CSEMDataFileManager():
         # keep the line breaks
         return blocks_data_str.splitlines(True)
 
-    def update_rx_block(self, rx_data_filtered: pd.DataFrame, data_blocks: dict):
+    def update_rx_block(self, rx_data_filtered: pd.DataFrame, data_blocks: dict, rx_type:str='CSEM'):
         """Update the Rx block with the filtered data."""
         # Convert data back to string format
         data_str = self.rx_block_to_string(rx_data_filtered)
         # Regular expression to find the number
-        number_pattern = re.compile(r'(CSEM Receivers: *)(\d+)')
-        # Replace the original number with the new number
-        new_header = number_pattern.sub(r'\g<1>' + str(len(rx_data_filtered)), data_blocks['Rx'][0])
+        if self.data_type == 'CSEM':
+            number_pattern = re.compile(r'(CSEM Receivers: *)(\d+)')
+            # Replace the original number with the new number
+            new_header = number_pattern.sub(r'\g<1>' + str(len(rx_data_filtered)), data_blocks['Rx'][0])
+        elif self.data_type == 'MT':
+            number_pattern = re.compile(r'(MT Receivers: *)(\d+)')
+            # Replace the original number with the new number
+            new_header = number_pattern.sub(r'\g<1>' + str(len(rx_data_filtered)), data_blocks['Rx'][0])
+        elif self.data_type == 'joint' and rx_type == 'CSEM':
+            number_pattern = re.compile(r'(CSEM Receivers: *)(\d+)')
+            # Replace the original number with the new number
+            new_header = number_pattern.sub(r'\g<1>' + str(len(rx_data_filtered)), data_blocks['Rx_CSEM'][0])
+        elif self.data_type == 'joint' and rx_type == 'MT':
+            number_pattern = re.compile(r'(MT Receivers: *)(\d+)')
+            # Replace the original number with the new number
+            new_header = number_pattern.sub(r'\g<1>' + str(len(rx_data_filtered)), data_blocks['Rx_MT'][0])
+        else:
+            raise ValueError(f"Invalid data type: {self.data_type}")
         # Convert data_columns back to string format (remember to add first line info!)
         blocks_data_str = new_header + '!' + " " * 2 + data_str.replace("\n", "\n" + " " * 3) + "\n"
         # keep the line breaks
@@ -440,6 +509,9 @@ class CSEMDataFileManager():
     def blocks_to_str(self, data_blocks):
         # Define all types of data info string list
         AllBlocks = []
+        
+        # only support EMData_2.2 format for now
+        data_blocks['Format'] = 'Format: EMData_2.2\n'
 
         for _, info in enumerate(data_blocks):
             AllBlocks.append(''.join(data_blocks[info]))
@@ -447,30 +519,6 @@ class CSEMDataFileManager():
         # Join the lines back into a string
         AllData = ''.join(AllBlocks)
         return AllData
-
-    def MT_data_block_to_string(self, MT_data: pd.DataFrame):
-        # Convert the DataFrame to a string
-        MT_data = MT_data.astype({'Type': 'int',
-                            'Freq': 'int',
-                            'Tx': 'int',
-                            'Rx': 'int',
-                            'Data': 'float',
-                            'StdErr': 'float',})
-
-        MT_data.rename(columns={'Freq': 'Freq #',
-                                'Tx': 'Tx #',
-                                'Rx': 'Tx #'}, inplace=True)
-
-        # Apply MARE2DEM (DataMan) formatting to the DataFrame
-        data_str = MT_data.to_string(formatters={
-            "Type": "{:5d}".format,
-            "Freq #": "{:6d}".format,
-            "Tx #": "{:5d}".format,
-            "Rx #": "{:5d}".format,
-            "Data": "{:22.15g}".format,
-            "StdErr": "{:22.15g}".format
-        }, index=False)
-        return data_str
     
     def increase_error_floor_rx(self, data_df, errfloor, rx):
         """Increase the error floor for certain transmitters/receivers (depends on if reciprocity is applied)."""
