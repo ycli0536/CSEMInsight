@@ -554,9 +554,10 @@ class CSEMDataFileManager():
             data_df_n.loc[(data_df_n['Type'] == '28') & (data_df_n['Rx'].isin(rx)), ['StdErr']] = eA_log10_n
             data_df_n.loc[(data_df_n['Type'] == '24') & (data_df_n['Rx'].isin(rx)), ['StdErr']] = eP_n.to_numpy()
         return data_df_n
-            
+
     def increase_error_floor_tx(self, data_df, errfloor, tx):
-        """Increase the error floor for certain receivers/transmitters (depends on if reciprocity is applied).."""
+        """Increase the error floor for certain receivers/transmitters 
+        (depends on if reciprocity is applied).."""
         data_df_n = data_df.copy()
         if tx == 'all':
             # extract amplitude error in log10(Ey Amplitude)
@@ -567,9 +568,10 @@ class CSEMDataFileManager():
             UncP = 2 * np.sin(np.deg2rad(eP / 2))
 
             UncA_n = np.fmax(UncA, errfloor)
+            UncP_n = np.fmax(UncP, errfloor)
             eA_log10_n = UncA_n / np.log(10)
-            # UncA = UncP here (which requires that len(UncA) = len(UncP))
-            eP_n = 2 * np.rad2deg(np.arcsin(UncA_n / 2))
+            # len(UncA) can be different from len(UncP)
+            eP_n = 2 * np.rad2deg(np.arcsin(UncP_n / 2))
 
             data_df_n.loc[data_df_n['Type'] == '28', ['StdErr']] = eA_log10_n
             data_df_n.loc[data_df_n['Type'] == '24', ['StdErr']] = eP_n.to_numpy()
@@ -582,9 +584,10 @@ class CSEMDataFileManager():
             UncP = 2 * np.sin(np.deg2rad(eP / 2))
 
             UncA_n = np.fmax(UncA, errfloor)
+            UncP_n = np.fmax(UncP, errfloor)
             eA_log10_n = UncA_n / np.log(10)
-            # UncA = UncP here (which requires that len(UncA) = len(UncP))
-            eP_n = 2 * np.rad2deg(np.arcsin(UncA_n / 2))
+            # len(UncA) can be different from len(UncP)
+            eP_n = 2 * np.rad2deg(np.arcsin(UncP_n / 2))
 
             data_df_n.loc[(data_df_n['Type'] == '28') & (data_df_n['Tx'].isin(tx)), ['StdErr']] = eA_log10_n
             data_df_n.loc[(data_df_n['Type'] == '24') & (data_df_n['Tx'].isin(tx)), ['StdErr']] = eP_n.to_numpy()
