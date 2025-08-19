@@ -1,0 +1,4 @@
+# Mac-specific dependencies
+appnope==0.1.4
+pexpect==4.9.0
+ptyprocess==0.7.0 

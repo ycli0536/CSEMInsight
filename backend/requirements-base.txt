@@ -1,10 +1,4 @@
-# Cross-platform Python dependencies for CSEMInsight backend
-# Install platform-specific dependencies separately if needed:
-# - Mac: pip install -r requirements-mac.txt
-# - Windows: All dependencies below should work
-
 anyio==4.6.0
-appnope==0.1.4; sys_platform == "darwin"
 argon2-cffi==23.1.0
 argon2-cffi-bindings==21.2.0
 arrow==1.3.0
@@ -70,13 +64,11 @@ packaging==24.1
 pandas==2.2.3
 pandocfilters==1.5.1
 parso==0.8.4
-pexpect==4.9.0; sys_platform != "win32"
 pillow==10.4.0
 platformdirs==4.3.6
 prometheus_client==0.21.0
 prompt_toolkit==3.0.48
 psutil==6.0.0
-ptyprocess==0.7.0; sys_platform != "win32"
 pure_eval==0.2.3
 pycparser==2.22
 Pygments==2.18.0
@@ -110,4 +102,4 @@ wcwidth==0.2.13
 webcolors==24.8.0
 webencodings==0.5.1
 websocket-client==1.8.0
-Werkzeug==3.0.4
+Werkzeug==3.0.4 

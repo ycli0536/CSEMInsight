@@ -1,5 +1,6 @@
 import traceback
 import os
+import tempfile
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from suesi_depth_reader import process_SuesiDepth_mat_file
@@ -10,7 +11,7 @@ from xyz_datafile_parser import XYZDataFileReader
 app = Flask(__name__)
 CORS(app)
 # Disable sorting of keys in JSON responses
-app.json.sort_keys = False
+app.config['JSON_SORT_KEYS'] = False
 
 @app.route('/api/upload-xyz', methods=['POST'])
 def upload_xyz_file():
@@ -27,7 +28,8 @@ def upload_xyz_file():
             return 'No selected file'
 
         if file and file.filename.endswith('.xyz'):
-            path = os.path.join('/tmp', file.filename)
+            temp_dir = tempfile.gettempdir()
+            path = os.path.join(temp_dir, file.filename)
             print(path)
             file.save(path)
             xyz_datafile_reader = XYZDataFileReader(path)
@@ -55,7 +57,8 @@ def upload_data_file():
 
         if file and file.filename.endswith('.data') or file.filename.endswith('.emdata'):
             try:
-                path = os.path.join('/tmp', file.filename)
+                temp_dir = tempfile.gettempdir()
+                path = os.path.join(temp_dir, file.filename)
                 # print(path)
                 file.save(path)
                 csem_datafile_reader = CSEMDataFileReader(path)
@@ -117,7 +120,8 @@ def upload_mat_file():
             return 'No selected file'
 
         if file and file.filename.endswith('.mat'):
-            path = os.path.join('/tmp', file.filename)
+            temp_dir = tempfile.gettempdir()
+            path = os.path.join(temp_dir, file.filename)
             print(path)
             file.save(path)
             return process_SuesiDepth_mat_file(path)
