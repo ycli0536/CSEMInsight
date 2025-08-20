@@ -7,6 +7,7 @@ from suesi_depth_reader import process_SuesiDepth_mat_file
 from csem_datafile_parser import CSEMDataFileReader
 from csem_datafile_parser import CSEMDataFileManager
 from xyz_datafile_parser import XYZDataFileReader
+from bathymetry_parser import BathymetryParser
 
 app = Flask(__name__)
 CORS(app)
@@ -132,6 +133,40 @@ def upload_mat_file():
             return process_SuesiDepth_mat_file(path)
 
     return 'Invalid file format'
+
+@app.route('/api/upload-bathymetry', methods=['POST'])
+def upload_bathymetry_file():
+    print('Start processing bathymetry file...')
+
+    for key in request.files.keys():
+        print("request file: ", request.files[key])
+        # Check if the post request has the file part
+        if 'file' not in key:
+            return jsonify({'error': 'No file part'}), 400
+
+        file = request.files[key]
+        if file.filename == '':
+            return jsonify({'error': 'No selected file'}), 400
+
+        if file and file.filename.endswith('.txt'):
+            try:
+                temp_dir = tempfile.gettempdir()
+                path = os.path.join(temp_dir, file.filename)
+                print(path)
+                file.save(path)
+                
+                bathymetry_parser = BathymetryParser()
+                result = bathymetry_parser.parse_file(path)
+                
+                if result['success']:
+                    return jsonify(result)
+                else:
+                    return jsonify({'error': result['message']}), 400
+                    
+            except Exception as e:
+                return jsonify({'error': f'Error processing bathymetry file: {str(e)}'}), 500
+
+    return jsonify({'error': 'Invalid file format. Please upload a .txt file.'}), 400
 
 if __name__ == '__main__':
     app.run(debug=True, port=3354)

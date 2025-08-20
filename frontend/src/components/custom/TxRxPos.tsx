@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 import uPlot from 'uplot';
 import 'uplot/dist/uPlot.min.css';
-import { useDataTableStore, TxData, RxData } from '@/store/settingFormStore';
+import { useDataTableStore, TxData, RxData, useBathymetryStore } from '@/store/settingFormStore';
 import { wheelZoomPlugin } from '@/components/custom/uplot-wheel-zoom-plugin';
 import { getTxRxData } from '@/utils/extractTxRxPlotData';
 
@@ -15,6 +15,7 @@ export function TxRxPosPlot() {
     const XYChartRef = useRef<HTMLDivElement>(null);
     const { data } = useDataTableStore();
     const { setTxData, setRxData } = useDataTableStore();
+    const { bathymetryData } = useBathymetryStore();
 
     useEffect(() => {
         if (XYChartRef.current && data.length > 0) {
@@ -101,13 +102,35 @@ export function TxRxPosPlot() {
                 uplotTxRxData[nameToIndexMap['Length_tx']],
             ];
 
-            const uplotTxRxData_yz: uPlot.AlignedData = [
-                uplotTxRxData[nameToIndexMap['Y_tx']], // Keep the x-axis (Y distance)
-                uplotTxRxData[nameToIndexMap['Z_tx']],
-                uplotTxRxData[nameToIndexMap['Z_rx']],
+            // Prepare Tx/Rx data
+            const txRxData_yz: uPlot.AlignedData = [
+                uplotTxRxData[nameToIndexMap['Y_tx']], // x-axis (Y distance)
+                uplotTxRxData[nameToIndexMap['Z_tx']],  // Tx depths
+                uplotTxRxData[nameToIndexMap['Z_rx']],  // Rx depths
                 uplotTxRxData[nameToIndexMap['Dip']],
                 uplotTxRxData[nameToIndexMap['Name_tx']],
             ];
+
+            // Prepare bathymetry data if available and join with Tx/Rx data
+            let uplotTxRxData_yz: uPlot.AlignedData;
+            if (bathymetryData) {
+                // Create bathymetry dataset
+                const bathyData: uPlot.AlignedData = [
+                    bathymetryData.inline_distance, // x-axis for bathymetry
+                    bathymetryData.depth,           // bathymetry depths
+                ];
+
+                // Join the Tx/Rx data with bathymetry data using uPlot.join
+                uplotTxRxData_yz = uPlot.join([txRxData_yz, bathyData]);
+                
+                console.log('After uPlot.join():');
+                console.log('- Original Tx/Rx data length:', txRxData_yz[0].length);
+                console.log('- Original bathymetry data length:', bathyData[0].length);
+                console.log('- Joined data length:', uplotTxRxData_yz[0].length);
+                console.log('- Number of series after join:', uplotTxRxData_yz.length);
+            } else {
+                uplotTxRxData_yz = txRxData_yz;
+            }
 
             // uPlot options
             const series_xy: uPlot.Series[] = [
@@ -147,37 +170,83 @@ export function TxRxPosPlot() {
                 },
             ];
 
-            const series_yz: uPlot.Series[] = [
-                { label: "Y (inline) distance (m)" },
-                { 
-                    label: "Tx depth (m)",
-                    stroke: "red",
-                    paths: () => null,
-                    points: {
-                        show: true,
-                        size: 10,
+            // Create series configuration based on whether bathymetry data is available
+            let series_yz: uPlot.Series[];
+            if (bathymetryData) {
+                // After uPlot.join(), the data structure is:
+                // [0] = merged x-axis, [1] = Tx depths, [2] = Rx depths, [3] = Dip, [4] = Name_tx, [5] = Bathymetry depths
+                series_yz = [
+                    { label: "Y (inline) distance (m)" }, // x-axis
+                    { 
+                        label: "Tx depth (m)",
+                        stroke: "red",
+                        paths: () => null,
+                        points: {
+                            show: true,
+                            size: 10,
+                            width: 2,
+                            space: 0,
+                        },
+                    },
+                    { 
+                        label: "Rx depth (m)",
+                        stroke: "blue",
+                        points: {
+                            show: true,
+                            space: 0,
+                        },
+                    },
+                    { 
+                        label: "Dip",
+                        show: false,
+                    },
+                    { 
+                        label: "Rx Site", 
+                        show: false,
+                        _hide: true,
+                    },
+                    { 
+                        label: "Bathymetry",
+                        stroke: "green",
                         width: 2,
-                        space: 0,
-                      },
-                },
-                { 
-                    label: "Rx depth (m)",
-                    stroke: "blue",
-                    points: {
-                        show: true,
-                        space: 0,
-                      },
-                },
-                { 
-                    label: "Dip",
-                    show: false,
-                },
-                { 
-                    label: "Rx Site", 
-                    show: false,
-                    _hide: true,
-                  },
-            ];
+                        points: {
+                            show: false, // Hide individual points, just show the line
+                        },
+                    },
+                ];
+            } else {
+                series_yz = [
+                    { label: "Y (inline) distance (m)" },
+                    { 
+                        label: "Tx depth (m)",
+                        stroke: "red",
+                        paths: () => null,
+                        points: {
+                            show: true,
+                            size: 10,
+                            width: 2,
+                            space: 0,
+                        },
+                    },
+                    { 
+                        label: "Rx depth (m)",
+                        stroke: "blue",
+                        points: {
+                            show: true,
+                            space: 0,
+                        },
+                    },
+                    { 
+                        label: "Dip",
+                        show: false,
+                    },
+                    { 
+                        label: "Rx Site", 
+                        show: false,
+                        _hide: true,
+                    },
+                ];
+            }
             const options_xy: uPlot.Options = {
                 mode: 1,
                 width: 900,
@@ -302,7 +371,7 @@ export function TxRxPosPlot() {
                 plotTxRx2Instance.destroy();
             };
         }
-    }, [data, setRxData, setTxData]);
+    }, [data, setRxData, setTxData, bathymetryData]);
 
     return (
         <div ref={XYChartRef} className="overflow-auto"></div>

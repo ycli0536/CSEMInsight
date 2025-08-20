@@ -22,6 +22,7 @@ import { ResponsesWithErrorBars } from "@/components/custom/ResponsePlot";
 import { TxRxPosPlot } from "@/components/custom/TxRxPos";
 import Map from "@/components/custom/Map";
 import HeatmapComponent from "@/components/custom/Heatmap";
+import { BathymetryUpload } from "@/components/custom/BathymetryUpload";
 
 export function Dashboard() {
 return (
@@ -53,7 +54,7 @@ return (
             direction="horizontal"
             className="rounded-lg border"
             >
-            <ResizablePanel collapsible={true} minSize={10} defaultSize={20}
+            <ResizablePanel collapsible={true} minSize={10} defaultSize={25}
             className="hidden xl:flex max-h-[calc(100vh-80px)] overflow-y-scroll">
               <SettingForm />
             </ResizablePanel>
@@ -79,6 +80,7 @@ return (
                   <legend className="-ml-1 px-1 text-base font-bold">
                     Rx Tx positions (MARE2DEM coordinate system)
                   </legend>
+                  <BathymetryUpload />
                   <div id="txrxplot" className="overflow-auto">
                     <TxRxPosPlot />
                   </div>

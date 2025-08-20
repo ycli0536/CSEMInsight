@@ -116,6 +116,14 @@ export interface xyzData {
   rho1: number;
 }
 
+export interface BathymetryData {
+  inline_distance: number[];
+  depth: number[];
+  num_points: number;
+  distance_range: [number, number];
+  depth_range: [number, number];
+}
+
 export interface GeometryData {
   UTM_zone: number;
   Hemisphere: string;
@@ -160,9 +168,19 @@ type Inv2DStore = {
   setInvResult: (invData: xyzData[]) => void;
 }
 
+type BathymetryStore = {
+  bathymetryData: BathymetryData | null;
+  setBathymetryData: (data: BathymetryData | null) => void;
+}
+
 export const useInv2DStore = create<Inv2DStore>()((set) => ({
   invData: [],
   setInvResult: (invData) => set({ invData }),
+}));
+
+export const useBathymetryStore = create<BathymetryStore>()((set) => ({
+  bathymetryData: null,
+  setBathymetryData: (data) => set({ bathymetryData: data }),
 }));
 
 const defaultColDefs: ColDef[] = [
