@@ -299,6 +299,7 @@ class CSEMDataFileReader():
                                   'Rx': 'Rx_id'}, inplace=True)
         freq_dict = self.extract_freq_info()
         merged_df = self.add_freq_column(merged_df, freq_dict)
+        merged_df['offset'] = merged_df['Y_rx'] - merged_df['Y_tx']
         return merged_df
 
     def df_to_json(self, df):
@@ -513,8 +514,58 @@ class CSEMDataFileManager():
         # only support EMData_2.2 format for now
         data_blocks['Format'] = 'Format: EMData_2.2\n'
 
-        for _, info in enumerate(data_blocks):
-            AllBlocks.append(''.join(data_blocks[info]))
+        # Define the correct order of blocks for MARE2DEM format
+        # Auto-detect data type from available blocks if needed
+        if hasattr(self, 'data_type'):
+            data_type = self.data_type
+        elif 'Frequencies_MT' in data_blocks and 'Frequencies_CSEM' in data_blocks:
+            data_type = 'joint'
+        elif 'Frequencies_CSEM' in data_blocks:
+            data_type = 'CSEM'
+        else:
+            data_type = 'MT'
+            
+        if data_type == 'CSEM':
+            block_order = [
+                "Format",
+                "Geometry", 
+                "Phase",
+                "Reciprocity",
+                "Frequencies",
+                "Tx",
+                "Rx",
+                "Data",
+            ]
+        elif data_type == 'MT':
+            block_order = [
+                "Format",
+                "Geometry",
+                "Reciprocity", 
+                "Frequencies",
+                "Rx",
+                "Data",
+            ]
+        elif data_type == 'joint':
+            block_order = [
+                "Format",
+                "Geometry",
+                "Phase",
+                "Reciprocity",
+                "Frequencies_CSEM",
+                "Frequencies_MT",
+                "Tx",
+                "Rx_CSEM",
+                "Rx_MT", 
+                "Data",
+            ]
+        else:
+            # Fallback to original behavior if data_type is not set
+            block_order = list(data_blocks.keys())
+
+        # Write blocks in the correct order
+        for block_name in block_order:
+            if block_name in data_blocks and data_blocks[block_name]:
+                AllBlocks.append(''.join(data_blocks[block_name]))
 
         # Join the lines back into a string
         AllData = ''.join(AllBlocks)

@@ -62,7 +62,12 @@ def upload_data_file():
                 # print(path)
                 file.save(path)
                 csem_datafile_reader = CSEMDataFileReader(path)
-                csem_data = csem_datafile_reader.blocks
+                # Ensure blocks are in the correct order for frontend
+                ordered_blocks = {}
+                for block_name in csem_datafile_reader.block_infos:
+                    if block_name in csem_datafile_reader.blocks:
+                        ordered_blocks[block_name] = csem_datafile_reader.blocks[block_name]
+                csem_data = ordered_blocks
                 geometry_info = csem_datafile_reader.extract_geometry_info()
                 data_df = csem_datafile_reader.data_block_init(csem_data['Data'])
                 rx_data_df = csem_datafile_reader.rx_data_block_init(csem_data['Rx'])
