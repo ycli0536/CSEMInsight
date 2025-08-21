@@ -136,6 +136,7 @@ type DataTableStore = {
   data: CsemData[];
   txData: TxData[];
   rxData: RxData[];
+  originalTxData: TxData[]; // Store original Tx data for reverting
   tableData: CsemData[];
   filteredData: CsemData[];
   filteredTxData: TxData[];
@@ -147,9 +148,11 @@ type DataTableStore = {
   dataFileString: string;
   geometryInfo: GeometryData;
   filterModel: FilterModel | null,
+  isTxDepthAdjusted: boolean; // Track if Tx depths have been adjusted
   setData: (data: CsemData[]) => void;
   setTxData: (txData: TxData[]) => void;
   setRxData: (rxData: RxData[]) => void;
+  setOriginalTxData: (txData: TxData[]) => void;
   setColDefs: (newColDefs: ColDef[]) => void;
   setDataBlocks: (dataBlocks: []) => void;
   setVisibleColumns: (visibleColumns: Selection) => void;
@@ -161,6 +164,7 @@ type DataTableStore = {
   setFilteredRxData: (newFilteredRxData: RxData[]) => void;
   setFilterModel: (newFilterModel: FilterModel | null) => void;
   setSubDatasets: (newSubDatasets: []) => void;
+  setIsTxDepthAdjusted: (adjusted: boolean) => void;
 }
 
 type Inv2DStore = {
@@ -366,6 +370,7 @@ export const useDataTableStore = create<DataTableStore>()((set) => ({
   data: [],
   txData: [],
   rxData: [],
+  originalTxData: [],
   tableData: [],
   filteredTxData: [],
   filteredRxData: [],
@@ -377,9 +382,11 @@ export const useDataTableStore = create<DataTableStore>()((set) => ({
   dataFileString: "",
   filterModel: null,
   geometryInfo: { UTM_zone: 0, Hemisphere: "N", North: 0, East: 0, Strike: 0 },
+  isTxDepthAdjusted: false,
   setData: (data) => set({ data: data }),
   setTxData: (txData) => set({ txData: txData }),
   setRxData: (rxData) => set({ rxData: rxData }),
+  setOriginalTxData: (txData) => set({ originalTxData: txData }),
   setColDefs: (newColDefs) => set({ colDefs: newColDefs }),
   setDataBlocks: (dataBlocks) => set({ dataBlocks: dataBlocks }),
   setVisibleColumns: (visibleColumns) => set({ visibleColumns }),
@@ -391,6 +398,7 @@ export const useDataTableStore = create<DataTableStore>()((set) => ({
   setFilterModel: (newFilterModel) => set({ filterModel: newFilterModel }),
   setSubDatasets: (newSubDatasets) => set({ subDatasets: newSubDatasets }),
   setGeometryInfo: (newGeometryInfo) => set({ geometryInfo: newGeometryInfo }),
+  setIsTxDepthAdjusted: (adjusted) => set({ isTxDepthAdjusted: adjusted }),
 }));
 
 export const useSettingFormStore = create<SettingFormState>()((set) => ({

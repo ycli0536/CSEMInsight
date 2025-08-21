@@ -13,30 +13,49 @@ declare module "uplot" {
 
 export function TxRxPosPlot() {
     const XYChartRef = useRef<HTMLDivElement>(null);
-    const { data } = useDataTableStore();
-    const { setTxData, setRxData } = useDataTableStore();
+    const { data, txData, originalTxData, isTxDepthAdjusted } = useDataTableStore();
+    const { setTxData, setRxData, setOriginalTxData } = useDataTableStore();
     const { bathymetryData } = useBathymetryStore();
 
     useEffect(() => {
         if (XYChartRef.current && data.length > 0) {
 
-            const {TxData, RxData} = getTxRxData(data);
-            setTxData(TxData);
+            // Extract fresh data from raw CSEM data
+            const {TxData: freshTxData, RxData} = getTxRxData(data);
+            
+            // Use existing txData if it has been adjusted, otherwise use fresh data
+            const currentTxData = isTxDepthAdjusted ? txData : freshTxData;
+            
+            // Only update TxData if it's not currently adjusted (to avoid conflicts with BathymetryUpload)
+            if (!isTxDepthAdjusted) {
+                setTxData(freshTxData);
+                console.log('Updated TxData with fresh data:', freshTxData);
+            } else {
+                console.log('Using existing adjusted TxData:', txData);
+            }
+            
+            // Always update RxData (no conflicts)
             setRxData(RxData);
             
-            const prepareTxRxPlotData = (TxData: TxData[], RxData: RxData[]): [uPlot.AlignedData, { [key: string]: number }] => {
+            // Store original Tx data when CSEM data is first loaded (only if not already stored)
+            if (originalTxData.length === 0 && freshTxData.length > 0) {
+                console.log('Storing original Tx data from CSEM file:', freshTxData);
+                setOriginalTxData([...freshTxData]);
+            }
+            
+            const prepareTxRxPlotData = (TxDataInput: TxData[], RxData: RxData[]): [uPlot.AlignedData, { [key: string]: number }] => {
                 
                 // Convert the data to uPlot format
                 const uplotTxData = [
-                    TxData.map(d => d.Y_tx),      // x-series: Y_tx
-                    TxData.map(d => d.X_tx),      // y-series: X_tx
-                    TxData.map(d => d.Z_tx),      // y-series: Z_tx
-                    TxData.map(d => d.Tx_id),     // y-series: Tx_id
-                    TxData.map(d => d.Azimuth),   // y-series: Azimuth
-                    TxData.map(d => d.Dip),       // y-series: Dip
-                    TxData.map(d => d.Length_tx), // y-series: Length_tx (optional)
-                    TxData.map(d => d.Type_tx),   // y-series: Type_tx (optional)
-                    TxData.map(d => d.Name_tx)    // y-series: Name_tx (optional)
+                    TxDataInput.map(d => d.Y_tx),      // x-series: Y_tx
+                    TxDataInput.map(d => d.X_tx),      // y-series: X_tx
+                    TxDataInput.map(d => d.Z_tx),      // y-series: Z_tx
+                    TxDataInput.map(d => d.Tx_id),     // y-series: Tx_id
+                    TxDataInput.map(d => d.Azimuth),   // y-series: Azimuth
+                    TxDataInput.map(d => d.Dip),       // y-series: Dip
+                    TxDataInput.map(d => d.Length_tx), // y-series: Length_tx (optional)
+                    TxDataInput.map(d => d.Type_tx),   // y-series: Type_tx (optional)
+                    TxDataInput.map(d => d.Name_tx)    // y-series: Name_tx (optional)
                   ];
                   
 
@@ -88,7 +107,7 @@ export function TxRxPosPlot() {
                 return [uplotTxRxData, nameToIndexMap];
             }
 
-            const [uplotTxRxData, nameToIndexMap] = prepareTxRxPlotData(TxData, RxData);
+            const [uplotTxRxData, nameToIndexMap] = prepareTxRxPlotData(currentTxData, RxData);
 
             console.log('nameToIndexMap["Y_tx"]:', nameToIndexMap['Y_tx']);
 
@@ -102,7 +121,7 @@ export function TxRxPosPlot() {
                 uplotTxRxData[nameToIndexMap['Length_tx']],
             ];
 
-            // Prepare Tx/Rx data
+            // Prepare Tx/Rx data - start with basic data
             const txRxData_yz: uPlot.AlignedData = [
                 uplotTxRxData[nameToIndexMap['Y_tx']], // x-axis (Y distance)
                 uplotTxRxData[nameToIndexMap['Z_tx']],  // Tx depths
@@ -123,10 +142,24 @@ export function TxRxPosPlot() {
                 // Join the Tx/Rx data with bathymetry data using uPlot.join
                 uplotTxRxData_yz = uPlot.join([txRxData_yz, bathyData]);
                 
+                // If Tx depths have been adjusted, add original Tx positions after bathymetry join
+                if (isTxDepthAdjusted && originalTxData.length > 0) {
+                    const originalTxY = originalTxData.map(tx => tx.Y_tx);
+                    const originalTxDepths = originalTxData.map(tx => tx.Z_tx);
+                    
+                    // Create original Tx dataset
+                    const originalTxData_yz: uPlot.AlignedData = [
+                        originalTxY,     // x-axis for original Tx
+                        originalTxDepths // depths for original Tx
+                    ];
+                    
+                    // Join with original Tx data
+                    uplotTxRxData_yz = uPlot.join([uplotTxRxData_yz, originalTxData_yz]);
+                }
+                
                 console.log('After uPlot.join():');
                 console.log('- Original Tx/Rx data length:', txRxData_yz[0].length);
-                console.log('- Original bathymetry data length:', bathyData[0].length);
-                console.log('- Joined data length:', uplotTxRxData_yz[0].length);
+                console.log('- Final joined data length:', uplotTxRxData_yz[0].length);
                 console.log('- Number of series after join:', uplotTxRxData_yz.length);
             } else {
                 uplotTxRxData_yz = txRxData_yz;
@@ -170,51 +203,110 @@ export function TxRxPosPlot() {
                 },
             ];
 
-            // Create series configuration based on whether bathymetry data is available
+            // Create series configuration - only 3 valid cases since Tx adjustment requires bathymetry
             let series_yz: uPlot.Series[];
+            const hasAdjustedTx = isTxDepthAdjusted && originalTxData.length > 0 && bathymetryData;
+            
             if (bathymetryData) {
-                // After uPlot.join(), the data structure is:
-                // [0] = merged x-axis, [1] = Tx depths, [2] = Rx depths, [3] = Dip, [4] = Name_tx, [5] = Bathymetry depths
-                series_yz = [
-                    { label: "Y (inline) distance (m)" }, // x-axis
-                    { 
-                        label: "Tx depth (m)",
-                        stroke: "red",
-                        paths: () => null,
-                        points: {
-                            show: true,
-                            size: 10,
+                if (hasAdjustedTx) {
+                    // Case: Bathymetry + Adjusted Tx
+                    // Data structure after joins: [0] merged x-axis, [1] Z_tx_adjusted, [2] Z_rx, [3] Dip, [4] Name, [5] Bathymetry, [6] Z_tx_original
+                    series_yz = [
+                        { label: "Y (inline) distance (m)" }, // x-axis
+                        { 
+                            label: "Tx depth (adjusted)",
+                            stroke: "red",
+                            paths: () => null,
+                            points: {
+                                show: true,
+                                size: 10,
+                                width: 2,
+                                space: 0,
+                            },
+                        },
+                        { 
+                            label: "Rx depth (m)",
+                            stroke: "blue",
+                            points: {
+                                show: true,
+                                space: 0,
+                            },
+                        },
+                        { 
+                            label: "Dip",
+                            show: false,
+                        },
+                        { 
+                            label: "Rx Site", 
+                            show: false,
+                            _hide: true,
+                        },
+                        { 
+                            label: "Bathymetry",
+                            stroke: "green",
                             width: 2,
-                            space: 0,
+                            points: {
+                                show: false,
+                            },
                         },
-                    },
-                    { 
-                        label: "Rx depth (m)",
-                        stroke: "blue",
-                        points: {
-                            show: true,
-                            space: 0,
+                        { 
+                            label: "Tx depth (original)",
+                            stroke: "orange",
+                            paths: () => null,
+                            points: {
+                                show: true,
+                                size: 8,
+                                width: 1,
+                                space: 0,
+                            },
                         },
-                    },
-                    { 
-                        label: "Dip",
-                        show: false,
-                    },
-                    { 
-                        label: "Rx Site", 
-                        show: false,
-                        _hide: true,
-                    },
-                    { 
-                        label: "Bathymetry",
-                        stroke: "green",
-                        width: 2,
-                        points: {
-                            show: false, // Hide individual points, just show the line
+                    ];
+                } else {
+                    // Case: Bathymetry Only
+                    // Data structure: [0] merged x-axis, [1] Z_tx, [2] Z_rx, [3] Dip, [4] Name, [5] Bathymetry
+                    series_yz = [
+                        { label: "Y (inline) distance (m)" }, // x-axis
+                        { 
+                            label: "Tx depth (m)",
+                            stroke: "red",
+                            paths: () => null,
+                            points: {
+                                show: true,
+                                size: 10,
+                                width: 2,
+                                space: 0,
+                            },
                         },
-                    },
-                ];
+                        { 
+                            label: "Rx depth (m)",
+                            stroke: "blue",
+                            points: {
+                                show: true,
+                                space: 0,
+                            },
+                        },
+                        { 
+                            label: "Dip",
+                            show: false,
+                        },
+                        { 
+                            label: "Rx Site", 
+                            show: false,
+                            _hide: true,
+                        },
+                        { 
+                            label: "Bathymetry",
+                            stroke: "green",
+                            width: 2,
+                            points: {
+                                show: false,
+                            },
+                        },
+                    ];
+                }
             } else {
+                // Case: Standard (No bathymetry, no adjustment possible)
+                // Data structure: [0] Y_tx, [1] Z_tx, [2] Z_rx, [3] Dip, [4] Name
                 series_yz = [
                     { label: "Y (inline) distance (m)" },
                     { 
@@ -371,7 +463,7 @@ export function TxRxPosPlot() {
                 plotTxRx2Instance.destroy();
             };
         }
-    }, [data, setRxData, setTxData, bathymetryData]);
+    }, [data, setRxData, setTxData, setOriginalTxData, bathymetryData, isTxDepthAdjusted, originalTxData]);
 
     return (
         <div ref={XYChartRef} className="overflow-auto"></div>

@@ -8,11 +8,14 @@ import { useDataTableStore,
          CsemData,
          GeometryData,
          xyzData } from '@/store/settingFormStore';
+import { useAlertDialog } from '@/hooks/useAlertDialog';
+import { CustomAlertDialog } from '@/components/custom/CustomAlertDialog';
 
 export function InputFile() {
-    const { setData, setTableData, setGeometryInfo, setDataBlocks } = useDataTableStore();
+    const { setData, setTableData, setGeometryInfo, setDataBlocks, setIsTxDepthAdjusted } = useDataTableStore();
     const { setInvResult } = useInv2DStore();
     const { dataFiles, modelFiles, setDataFiles, setModelFiles } = useSettingFormStore();
+    const { alertState, showAlert, hideAlert, handleConfirm } = useAlertDialog();
 
     const readData = (files: File[]) => {
         const formData = new FormData();
@@ -31,11 +34,21 @@ export function InputFile() {
             setTableData(responseData);
             setDataBlocks(dataBlocks);
             setGeometryInfo(geometryData);
-            alert('Data uploaded successfully!');
+            // Reset Tx depth adjustment state when loading new data
+            setIsTxDepthAdjusted(false);
+            showAlert(
+                'Data Upload Successful',
+                'CSEM data uploaded and processed successfully!',
+                'success'
+            );
         })
         .catch(error => {
             console.error('Error uploading file:', error);
-            alert(`Error uploading file (backend processing): ${error.response.data.error}. Unsupported or wrong file format.`);
+            showAlert(
+                'Data Upload Error',
+                `Error uploading file (backend processing): ${error.response.data.error}. Unsupported or wrong file format.`,
+                'error'
+            );
         });
     }
 
@@ -123,6 +136,12 @@ return (
         
     </FileTrigger>
 </DropZone>
+
+<CustomAlertDialog 
+    alertState={alertState}
+    onClose={hideAlert}
+    onConfirm={handleConfirm}
+/>
 </div>
 )
 }

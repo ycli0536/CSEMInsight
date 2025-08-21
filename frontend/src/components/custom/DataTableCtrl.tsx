@@ -12,6 +12,8 @@ import {
   TxData,
 } from "@/store/settingFormStore";
 import axios from "axios";
+import { useAlertDialog } from '@/hooks/useAlertDialog';
+import { CustomAlertDialog } from '@/components/custom/CustomAlertDialog';
 
 export function DataTableCtrl() {
   const {
@@ -22,6 +24,7 @@ export function DataTableCtrl() {
     setTxSelected,
     setRxSelected,
   } = useSettingFormStore();
+  const { alertState, showAlert, hideAlert, handleConfirm } = useAlertDialog();
   const {
     data,
     filteredData,
@@ -126,10 +129,18 @@ export function DataTableCtrl() {
         await writableStream.close();
       }
 
-      alert("File saved successfully on the server! (Only support EMData_2.2 format for now)");
+      showAlert(
+        'File Export Successful',
+        'File saved successfully on the server! (Only support EMData_2.2 format for now)',
+        'success'
+      );
     } catch (error) {
       console.error("Error saving the file:", error);
-      alert("Failed to save the file.");
+      showAlert(
+        'File Export Error',
+        'Failed to save the file.',
+        'error'
+      );
     }
   };
 
@@ -226,6 +237,12 @@ export function DataTableCtrl() {
           Export data file
         </Button>
       </div>
+      
+      <CustomAlertDialog 
+        alertState={alertState}
+        onClose={hideAlert}
+        onConfirm={handleConfirm}
+      />
     </div>
   );
 }
