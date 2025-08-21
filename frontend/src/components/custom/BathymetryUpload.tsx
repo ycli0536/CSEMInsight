@@ -55,53 +55,53 @@ export function BathymetryUpload() {
                 </p>
             </div>
             
-            <DropZone
-                className="h-[80px] text-base text-center justify-center border-dashed border-2 rounded-lg flex items-center"
-                onDrop={(e) => {
-                    const files = e.items.filter(
-                        (file) => file.kind === "file"
-                    ) as FileDropItem[];
-                    const fileObjects = files.map(item => item.getFile());
-                    Promise.all(fileObjects).then(handleBathymetryUpload);
-                }}
-            >
-                <FileTrigger
-                    acceptedFileTypes={[".txt"]}
-                    onSelect={(e) => {
-                        if (e) {
-                            const files = Array.from(e);
-                            setBathymetryFile(files[0].name);
-                            handleBathymetryUpload(files);
-                        }
+            <div className="flex gap-2">
+                <DropZone
+                    className="h-[40px] text-base text-center justify-center border-dashed border-2 rounded-lg flex items-center flex-1"
+                    onDrop={(e) => {
+                        const files = e.items.filter(
+                            (file) => file.kind === "file"
+                        ) as FileDropItem[];
+                        const fileObjects = files.map(item => item.getFile());
+                        Promise.all(fileObjects).then(handleBathymetryUpload);
                     }}
                 >
-                    <Button
-                        className="h-full w-full border-none bg-background hover:bg-accent hover:text-accent-foreground
-                            flex items-center justify-center whitespace-normal rounded-md text-sm font-medium 
-                            ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 
-                            focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50"
-                        isDisabled={isUploading}
+                    <FileTrigger
+                        acceptedFileTypes={[".txt"]}
+                        onSelect={(e) => {
+                            if (e) {
+                                const files = Array.from(e);
+                                setBathymetryFile(files[0].name);
+                                handleBathymetryUpload(files);
+                            }
+                        }}
                     >
-                        {isUploading 
-                            ? "Uploading..." 
-                            : bathymetryFile 
-                                ? `Loaded: ${bathymetryFile}` 
-                                : "Click to upload or drag and drop bathymetry file (.txt)"
-                        }
-                    </Button>
-                </FileTrigger>
-            </DropZone>
+                        <Button
+                            className="h-full w-full border-none bg-background hover:bg-accent hover:text-accent-foreground
+                                flex items-center justify-center whitespace-normal rounded-md text-sm font-medium 
+                                ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 
+                                focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50"
+                            isDisabled={isUploading}
+                        >
+                            {isUploading 
+                                ? "Uploading..." 
+                                : bathymetryFile 
+                                    ? `Loaded: ${bathymetryFile}` 
+                                    : "Click to upload or drag and drop bathymetry file (.txt)"
+                            }
+                        </Button>
+                    </FileTrigger>
+                </DropZone>
 
-            {bathymetryFile && (
-                <div className="flex justify-center">
+                {bathymetryFile && (
                     <Button
-                        className="px-4 py-2 text-sm bg-red-500 hover:bg-red-600 text-white rounded"
+                        className="h-[40px] px-4 text-sm bg-red-500 hover:bg-red-600 text-white rounded-lg whitespace-nowrap"
                         onPress={clearBathymetryData}
                     >
-                        Clear Bathymetry Data
+                        Clear Data
                     </Button>
-                </div>
-            )}
+                )}
+            </div>
         </div>
     );
 } 
