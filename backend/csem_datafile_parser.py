@@ -1,9 +1,9 @@
+from typing import Optional
 import re
 import pandas as pd
 import numpy as np
 import utm
 from io import StringIO
-
 class CSEMDataFileReader():
     """_summary_
     """
@@ -300,6 +300,7 @@ class CSEMDataFileReader():
         freq_dict = self.extract_freq_info()
         merged_df = self.add_freq_column(merged_df, freq_dict)
         merged_df['offset'] = merged_df['Y_rx'] - merged_df['Y_tx']
+        merged_df['distance'] = np.sqrt((merged_df['Y_rx'] - merged_df['Y_tx'])**2 + (merged_df['X_rx'] - merged_df['X_tx'])**2 + (merged_df['Z_rx'] - merged_df['Z_tx'])**2)
         return merged_df
 
     def df_to_json(self, df):
@@ -580,11 +581,12 @@ class CSEMDataFileManager():
             # extract amplitude error
             eP = data_df_n.loc[data_df_n['Type'] == '24', ['StdErr']]
             UncA = eA_log10 * np.log(10)
-            UncP = 2 * np.sin(np.deg2rad(eP / 2))
+            UncP = 2 * np.sin(np.deg2rad(eP / 2))  # Calculated but not used - see comment below
 
             UncA_n = np.fmax(UncA, errfloor)
             eA_log10_n = UncA_n / np.log(10)
             # UncA = UncP here (which requires that len(UncA) = len(UncP))
+            # Using UncA_n for both amplitude and phase calculations
             eP_n = 2 * np.rad2deg(np.arcsin(UncA_n / 2))
 
             data_df_n.loc[data_df_n['Type'] == '28', ['StdErr']] = eA_log10_n
@@ -643,3 +645,555 @@ class CSEMDataFileManager():
             data_df_n.loc[(data_df_n['Type'] == '28') & (data_df_n['Tx'].isin(tx)), ['StdErr']] = eA_log10_n
             data_df_n.loc[(data_df_n['Type'] == '24') & (data_df_n['Tx'].isin(tx)), ['StdErr']] = eP_n.to_numpy()
         return data_df_n
+
+    def merge_csem_datafiles(self, file1_path: str, file2_path: str, output_path: Optional[str] = None) -> str:
+        """
+        Merge two CSEM data files into one file.
+        
+        Args:
+            file1_path (str): Path to the first data file
+            file2_path (str): Path to the second data file
+            output_path (str, optional): Path for the output merged file. If None, returns the merged content as string.
+            
+        Returns:
+            str: Path to the merged file or the merged content as string if output_path is None
+            
+        Raises:
+            ValueError: If the files cannot be merged due to incompatible geometry, phase, or data types
+            FileNotFoundError: If either input file doesn't exist
+            Exception: For other merge-related errors
+        """
+        try:
+            # Read both files
+            reader1 = CSEMDataFileReader(file1_path, self.data_type)
+            reader2 = CSEMDataFileReader(file2_path, self.data_type)
+            
+            # Validate that both files have the same data type
+            if reader1.data_type != reader2.data_type:
+                raise ValueError(f"Data types don't match: {reader1.data_type} vs {reader2.data_type}")
+            
+            # Validate geometry compatibility
+            geometry1 = reader1.extract_geometry_info()
+            geometry2 = reader2.extract_geometry_info()
+            
+            if not self._are_geometries_compatible(geometry1, geometry2):
+                raise ValueError("Geometries are not compatible for merging. UTM zone, hemisphere, origin, and strike must match.")
+            
+            # Validate phase compatibility (only for CSEM and joint data types)
+            if self.data_type in ['CSEM', 'joint']:
+                phase1 = self._extract_phase_info(reader1.blocks.get('Phase', []))
+                phase2 = self._extract_phase_info(reader2.blocks.get('Phase', []))
+                
+                if not self._are_phases_compatible(phase1, phase2):
+                    raise ValueError("Phase information is not compatible for merging.")
+            
+            # Validate reciprocity compatibility
+            reciprocity1 = self._extract_reciprocity_info(reader1.blocks.get('Reciprocity', []))
+            reciprocity2 = self._extract_reciprocity_info(reader2.blocks.get('Reciprocity', []))
+            
+            if not self._are_reciprocities_compatible(reciprocity1, reciprocity2):
+                raise ValueError("Reciprocity information is not compatible for merging.")
+            
+            # Merge the data
+            merged_blocks = self._merge_blocks(reader1, reader2)
+            
+            # Convert merged blocks to string
+            merged_content = self.blocks_to_str(merged_blocks)
+            
+            # Write to file if output_path is provided
+            if output_path:
+                with open(output_path, 'w', encoding='utf-8') as f:
+                    f.write(merged_content)
+                return output_path
+            else:
+                return merged_content
+                
+        except FileNotFoundError as e:
+            raise FileNotFoundError(f"Input file not found: {e}") from e
+        except Exception as e:
+            raise ValueError(f"Error merging data files: {e}") from e
+
+    def _are_geometries_compatible(self, geometry1: dict, geometry2: dict) -> bool:
+        """Check if two geometry configurations are compatible for merging."""
+        required_fields = ['UTM_zone', 'Hemisphere', 'North', 'East', 'Strike']
+        
+        for field in required_fields:
+            if geometry1.get(field) != geometry2.get(field):
+                return False
+        return True
+
+    def _extract_phase_info(self, phase_block: list) -> dict:
+        """Extract phase information from phase block."""
+        if not phase_block:
+            return {}
+        
+        phase_info = {}
+        for line in phase_block[1:]:  # Skip header line
+            if ':' in line:
+                key, value = line.split(':', 1)
+                phase_info[key.strip()] = value.strip()
+        return phase_info
+
+    def _are_phases_compatible(self, phase1: dict, phase2: dict) -> bool:
+        """Check if two phase configurations are compatible for merging."""
+        # If both are empty, they're compatible
+        if not phase1 and not phase2:
+            return True
+        
+        # If one is empty and the other isn't, they're not compatible
+        if bool(phase1) != bool(phase2):
+            return False
+        
+        # Check if all keys and values match
+        return phase1 == phase2
+
+    def _extract_reciprocity_info(self, reciprocity_block: list) -> dict:
+        """Extract reciprocity information from reciprocity block."""
+        if not reciprocity_block:
+            return {}
+        
+        reciprocity_info = {}
+        for line in reciprocity_block[1:]:  # Skip header line
+            if ':' in line:
+                key, value = line.split(':', 1)
+                reciprocity_info[key.strip()] = value.strip()
+        return reciprocity_info
+
+    def _are_reciprocities_compatible(self, reciprocity1: dict, reciprocity2: dict) -> bool:
+        """Check if two reciprocity configurations are compatible for merging."""
+        # If both are empty, they're compatible
+        if not reciprocity1 and not reciprocity2:
+            return True
+        
+        # If one is empty and the other isn't, they're not compatible
+        if bool(reciprocity1) != bool(reciprocity2):
+            return False
+        
+        # Check if all keys and values match
+        return reciprocity1 == reciprocity2
+
+    def _merge_blocks(self, reader1: CSEMDataFileReader, reader2: CSEMDataFileReader) -> dict:
+        """Merge blocks from two readers."""
+        merged_blocks = {}
+        
+        # Copy format and geometry from first file (they should be identical)
+        merged_blocks['Format'] = reader1.blocks['Format']
+        merged_blocks['Geometry'] = reader1.blocks['Geometry']
+        
+        # Merge phase and reciprocity (should be identical, but use first file's)
+        if 'Phase' in reader1.blocks:
+            merged_blocks['Phase'] = reader1.blocks['Phase']
+        if 'Reciprocity' in reader1.blocks:
+            merged_blocks['Reciprocity'] = reader1.blocks['Reciprocity']
+        
+        # Merge frequencies
+        merged_blocks.update(self._merge_frequencies(reader1, reader2))
+        
+        # Merge transmitters
+        if 'Tx' in reader1.blocks:
+            merged_blocks['Tx'] = self._merge_transmitters(reader1, reader2)
+        
+        # Merge receivers
+        merged_blocks.update(self._merge_receivers(reader1, reader2))
+        
+        # Merge data
+        merged_blocks['Data'] = self._merge_data(reader1, reader2)
+        
+        # Update frequency indices in the merged data to match the merged frequency block
+        merged_blocks = self._update_frequency_indices(merged_blocks, reader1, reader2)
+        
+        return merged_blocks
+
+    def _update_frequency_indices(self, merged_blocks: dict, reader1: CSEMDataFileReader, reader2: CSEMDataFileReader) -> dict:
+        """
+        Update frequency indices in the merged data to match the merged frequency block.
+        
+        Args:
+            merged_blocks: Dictionary containing merged blocks
+            reader1: First file reader
+            reader2: Second file reader
+            
+        Returns:
+            Updated merged_blocks with corrected frequency indices
+        """
+        # Extract frequency information from both files
+        freq1 = reader1.extract_freq_info()
+        freq2 = reader2.extract_freq_info()
+        
+        # Create mapping from old frequency indices to new ones
+        freq_mapping = {}
+        
+        # Get the merged frequency values from the merged frequency block
+        if 'Frequencies' in merged_blocks:
+            freq_lines = merged_blocks['Frequencies']
+            merged_freq_values = []
+            for line in freq_lines[1:]:  # Skip header
+                if line.strip():
+                    merged_freq_values.append(float(line.strip()))
+            
+            # Create mapping for file1 frequencies
+            for old_idx, freq_value in freq1.items():
+                new_idx = merged_freq_values.index(freq_value) + 1  # +1 because indices start from 1
+                freq_mapping[old_idx] = new_idx
+            
+            # Create mapping for file2 frequencies
+            for old_idx, freq_value in freq2.items():
+                new_idx = merged_freq_values.index(freq_value) + 1  # +1 because indices start from 1
+                freq_mapping[old_idx] = new_idx
+        
+        # Update frequency indices in the data block
+        if 'Data' in merged_blocks:
+            data_lines = merged_blocks['Data']
+            updated_data_lines = []
+            
+            for line in data_lines:
+                if line.startswith('Data:') or line.startswith('!'):
+                    # Header or comment line, keep as is
+                    updated_data_lines.append(line)
+                else:
+                    # Data line - update frequency index
+                    parts = line.split()
+                    if len(parts) >= 4:  # Ensure we have enough columns
+                        try:
+                            old_freq_idx = int(parts[1])  # Freq is typically the second column
+                            if old_freq_idx in freq_mapping:
+                                parts[1] = str(freq_mapping[old_freq_idx])
+                            updated_data_lines.append(' '.join(parts) + '\n')
+                        except (ValueError, IndexError):
+                            # If parsing fails, keep the original line
+                            updated_data_lines.append(line)
+                    else:
+                        updated_data_lines.append(line)
+            
+            merged_blocks['Data'] = updated_data_lines
+        
+        return merged_blocks
+
+    def _merge_frequencies(self, reader1: CSEMDataFileReader, reader2: CSEMDataFileReader) -> dict:
+        """Merge frequency blocks from two readers."""
+        merged_freq = {}
+        
+        if self.data_type == 'CSEM':
+            freq1 = reader1.extract_freq_info()
+            freq2 = reader2.extract_freq_info()
+            
+            # Combine frequencies and remove duplicates
+            all_freqs = list(freq1.values()) + list(freq2.values())
+            unique_freqs = sorted(list(set(all_freqs)))
+            
+            # Create new frequency block
+            freq_lines = ['Frequencies: ' + str(len(unique_freqs)) + '\n']
+            for freq in unique_freqs:
+                freq_lines.append(f'{freq}\n')
+            
+            merged_freq['Frequencies'] = freq_lines
+            
+        elif self.data_type == 'MT':
+            freq1 = reader1.extract_freq_info()
+            freq2 = reader2.extract_freq_info()
+            
+            # Combine frequencies and remove duplicates
+            all_freqs = list(freq1.values()) + list(freq2.values())
+            unique_freqs = sorted(list(set(all_freqs)))
+            
+            # Create new frequency block
+            freq_lines = ['MT Frequencies: ' + str(len(unique_freqs)) + '\n']
+            for freq in unique_freqs:
+                freq_lines.append(f'{freq}\n')
+            
+            merged_freq['Frequencies'] = freq_lines
+            
+        elif self.data_type == 'joint':
+            # Handle both CSEM and MT frequencies
+            if 'Frequencies_CSEM' in reader1.blocks:
+                # freq1_csem = reader1.extract_freq_info()  # This would need to be modified for joint
+                # freq2_csem = reader2.extract_freq_info()
+                # Similar logic for CSEM frequencies
+                pass
+                
+            if 'Frequencies_MT' in reader1.blocks:
+                # Similar logic for MT frequencies
+                pass
+        
+        return merged_freq
+
+    def _merge_transmitters(self, reader1: CSEMDataFileReader, reader2: CSEMDataFileReader) -> list:
+        """Merge transmitter blocks from two readers."""
+        # Extract transmitter data
+        tx1_data = reader1.tx_data_block_init(reader1.blocks['Tx'])
+        tx2_data = reader2.tx_data_block_init(reader2.blocks['Tx'])
+        
+        # Combine transmitters
+        combined_tx = pd.concat([tx1_data, tx2_data], ignore_index=True)
+        
+        # Remove duplicates based on position and properties
+        combined_tx = combined_tx.drop_duplicates(subset=['X', 'Y', 'Z', 'Azimuth', 'Dip', 'Length', 'Type', 'Name'])
+        
+        # Reindex transmitters
+        combined_tx['Tx'] = range(1, len(combined_tx) + 1)
+        
+        # Convert back to string format
+        tx_str = self.tx_block_to_string(combined_tx)
+        
+        # Create new transmitter block
+        tx_lines = ['Transmitters: ' + str(len(combined_tx)) + '\n']
+        tx_lines.append('!  ' + tx_str.replace('\n', '\n   ') + '\n')
+        
+        return tx_lines
+
+    def _merge_receivers(self, reader1: CSEMDataFileReader, reader2: CSEMDataFileReader) -> dict:
+        """Merge receiver blocks from two readers."""
+        merged_rx = {}
+        
+        if self.data_type == 'CSEM':
+            rx1_data = reader1.rx_data_block_init(reader1.blocks['Rx'], 'CSEM')
+            rx2_data = reader2.rx_data_block_init(reader2.blocks['Rx'], 'CSEM')
+            
+            # Combine receivers
+            combined_rx = pd.concat([rx1_data, rx2_data], ignore_index=True)
+            
+            # Remove duplicates based on position and properties
+            combined_rx = combined_rx.drop_duplicates(subset=['X', 'Y', 'Z', 'Theta', 'Alpha', 'Beta', 'Length', 'Name'])
+            
+            # Reindex receivers
+            combined_rx['Rx'] = range(1, len(combined_rx) + 1)
+            
+            # Convert back to string format
+            rx_str = self.rx_block_to_string(combined_rx)
+            
+            # Create new receiver block
+            rx_lines = ['CSEM Receivers: ' + str(len(combined_rx)) + '\n']
+            rx_lines.append('!  ' + rx_str.replace('\n', '\n   ') + '\n')
+            
+            merged_rx['Rx'] = rx_lines
+            
+        elif self.data_type == 'MT':
+            rx1_data = reader1.rx_data_block_init(reader1.blocks['Rx'], 'MT')
+            rx2_data = reader2.rx_data_block_init(reader2.blocks['Rx'], 'MT')
+            
+            # Combine receivers
+            combined_rx = pd.concat([rx1_data, rx2_data], ignore_index=True)
+            
+            # Remove duplicates based on position and properties
+            combined_rx = combined_rx.drop_duplicates(subset=['X', 'Y', 'Z', 'Theta', 'Alpha', 'Beta', 'Length', 'SolveStatic', 'Name'])
+            
+            # Reindex receivers
+            combined_rx['Rx'] = range(1, len(combined_rx) + 1)
+            
+            # Convert back to string format
+            rx_str = self.rx_block_to_string(combined_rx)
+            
+            # Create new receiver block
+            rx_lines = ['MT Receivers: ' + str(len(combined_rx)) + '\n']
+            rx_lines.append('!  ' + rx_str.replace('\n', '\n   ') + '\n')
+            
+            merged_rx['Rx'] = rx_lines
+            
+        elif self.data_type == 'joint':
+            # Handle both CSEM and MT receivers
+            if 'Rx_CSEM' in reader1.blocks:
+                # Similar logic for CSEM receivers
+                pass
+            if 'Rx_MT' in reader1.blocks:
+                # Similar logic for MT receivers
+                pass
+        
+        return merged_rx
+
+    def _merge_data(self, reader1: CSEMDataFileReader, reader2: CSEMDataFileReader) -> list:
+        """Merge data blocks from two readers with proper deduplication and conflict handling."""
+        # Extract data from both files
+        data1 = reader1.data_block_init(reader1.blocks['Data'])
+        data2 = reader2.data_block_init(reader2.blocks['Data'])
+        
+        # Get transmitter and receiver data for mapping
+        tx1_data = reader1.tx_data_block_init(reader1.blocks['Tx']) if 'Tx' in reader1.blocks else pd.DataFrame()
+        tx2_data = reader2.tx_data_block_init(reader2.blocks['Tx']) if 'Tx' in reader2.blocks else pd.DataFrame()
+        
+        rx1_data = reader1.rx_data_block_init(reader1.blocks['Rx']) if 'Rx' in reader1.blocks else pd.DataFrame()
+        rx2_data = reader2.rx_data_block_init(reader2.blocks['Rx']) if 'Rx' in reader2.blocks else pd.DataFrame()
+        
+        # Create mapping for transmitter and receiver indices
+        tx_mapping = self._create_tx_mapping(tx1_data, tx2_data)
+        rx_mapping = self._create_rx_mapping(rx1_data, rx2_data)
+        
+        # Update transmitter and receiver indices in data2
+        if not tx_mapping.empty:
+            data2['Tx'] = data2['Tx'].map(tx_mapping)
+        if not rx_mapping.empty:
+            data2['Rx'] = data2['Rx'].map(rx_mapping)
+        
+        # Add source file identifier to track conflicts
+        data1['source_file'] = 'file1'
+        data2['source_file'] = 'file2'
+        
+        # Merge data with deduplication and conflict handling
+        merged_data, conflicts = self._merge_data_with_deduplication(data1, data2)
+        
+        # Report conflicts if any
+        if conflicts:
+            print("WARNING: Data conflicts detected during merge:")
+            for conflict in conflicts:
+                print(f"  Conflict for Tx={conflict['Tx']}, Rx={conflict['Rx']}, Freq={conflict['Freq']}, Type={conflict['Type']}:")
+                print(f"    File1: Data={conflict['data1']}, StdErr={conflict['stderr1']}")
+                print(f"    File2: Data={conflict['data2']}, StdErr={conflict['stderr2']}")
+                print("    Resolution: Using File1 data with File1 StdErr")
+                print()
+        else:
+            print("No data value conflicts detected during merge. Merged data successfully.")
+        
+        # Remove source file column before final output
+        merged_data = merged_data.drop(columns=['source_file'])
+        
+        # Convert back to string format
+        data_str = self.data_block_to_string(merged_data)
+        
+        # Create new data block
+        data_lines = ['Data: ' + str(len(merged_data)) + '\n']
+        data_lines.append('!  ' + data_str.replace('\n', '\n   ') + '\n')
+        
+        return data_lines
+
+    def _merge_data_with_deduplication(self, data1: pd.DataFrame, data2: pd.DataFrame) -> tuple:
+        """
+        Merge data with proper deduplication and conflict handling.
+        
+        Args:
+            data1: DataFrame from first file
+            data2: DataFrame from second file
+            
+        Returns:
+            tuple: (merged_data, conflicts_list)
+        """
+        # Combine both datasets
+        combined_data = pd.concat([data1, data2], ignore_index=True)
+        
+        # Define the key columns for identifying duplicate data points
+        key_columns = ['Type', 'Freq', 'Tx', 'Rx']
+        
+        # Group by the key columns to identify duplicates
+        grouped = combined_data.groupby(key_columns, observed=True)
+        
+        merged_rows = []
+        conflicts = []
+        
+        for (data_type, freq, tx, rx), group in grouped:
+            if len(group) == 1:
+                # No duplicate, just add the row
+                merged_rows.append(group.iloc[0])
+            else:
+                # Duplicate found - check for conflicts
+                row1 = group.iloc[0]
+                row2 = group.iloc[1]
+                
+                # Check if data values are the same (within tolerance)
+                data_tolerance = 1e-10
+                data_match = abs(row1['Data'] - row2['Data']) < data_tolerance
+                
+                # Check if stdErr values are the same (within tolerance)
+                stderr_tolerance = 1e-10
+                stderr_match = abs(row1['StdErr'] - row2['StdErr']) < stderr_tolerance
+                
+                if data_match and stderr_match:
+                    # Perfect match - use first file's data
+                    merged_rows.append(row1)
+                elif data_match and not stderr_match:
+                    # Same data, different stdErr - use first file's data and stdErr
+                    merged_rows.append(row1)
+                    conflicts.append({
+                        'Tx': tx,
+                        'Rx': rx,
+                        'Freq': freq,
+                        'Type': data_type,
+                        'data1': row1['Data'],
+                        'data2': row2['Data'],
+                        'stderr1': row1['StdErr'],
+                        'stderr2': row2['StdErr'],
+                        'conflict_type': 'different_stdErr'
+                    })
+                else:
+                    # Different data values - this is a serious conflict
+                    merged_rows.append(row1)  # Use first file's data
+                    conflicts.append({
+                        'Tx': tx,
+                        'Rx': rx,
+                        'Freq': freq,
+                        'Type': data_type,
+                        'data1': row1['Data'],
+                        'data2': row2['Data'],
+                        'stderr1': row1['StdErr'],
+                        'stderr2': row2['StdErr'],
+                        'conflict_type': 'different_data'
+                    })
+        
+        # Convert back to DataFrame
+        merged_data = pd.DataFrame(merged_rows)
+        
+        # Sort by the key columns for consistent ordering
+        merged_data = merged_data.sort_values(key_columns).reset_index(drop=True)
+        
+        return merged_data, conflicts
+
+    def _create_tx_mapping(self, tx1_data: pd.DataFrame, tx2_data: pd.DataFrame) -> pd.Series:
+        """Create mapping for transmitter indices when merging."""
+        if tx1_data.empty or tx2_data.empty:
+            return pd.Series()
+        
+        # Find matching transmitters based on position and properties
+        tx_mapping = {}
+        tx2_start_index = len(tx1_data) + 1
+        
+        for _, row2 in tx2_data.iterrows():
+            # Check if this transmitter matches any in tx1_data
+            matches = tx1_data[
+                (tx1_data['X'] == row2['X']) &
+                (tx1_data['Y'] == row2['Y']) &
+                (tx1_data['Z'] == row2['Z']) &
+                (tx1_data['Azimuth'] == row2['Azimuth']) &
+                (tx1_data['Dip'] == row2['Dip']) &
+                (tx1_data['Length'] == row2['Length']) &
+                (tx1_data['Type'] == row2['Type']) &
+                (tx1_data['Name'] == row2['Name'])
+            ]
+            
+            if not matches.empty:
+                # Use the index from tx1_data
+                tx_mapping[row2['Tx']] = matches.iloc[0]['Tx']
+            else:
+                # Use new index
+                tx_mapping[row2['Tx']] = tx2_start_index
+                tx2_start_index += 1
+        
+        return pd.Series(tx_mapping)
+
+    def _create_rx_mapping(self, rx1_data: pd.DataFrame, rx2_data: pd.DataFrame) -> pd.Series:
+        """Create mapping for receiver indices when merging."""
+        if rx1_data.empty or rx2_data.empty:
+            return pd.Series()
+        
+        # Find matching receivers based on position and properties
+        rx_mapping = {}
+        rx2_start_index = len(rx1_data) + 1
+        
+        for _, row2 in rx2_data.iterrows():
+            # Check if this receiver matches any in rx1_data
+            matches = rx1_data[
+                (rx1_data['X'] == row2['X']) &
+                (rx1_data['Y'] == row2['Y']) &
+                (rx1_data['Z'] == row2['Z']) &
+                (rx1_data['Theta'] == row2['Theta']) &
+                (rx1_data['Alpha'] == row2['Alpha']) &
+                (rx1_data['Beta'] == row2['Beta']) &
+                (rx1_data['Length'] == row2['Length']) &
+                (rx1_data['Name'] == row2['Name'])
+            ]
+            
+            if not matches.empty:
+                # Use the index from rx1_data
+                rx_mapping[row2['Rx']] = matches.iloc[0]['Rx']
+            else:
+                # Use new index
+                rx_mapping[row2['Rx']] = rx2_start_index
+                rx2_start_index += 1
+        
+        return pd.Series(rx_mapping)
