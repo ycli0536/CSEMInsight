@@ -133,6 +133,14 @@ class CSEMDataFileReader():
                     "Strike",
                 ]
         geometry_data = {key: value for key, value in zip(geometry_key, geometry_info)}
+        
+        # Convert to appropriate types
+        geometry_data['UTM_zone'] = int(geometry_data['UTM_zone'])
+        geometry_data['North'] = float(geometry_data['North'])
+        geometry_data['East'] = float(geometry_data['East'])
+        geometry_data['Strike'] = float(geometry_data['Strike'])
+        # Hemisphere remains as string
+        
         return geometry_data
 
     def extract_freq_info(self):
@@ -444,6 +452,36 @@ class CSEMDataFileManager():
                 "Name": "{:>10s}".format
             }, index=False)
         return data_str
+    
+    def geometry_info_to_string(self, geometry_data):
+        """Convert geometry information dictionary back to string format.
+        
+        Args:
+            geometry_data (dict): Dictionary containing geometry information with keys:
+                - UTM_zone (int): UTM zone number
+                - Hemisphere (str): 'N' or 'S' for northern/southern hemisphere
+                - North (float): North coordinate
+                - East (float): East coordinate  
+                - Strike (float): Strike angle
+                
+        Returns:
+            str: Geometry line in the format used in data files
+        """
+        # Convert values back to strings in the correct order
+        geometry_values = [
+            str(geometry_data['UTM_zone']),
+            geometry_data['Hemisphere'],
+            str(geometry_data['North'].round(2)),
+            str(geometry_data['East'].round(2)),
+            str(geometry_data['Strike'])
+        ]
+        
+        # Join with spaces to match the original format
+        geometry_string = ' '.join(geometry_values)
+        
+        # Return in the format: "Geometry: <values> ! <comment>"
+        return f"UTM of x,y origin (UTM zone, N, E, 2D strike): {geometry_string}\n"
+
 
     def update_data_block(self, data_filtered: pd.DataFrame, data_blocks: dict):
         """Update the Data block with the filtered data."""
