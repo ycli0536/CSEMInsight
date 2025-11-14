@@ -482,7 +482,6 @@ class CSEMDataFileManager():
         # Return in the format: "Geometry: <values> ! <comment>"
         return f"UTM of x,y origin (UTM zone, N, E, 2D strike): {geometry_string}\n"
 
-
     def update_data_block(self, data_filtered: pd.DataFrame, data_blocks: dict):
         """Update the Data block with the filtered data."""
         # Convert data back to string format
@@ -683,6 +682,35 @@ class CSEMDataFileManager():
             data_df_n.loc[(data_df_n['Type'] == '28') & (data_df_n['Tx'].isin(tx)), ['StdErr']] = eA_log10_n
             data_df_n.loc[(data_df_n['Type'] == '24') & (data_df_n['Tx'].isin(tx)), ['StdErr']] = eP_n.to_numpy()
         return data_df_n
+
+    def update_depth_bathymetry(self, data_df, bathymetry_data: pd.DataFrame, tx_or_rx: str = 'tx'):
+        """Update the Z depth based on bathymetry data."""
+        data_df_n = data_df.copy()
+        if tx_or_rx == 'tx':
+            data_df_n['Z_tx'] = np.interp(data_df_n['Y_tx'], bathymetry_data['inline_distance'], bathymetry_data['depth'])
+            data_df_n['Z_tx'] = np.round(data_df_n['Z_tx'] - 0.1, 2)
+        elif tx_or_rx == 'rx':
+            data_df_n['Z_rx'] = np.interp(data_df_n['Y_rx'], bathymetry_data['inline_distance'], bathymetry_data['depth'])
+            data_df_n['Z_rx'] = np.round(data_df_n['Z_rx'] - 0.1, 2)
+        else:
+            raise ValueError(f"Invalid tx_or_rx: {tx_or_rx}")
+        return data_df_n
+    
+    def calculate_dip(self, data_df, bathymetry_data: pd.DataFrame, tx_or_rx: str = 'tx'):
+        """Calculate the receiver's dip based on bathymetry data."""
+        data_df_n = data_df.copy()
+        # get bathymetry gradient
+        bathymetry_gradient = np.gradient(bathymetry_data['depth'], bathymetry_data['inline_distance'])
+        # get the gradient at the receiver's location
+        if tx_or_rx == 'tx':
+            gradient = np.interp(data_df_n['Y_tx'], bathymetry_data['inline_distance'], bathymetry_gradient)
+            data_df_n['Dip'] = np.rad2deg(np.arctan2(gradient, 1))
+        elif tx_or_rx == 'rx':
+            gradient = np.interp(data_df_n['Y_rx'], bathymetry_data['inline_distance'], bathymetry_gradient)
+            data_df_n['Beta'] = np.rad2deg(np.arctan2(gradient, 1))
+        else:
+            raise ValueError(f"Invalid tx_or_rx: {tx_or_rx}")
+        return data_df_n, bathymetry_gradient
 
     def merge_csem_datafiles(self, file1_path: str, file2_path: str, output_path: Optional[str] = None) -> str:
         """
