@@ -11,6 +11,9 @@ class CSEMDataFileReader():
         self.file_path = file_path
         self.extracted_blocks = []
         self.data_type = data_type
+        self.data_type_codes_amplitude = ['21', '23', '25', '27', '28', '29', '31', '33', '35', '37',' 38', '39']
+        self.data_type_codes_phase = ['22', '24', '26', '32', '34', '36']
+        self.data_type_codes = self.data_type_codes_amplitude + self.data_type_codes_phase
         if self.data_type == 'CSEM':
             self.block_infos = [
                 "Format",
@@ -216,6 +219,14 @@ class CSEMDataFileReader():
                                     'StdErr': 'float',
                                     'Response': 'float',
                                     'Residual': 'float'})
+        # initialize data type categrory with a full list of data type codes even if most of them are not present in current data file
+        existing_categories = set(data['Type'].cat.categories)
+        all_categories = set(self.data_type_codes)
+        new_categories = list(all_categories - existing_categories)
+        if new_categories:
+            data['Type'] = data['Type'].cat.add_categories(new_categories)
+        data['Type'] = data['Type'].cat.reorder_categories(self.data_type_codes)
+        data['Type'] = data['Type'].cat.set_categories(self.data_type_codes, ordered=True)
         return data
 
     def tx_data_block_init(self, tx_data_block:str) -> pd.DataFrame:
@@ -609,78 +620,188 @@ class CSEMDataFileManager():
         AllData = ''.join(AllBlocks)
         return AllData
     
-    def increase_error_floor_rx(self, data_df, errfloor, rx):
-        """Increase the error floor for certain transmitters/receivers (depends on if reciprocity is applied)."""
+    def increase_error_floor_rx(self, data_df, errfloor, rx, data_type_code_amplitude:str='28', data_type_code_phase:str='24'):
+        """Increase the error floor for certain transmitters/receivers (depends on if reciprocity is applied).
+        Args:
+            data_df: pandas DataFrame containing the data
+            errfloor: error floor to increase
+            rx: list of receiver indices to increase the error floor for (if 'all', increase for all receivers)
+            data_type_code_amplitude: data type code for amplitude
+            data_type_code_phase: data type code for phase
+        """
         data_df_n = data_df.copy()
-        if rx == 'all':
-            # extract amplitude error in log10(Ey Amplitude)
-            eA_log10 = data_df_n.loc[data_df_n['Type'] == '28', ['StdErr']]
-            # extract amplitude error
-            eP = data_df_n.loc[data_df_n['Type'] == '24', ['StdErr']]
-            UncA = eA_log10 * np.log(10)
-            UncP = 2 * np.sin(np.deg2rad(eP / 2))  # Calculated but not used - see comment below
+        if data_type_code_amplitude in ['27', '28', '29', '37', '38', '39']: # amplitude in log10
+            if rx == 'all':
+                # extract amplitude error in log10
+                eA_log10 = data_df_n.loc[data_df_n['Type'] == data_type_code_amplitude, ['StdErr']]
+                # extract phase error
+                eP = data_df_n.loc[data_df_n['Type'] == data_type_code_phase, ['StdErr']]
+                UncA = eA_log10 * np.log(10)
+                UncP = 2 * np.sin(np.deg2rad(eP / 2))
 
-            UncA_n = np.fmax(UncA, errfloor)
-            eA_log10_n = UncA_n / np.log(10)
-            # UncA = UncP here (which requires that len(UncA) = len(UncP))
-            # Using UncA_n for both amplitude and phase calculations
-            eP_n = 2 * np.rad2deg(np.arcsin(UncA_n / 2))
+                UncA_n = np.fmax(UncA, errfloor)
+                UncP_n = np.fmax(UncP, errfloor)
+                eA_log10_n = UncA_n / np.log(10)
+                # len(UncA) can be different from len(UncP)
+                eP_n = 2 * np.rad2deg(np.arcsin(UncP_n / 2))
 
-            data_df_n.loc[data_df_n['Type'] == '28', ['StdErr']] = eA_log10_n
-            data_df_n.loc[data_df_n['Type'] == '24', ['StdErr']] = eP_n.to_numpy()
+                data_df_n.loc[data_df_n['Type'] == data_type_code_amplitude, ['StdErr']] = eA_log10_n
+                data_df_n.loc[data_df_n['Type'] == data_type_code_phase, ['StdErr']] = eP_n.to_numpy()
+            else:
+                # extract amplitude error in log10
+                eA_log10 = data_df_n.loc[(data_df_n['Type'] == data_type_code_amplitude) & (data_df_n['Rx'].isin(rx)), ['StdErr']]
+                # extract phase error
+                eP = data_df_n.loc[(data_df_n['Type'] == data_type_code_phase) & (data_df_n['Rx'].isin(rx)), ['StdErr']]
+                UncA = eA_log10 * np.log(10)
+                UncP = 2 * np.sin(np.deg2rad(eP / 2))
+
+                UncA_n = np.fmax(UncA, errfloor)
+                UncP_n = np.fmax(UncP, errfloor)
+                eA_log10_n = UncA_n / np.log(10)
+                # len(UncA) can be different from len(UncP)
+                eP_n = 2 * np.rad2deg(np.arcsin(UncP_n / 2))
+
+                data_df_n.loc[(data_df_n['Type'] == data_type_code_amplitude) & (data_df_n['Rx'].isin(rx)), ['StdErr']] = eA_log10_n
+                data_df_n.loc[(data_df_n['Type'] == data_type_code_phase) & (data_df_n['Rx'].isin(rx)), ['StdErr']] = eP_n.to_numpy()
+        elif data_type_code_amplitude in ['21', '23', '25', '31', '33', '35']: # amplitude
+            if rx == 'all':
+                # extract amplitude error
+                eA = data_df_n.loc[data_df_n['Type'] == data_type_code_amplitude, ['StdErr']]
+                # extract phase error
+                eP = data_df_n.loc[data_df_n['Type'] == data_type_code_phase, ['StdErr']]
+                UncA = eA['StdErr'] / data_df_n.loc[data_df_n['Type'] == data_type_code_amplitude, 'Data'].values
+                UncP = 2 * np.sin(np.deg2rad(eP / 2))
+
+                UncA_n = np.fmax(UncA, errfloor)
+                UncP_n = np.fmax(UncP, errfloor)
+                eA_n = UncA_n * data_df_n.loc[data_df_n['Type'] == data_type_code_amplitude, 'Data'].values
+                # len(UncA) can be different from len(UncP)
+                eP_n = 2 * np.rad2deg(np.arcsin(UncP_n / 2))
+
+                data_df_n.loc[data_df_n['Type'] == data_type_code_amplitude, ['StdErr']] = eA_n
+                data_df_n.loc[data_df_n['Type'] == data_type_code_phase, ['StdErr']] = eP_n.to_numpy()
+            else:
+                # extract amplitude error
+                eA = data_df_n.loc[(data_df_n['Type'] == data_type_code_amplitude) & (data_df_n['Rx'].isin(rx)), ['StdErr']]
+                # extract phase error
+                eP = data_df_n.loc[(data_df_n['Type'] == data_type_code_phase) & (data_df_n['Rx'].isin(rx)), ['StdErr']]
+                UncA = eA['StdErr'] / data_df_n.loc[(data_df_n['Type'] == data_type_code_amplitude) & (data_df_n['Rx'].isin(rx)), 'Data'].values
+                UncP = 2 * np.sin(np.deg2rad(eP / 2))
+
+                UncA_n = np.fmax(UncA, errfloor)
+                UncP_n = np.fmax(UncP, errfloor)
+                eA_n = UncA_n * data_df_n.loc[(data_df_n['Type'] == data_type_code_amplitude) & (data_df_n['Rx'].isin(rx)), 'Data'].values
+                # len(UncA) can be different from len(UncP)
+                eP_n = 2 * np.rad2deg(np.arcsin(UncP_n / 2))
+
+                data_df_n.loc[(data_df_n['Type'] == data_type_code_amplitude) & (data_df_n['Rx'].isin(rx)), ['StdErr']] = eA_n
+                data_df_n.loc[(data_df_n['Type'] == data_type_code_phase) & (data_df_n['Rx'].isin(rx)), ['StdErr']] = eP_n.to_numpy()
         else:
-            # extract amplitude error in log10(Ey Amplitude)
-            eA_log10 = data_df_n.loc[(data_df_n['Type'] == '28') & (data_df_n['Rx'].isin(rx)), ['StdErr']]
-            # extract amplitude error
-            eP = data_df_n.loc[(data_df_n['Type'] == '24') & (data_df_n['Rx'].isin(rx)), ['StdErr']]
-            UncA = eA_log10 * np.log(10)
-            UncP = 2 * np.sin(np.deg2rad(eP / 2))
-
-            UncA_n = np.fmax(UncA, errfloor)
-            eA_log10_n = UncA_n / np.log(10)
-            # UncA = UncP here (which requires that len(UncA) = len(UncP))
-            eP_n = 2 * np.rad2deg(np.arcsin(UncA_n / 2))
-
-            data_df_n.loc[(data_df_n['Type'] == '28') & (data_df_n['Rx'].isin(rx)), ['StdErr']] = eA_log10_n
-            data_df_n.loc[(data_df_n['Type'] == '24') & (data_df_n['Rx'].isin(rx)), ['StdErr']] = eP_n.to_numpy()
+            raise ValueError(f"Invalid data type code for amplitude (only support 21, 23, 25, 27, 28, 29, 31, 33, 35, 37, 38, 39): {data_type_code_amplitude}")
         return data_df_n
 
-    def increase_error_floor_tx(self, data_df, errfloor, tx):
+    def increase_error_floor_tx(self, data_df, errfloor, tx, data_type_code_amplitude:str='28', data_type_code_phase:str='24'):
         """Increase the error floor for certain receivers/transmitters 
-        (depends on if reciprocity is applied).."""
+        (depends on if reciprocity is applied).
+        Args:
+            data_df: pandas DataFrame containing the data
+            errfloor: error floor to increase
+            tx: list of transmitter indices to increase the error floor for (if 'all', increase for all transmitters)
+            data_type_code_amplitude: data type code for amplitude
+            data_type_code_phase: data type code for phase
+        """
         data_df_n = data_df.copy()
-        if tx == 'all':
-            # extract amplitude error in log10(Ey Amplitude)
-            eA_log10 = data_df_n.loc[data_df_n['Type'] == '28', ['StdErr']]
-            # extract amplitude error
-            eP = data_df_n.loc[data_df_n['Type'] == '24', ['StdErr']]
-            UncA = eA_log10 * np.log(10)
-            UncP = 2 * np.sin(np.deg2rad(eP / 2))
+        if data_type_code_amplitude in ['27', '28', '29', '37', '38', '39']: # amplitude in log10
+            if tx == 'all':
+                # extract amplitude error in log10
+                eA_log10 = data_df_n.loc[data_df_n['Type'] == data_type_code_amplitude, ['StdErr']]
+                # extract phase error
+                eP = data_df_n.loc[data_df_n['Type'] == data_type_code_phase, ['StdErr']]
+                UncA = eA_log10 * np.log(10)
+                UncP = 2 * np.sin(np.deg2rad(eP / 2))
 
-            UncA_n = np.fmax(UncA, errfloor)
-            UncP_n = np.fmax(UncP, errfloor)
-            eA_log10_n = UncA_n / np.log(10)
-            # len(UncA) can be different from len(UncP)
-            eP_n = 2 * np.rad2deg(np.arcsin(UncP_n / 2))
+                UncA_n = np.fmax(UncA, errfloor)
+                UncP_n = np.fmax(UncP, errfloor)
+                eA_log10_n = UncA_n / np.log(10)
+                # len(UncA) can be different from len(UncP)
+                eP_n = 2 * np.rad2deg(np.arcsin(UncP_n / 2))
 
-            data_df_n.loc[data_df_n['Type'] == '28', ['StdErr']] = eA_log10_n
-            data_df_n.loc[data_df_n['Type'] == '24', ['StdErr']] = eP_n.to_numpy()
+                data_df_n.loc[data_df_n['Type'] == data_type_code_amplitude, ['StdErr']] = eA_log10_n
+                data_df_n.loc[data_df_n['Type'] == data_type_code_phase, ['StdErr']] = eP_n.to_numpy()
+            else:
+                # extract amplitude error in log10
+                eA_log10 = data_df_n.loc[(data_df_n['Type'] == data_type_code_amplitude) & (data_df_n['Tx'].isin(tx)), ['StdErr']]
+                # extract amplitude error
+                eP = data_df_n.loc[(data_df_n['Type'] == data_type_code_phase) & (data_df_n['Tx'].isin(tx)), ['StdErr']]
+                UncA = eA_log10 * np.log(10)
+                UncP = 2 * np.sin(np.deg2rad(eP / 2))
+
+                UncA_n = np.fmax(UncA, errfloor)
+                UncP_n = np.fmax(UncP, errfloor)
+                eA_log10_n = UncA_n / np.log(10)
+                # len(UncA) can be different from len(UncP)
+                eP_n = 2 * np.rad2deg(np.arcsin(UncP_n / 2))
+
+                data_df_n.loc[(data_df_n['Type'] == data_type_code_amplitude) & (data_df_n['Tx'].isin(tx)), ['StdErr']] = eA_log10_n
+                data_df_n.loc[(data_df_n['Type'] == data_type_code_phase) & (data_df_n['Tx'].isin(tx)), ['StdErr']] = eP_n.to_numpy()
+        elif data_type_code_amplitude in ['21', '23', '25', '31', '33', '35']: # amplitude
+            if tx == 'all':
+                # extract amplitude error
+                eA = data_df_n.loc[data_df_n['Type'] == data_type_code_amplitude, ['StdErr']]
+                # extract phase error
+                eP = data_df_n.loc[data_df_n['Type'] == data_type_code_phase, ['StdErr']]
+                # Select the amplitude 'Data' column as a Series to align dimensions with eA['StdErr']
+                UncA = eA['StdErr'] / data_df_n.loc[data_df_n['Type'] == data_type_code_amplitude, 'Data'].values
+                UncP = 2 * np.sin(np.deg2rad(eP / 2))
+
+                UncA_n = np.fmax(UncA, errfloor)
+                UncP_n = np.fmax(UncP, errfloor)
+                eA_n = UncA_n * data_df_n.loc[data_df_n['Type'] == data_type_code_amplitude, 'Data'].values
+                # len(UncA) can be different from len(UncP)
+                eP_n = 2 * np.rad2deg(np.arcsin(UncP_n / 2))
+
+                data_df_n.loc[data_df_n['Type'] == data_type_code_amplitude, ['StdErr']] = eA_n
+                data_df_n.loc[data_df_n['Type'] == data_type_code_phase, ['StdErr']] = eP_n.to_numpy()
+            else:
+                # extract amplitude error
+                eA = data_df_n.loc[(data_df_n['Type'] == data_type_code_amplitude) & (data_df_n['Tx'].isin(tx)), ['StdErr']]
+                # extract phase error
+                eP = data_df_n.loc[(data_df_n['Type'] == data_type_code_phase) & (data_df_n['Tx'].isin(tx)), ['StdErr']]
+                # Select the amplitude 'Data' column as a Series to align dimensions with eA['StdErr']
+                UncA = eA['StdErr'] / data_df_n.loc[(data_df_n['Type'] == data_type_code_amplitude) & (data_df_n['Tx'].isin(tx)), 'Data'].values
+                UncP = 2 * np.sin(np.deg2rad(eP / 2))
+
+                UncA_n = np.fmax(UncA, errfloor)
+                UncP_n = np.fmax(UncP, errfloor)
+                eA_n = UncA_n * data_df_n.loc[(data_df_n['Type'] == data_type_code_amplitude) & (data_df_n['Tx'].isin(tx)), 'Data'].values
+                # len(UncA) can be different from len(UncP)
+                eP_n = 2 * np.rad2deg(np.arcsin(UncP_n / 2))
+
+                data_df_n.loc[(data_df_n['Type'] == data_type_code_amplitude) & (data_df_n['Tx'].isin(tx)), ['StdErr']] = eA_n
+                data_df_n.loc[(data_df_n['Type'] == data_type_code_phase) & (data_df_n['Tx'].isin(tx)), ['StdErr']] = eP_n.to_numpy()
         else:
-            # extract amplitude error in log10(Ey Amplitude)
-            eA_log10 = data_df_n.loc[(data_df_n['Type'] == '28') & (data_df_n['Tx'].isin(tx)), ['StdErr']]
-            # extract amplitude error
-            eP = data_df_n.loc[(data_df_n['Type'] == '24') & (data_df_n['Tx'].isin(tx)), ['StdErr']]
-            UncA = eA_log10 * np.log(10)
-            UncP = 2 * np.sin(np.deg2rad(eP / 2))
+            raise ValueError(f"Invalid data type code for amplitude (only support 21, 23, 25, 27, 28, 29, 31, 33, 35, 37, 38, 39): {data_type_code_amplitude}")
+        return data_df_n
 
-            UncA_n = np.fmax(UncA, errfloor)
-            UncP_n = np.fmax(UncP, errfloor)
-            eA_log10_n = UncA_n / np.log(10)
-            # len(UncA) can be different from len(UncP)
-            eP_n = 2 * np.rad2deg(np.arcsin(UncP_n / 2))
-
-            data_df_n.loc[(data_df_n['Type'] == '28') & (data_df_n['Tx'].isin(tx)), ['StdErr']] = eA_log10_n
-            data_df_n.loc[(data_df_n['Type'] == '24') & (data_df_n['Tx'].isin(tx)), ['StdErr']] = eP_n.to_numpy()
+    def log10amp2amp(self, data_df, data_type_code_amplitude:str='28'):
+        """Convert log10 amplitude (27, 28, 29, 37, 38, 39) to amplitude (21, 23, 25, 31, 33, 35) and update the standard error."""
+        data_df_n = data_df.copy()
+        data_type_code_amplitude_new = {
+            '27': '21',
+            '28': '23',
+            '29': '25',
+            '37': '31',
+            '38': '33',
+            '39': '35'
+        }.get(data_type_code_amplitude, None)
+        if data_type_code_amplitude_new is None:
+            raise ValueError(f"Invalid data type code for log 10 amplitude (only support 27, 28, 29, 37, 38, 39): {data_type_code_amplitude}")
+        # Create a mask for the rows to update
+        mask = data_df_n['Type'] == data_type_code_amplitude
+        # Update each column separately to avoid dtype incompatibility
+        data_df_n.loc[mask, 'Type'] = data_type_code_amplitude_new
+        data_df_n.loc[mask, 'Data'] = 10 ** data_df_n.loc[mask, 'Data'].values
+        data_df_n.loc[mask, 'StdErr'] = data_df_n.loc[mask, 'StdErr'].values * np.log(10) * data_df_n.loc[mask, 'Data'].values
         return data_df_n
 
     def update_depth_bathymetry(self, data_df, bathymetry_data: pd.DataFrame, tx_or_rx: str = 'tx'):
