@@ -7,13 +7,58 @@ from io import StringIO
 class CSEMDataFileReader():
     """_summary_
     """
-    def __init__(self, file_path, data_type='CSEM'):
+    def __init__(self, file_path):
         self.file_path = file_path
+        self.data_type = None
         self.extracted_blocks = []
-        self.data_type = data_type
-        self.data_type_codes_amplitude = ['21', '23', '25', '27', '28', '29', '31', '33', '35', '37',' 38', '39']
+        self.data_type_codes_amplitude = ['21', '23', '25', '27', '28', '29', '31', '33', '35', '37', '38', '39']
         self.data_type_codes_phase = ['22', '24', '26', '32', '34', '36']
         self.data_type_codes = self.data_type_codes_amplitude + self.data_type_codes_phase
+        self.data = None
+        self.read_file()
+        self.format, self.version = self.extract_file_info()
+        
+    def read_file_to_blocks(self) -> tuple[list, list]:
+        """Read the file and extract the data blocks."""
+        # Initialize an empty list to store the extracted blocks
+        extracted_blocks = []
+
+        # Initialize a variable to accumulate the current block
+        current_block: list[str] = []
+        # Open and read the file
+        with open(self.file_path, 'r', encoding="utf-8") as file:
+            # Read the file line by line
+            for line in file:
+                # Check if the line contains a ':'
+                if ':' in line:
+                    # If it's a new block, add the previous block to the list (if any)
+                    if current_block:
+                        # extracted_blocks.append(''.join(current_block))
+                        extracted_blocks.append(current_block)
+                        current_block = []  # Reset the current block
+
+                # Append the current line to the current block
+                current_block.append(line)
+
+        # Add the last block to the list (if any)
+        if current_block:
+            # extracted_blocks.append(''.join(current_block))
+            extracted_blocks.append(current_block)
+        # extract block headers from each block[0]
+        block_headers = [block[0].split(':')[0].strip().lower() for block in extracted_blocks if ':' in block[0]]
+        return extracted_blocks, block_headers
+
+    def read_file(self):
+        extracted_blocks, block_headers = self.read_file_to_blocks()
+        if ('# csem frequencies' in block_headers) and ('# mt frequencies' in block_headers):
+            self.data_type = 'joint'
+        elif ('# csem frequencies' in block_headers) and ('# mt frequencies' not in block_headers):
+            self.data_type = 'CSEM'
+        elif ('# mt frequencies' in block_headers) and ('# csem frequencies' not in block_headers):
+            self.data_type = 'MT'
+        else:
+            raise ValueError(f"Invalid data type: {self.data_type}")
+
         if self.data_type == 'CSEM':
             self.block_infos = [
                 "Format",
@@ -47,71 +92,39 @@ class CSEMDataFileReader():
                 "Rx_MT",
                 "Data",
             ]
-        else:
-            raise ValueError(f"Invalid data type: {self.data_type}")
         self.blocks = {info: [] for info in self.block_infos}
-        self.data = None
-        self.read_file()
-        self.format, self.version = self.extract_file_info()
-
-    def read_file(self):
-        """Read the file and extract the data blocks."""
-        # Initialize an empty list to store the extracted blocks
-        extracted_blocks = []
-
-        # Initialize a variable to accumulate the current block
-        current_block = []
-        # Open and read the file
-        with open(self.file_path, 'r', encoding="utf-8") as file:
-            # Read the file line by line
-            for line in file:
-                # Check if the line contains a ':'
-                if ':' in line:
-                    # If it's a new block, add the previous block to the list (if any)
-                    if current_block:
-                        # extracted_blocks.append(''.join(current_block))
-                        extracted_blocks.append(current_block)
-                        current_block = []  # Reset the current block
-
-                # Append the current line to the current block
-                current_block.append(line)
-
-        # Add the last block to the list (if any)
-        if current_block:
-            # extracted_blocks.append(''.join(current_block))
-            extracted_blocks.append(current_block)
-            # Filter the extracted blocks based on the patterns
-            for block in extracted_blocks:
-                # assume for each pattern we can only find single match (if any)
-                # match the block info with each block
-                for info in self.block_infos:
-                    if info == 'Geometry' and re.search('UTM', block[0], re.IGNORECASE):
-                        self.blocks[info] = block
-                        break
-                    if info =='Frequencies' and (re.search('CSEM Frequencies', block[0], re.IGNORECASE) or re.search('MT Frequencies', block[0], re.IGNORECASE)):
-                        self.blocks[info] = block
-                        break
-                    if info == 'Frequencies_CSEM' and re.search('CSEM Frequencies', block[0], re.IGNORECASE):
-                        self.blocks[info] = block
-                        break
-                    if info == 'Frequencies_MT' and re.search('MT Frequencies', block[0], re.IGNORECASE):
-                        self.blocks[info] = block
-                        break
-                    if info =='Tx' and re.search('Transmitters', block[0], re.IGNORECASE):
-                        self.blocks[info] = block
-                        break
-                    if info == 'Rx' and (re.search('CSEM Receivers', block[0], re.IGNORECASE) or re.search('MT Receivers', block[0], re.IGNORECASE)):
-                        self.blocks[info] = block
-                        break
-                    if info == 'Rx_MT' and re.search('MT Receivers', block[0], re.IGNORECASE):
-                        self.blocks[info] = block
-                        break
-                    if info == 'Rx_CSEM' and re.search('CSEM Receivers', block[0], re.IGNORECASE):
-                        self.blocks[info] = block
-                        break
-                    elif re.search(info, block[0], re.IGNORECASE):
-                        self.blocks[info] = block
-                        break
+        # Filter the extracted blocks based on the patterns
+        for block in extracted_blocks:
+            # assume for each pattern we can only find single match (if any)
+            # match the block info with each block
+            for info in self.block_infos:
+                if info == 'Geometry' and re.search('UTM', block[0], re.IGNORECASE):
+                    self.blocks[info] = block
+                    break
+                if info =='Frequencies' and (re.search('CSEM Frequencies', block[0], re.IGNORECASE) or re.search('MT Frequencies', block[0], re.IGNORECASE)):
+                    self.blocks[info] = block
+                    break
+                if info == 'Frequencies_CSEM' and re.search('CSEM Frequencies', block[0], re.IGNORECASE):
+                    self.blocks[info] = block
+                    break
+                if info == 'Frequencies_MT' and re.search('MT Frequencies', block[0], re.IGNORECASE):
+                    self.blocks[info] = block
+                    break
+                if info =='Tx' and re.search('Transmitters', block[0], re.IGNORECASE):
+                    self.blocks[info] = block
+                    break
+                if info == 'Rx' and (re.search('CSEM Receivers', block[0], re.IGNORECASE) or re.search('MT Receivers', block[0], re.IGNORECASE)):
+                    self.blocks[info] = block
+                    break
+                if info == 'Rx_MT' and re.search('MT Receivers', block[0], re.IGNORECASE):
+                    self.blocks[info] = block
+                    break
+                if info == 'Rx_CSEM' and re.search('CSEM Receivers', block[0], re.IGNORECASE):
+                    self.blocks[info] = block
+                    break
+                elif re.search(info, block[0], re.IGNORECASE):
+                    self.blocks[info] = block
+                    break
 
     def extract_file_info(self):
         """Extract file information."""
@@ -148,7 +161,10 @@ class CSEMDataFileReader():
 
     def extract_freq_info(self):
         """Extract frequency information."""
-        freq_info_line = self.blocks['Frequencies']
+        if self.data_type == 'joint':
+            freq_info_line = self.blocks['Frequencies_CSEM']
+        else:
+            freq_info_line = self.blocks['Frequencies']
         # Initialize an empty dictionary to store the extracted frequencies
         freq_data = {}
 
@@ -219,13 +235,6 @@ class CSEMDataFileReader():
                                     'StdErr': 'float',
                                     'Response': 'float',
                                     'Residual': 'float'})
-        # initialize data type categrory with a full list of data type codes even if most of them are not present in current data file
-        existing_categories = set(data['Type'].cat.categories)
-        all_categories = set(self.data_type_codes)
-        new_categories = list(all_categories - existing_categories)
-        if new_categories:
-            data['Type'] = data['Type'].cat.add_categories(new_categories)
-        data['Type'] = data['Type'].cat.reorder_categories(self.data_type_codes)
         data['Type'] = data['Type'].cat.set_categories(self.data_type_codes, ordered=True)
         return data
 

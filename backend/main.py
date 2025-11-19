@@ -71,7 +71,14 @@ def upload_data_file():
                 csem_data = ordered_blocks
                 geometry_info = csem_datafile_reader.extract_geometry_info()
                 data_df = csem_datafile_reader.data_block_init(csem_data['Data'])
-                rx_data_df = csem_datafile_reader.rx_data_block_init(csem_data['Rx'])
+                if csem_datafile_reader.data_type == 'joint':
+                    rx_data_df = csem_datafile_reader.rx_data_block_init(csem_data['Rx_CSEM'])
+                elif csem_datafile_reader.data_type == 'CSEM':
+                    rx_data_df = csem_datafile_reader.rx_data_block_init(csem_data['Rx'])
+                elif csem_datafile_reader.data_type == 'MT':
+                    raise ValueError(f"Cannot process data type: {csem_datafile_reader.data_type}")
+                else:
+                    raise ValueError(f"Invalid data type: {csem_datafile_reader.data_type}")
                 tx_data_df = csem_datafile_reader.tx_data_block_init(csem_data['Tx'])
                 rx_data_lonlat_df = csem_datafile_reader.ne2latlon(rx_data_df, geometry_info)
                 tx_data_lonlat_df = csem_datafile_reader.ne2latlon(tx_data_df, geometry_info)
