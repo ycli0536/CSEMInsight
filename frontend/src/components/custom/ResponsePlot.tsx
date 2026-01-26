@@ -1,26 +1,49 @@
 // src/components/UplotChartWithErrorBars.tsx
-import { useEffect, useRef } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import uPlot from 'uplot';
 import 'uplot/dist/uPlot.min.css';
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label"
-import { useDataTableStore, CsemData } from '@/store/settingFormStore';
+import { useDataTableStore, CsemData, Dataset } from '@/store/settingFormStore';
 import { useUPlotStore } from '@/store/plotCanvasStore';
 import { wheelZoomPlugin } from '@/components/custom/uplot-wheel-zoom-plugin';
 import { RadioGroupExample } from '@/components/custom/errRadioGroup';
 import { useRadioGroupStore } from '@/store/plotCanvasStore';
 import { debounce } from 'lodash';
+import { useComparisonStore } from '@/store/comparisonStore';
+import { computeDifferenceData } from '@/utils/extractComparisonData';
+import { computeStatistics, StatisticalMetrics } from '@/utils/statisticalAnalysis';
 
 export function ResponsesWithErrorBars() {
   const ampChartRef = useRef<HTMLDivElement>(null);
   const phiChartRef = useRef<HTMLDivElement>(null);
-  const { filteredData } = useDataTableStore();
-  const { showLegend, dragEnabled, scrollEnabled, legendLiveEnabled, 
-          setShowLegend, setDragEnabled, setScrollEnabled, setlegendLiveEnabled,
+  const sideBySideAmpRefs = useRef<(HTMLDivElement | null)[]>([]);
+  const sideBySidePhiRefs = useRef<(HTMLDivElement | null)[]>([]);
+  const { filteredData, datasets, activeDatasetIds, comparisonMode } = useDataTableStore();
+  const { showLegend, dragEnabled, scrollEnabled, legendLiveEnabled, wrapPhase,
+          setShowLegend, setDragEnabled, setScrollEnabled, setlegendLiveEnabled, setWrapPhase,
         } = useUPlotStore();
   const { selectedValue } = useRadioGroupStore();
+  const { referenceDatasetId } = useComparisonStore();
 
-  const extractPlotData = (data: CsemData[], type: string): [Float64Array[][][][], number, { freqId: string; RxId: number; type: string; }[]] => {
+  type LegendInfo = {
+    freqId: string;
+    RxId: number;
+    type: string;
+    datasetId?: string;
+    datasetName?: string;
+    datasetColor?: string;
+  };
+
+  const normalizePhase = (value: number) => {
+    if (!wrapPhase) {
+      return value;
+    }
+    const normalized = ((value + 180) % 360 + 360) % 360 - 180;
+    return normalized === -180 ? 180 : normalized;
+  };
+
+  const extractPlotData = (data: CsemData[], type: string): [Float64Array[][][][], number, LegendInfo[]] => {
     // Get unique Tx_id (actual rcv id) values
     const uniqueRxIds = Array.from(new Set(data.map((item) => item.Tx_id)));
     // console.log('uniqueRxIds: ', uniqueRxIds);
@@ -29,7 +52,7 @@ export function ResponsesWithErrorBars() {
     const uniqueFreqIds = Array.from(new Set(data.map((item) => item.Freq_id)));
     // console.log('uniqueFreqIds: ', uniqueFreqIds);
 
-    const comb_info: { freqId: string; RxId: number; type: string; }[] = [];
+    const comb_info: LegendInfo[] = [];
 
     // Prepare series data for each Freq_id
     const plotData: Float64Array[][][][] = uniqueFreqIds.map((freqId) => {
@@ -43,7 +66,8 @@ export function ResponsesWithErrorBars() {
       
           // Extracting the necessary data for the current subset
           const YdistSeries = filteredData.map((item) => item.Y_rx / 1e3);
-          const dataSeries = filteredData.map((item) => item.Data);
+          const rawDataSeries = filteredData.map((item) => item.Data);
+          const dataSeries = rawDataSeries.map((value) => normalizePhase(value));
           const stdErrSeries = filteredData.map((item) => item.StdErr);
 
           comb_info.push({freqId, RxId, type});
@@ -60,11 +84,11 @@ export function ResponsesWithErrorBars() {
             ],
             [
               new Float64Array(YdistSeries),  // x-values (dist)
-              new Float64Array(dataSeries).map((v, idx) => v + new Float64Array(stdErrSeries)[idx]), // upper limit
+              new Float64Array(rawDataSeries).map((v, idx) => normalizePhase(v + new Float64Array(stdErrSeries)[idx])), // upper limit
             ],
             [
               new Float64Array(YdistSeries),  // x-values (dist)
-              new Float64Array(dataSeries).map((v, idx) => v - new Float64Array(stdErrSeries)[idx]), // lower limit
+              new Float64Array(rawDataSeries).map((v, idx) => normalizePhase(v - new Float64Array(stdErrSeries)[idx])), // lower limit
             ]
           ];
         } else if (type === 'amp') {
@@ -109,52 +133,224 @@ export function ResponsesWithErrorBars() {
     return [plotData, uniqueRxIds.length * uniqueFreqIds.length, comb_info];
   };
 
+  const activeDatasets = useMemo(() => {
+    return activeDatasetIds
+      .map((id) => datasets.get(id))
+      .filter((dataset): dataset is Dataset => Boolean(dataset && dataset.visible));
+  }, [activeDatasetIds, datasets]);
+
+  const referenceDataset = useMemo(() => {
+    if (!activeDatasets.length) {
+      return null;
+    }
+    if (referenceDatasetId) {
+      return activeDatasets.find((dataset) => dataset.id === referenceDatasetId) ?? activeDatasets[0];
+    }
+    return activeDatasets[0];
+  }, [activeDatasets, referenceDatasetId]);
+
+  const overlayDatasets = useMemo(() => {
+    if (comparisonMode === 'difference' && referenceDataset) {
+      return activeDatasets
+        .filter((dataset) => dataset.id !== referenceDataset.id)
+        .map((dataset) => ({
+          ...dataset,
+          name: `Delta: ${referenceDataset.name} - ${dataset.name}`,
+          data: computeDifferenceData(referenceDataset.data, dataset.data),
+        }));
+    }
+    if (comparisonMode === 'statistical' || comparisonMode === 'overlay') {
+      return activeDatasets;
+    }
+    return [];
+  }, [activeDatasets, comparisonMode, referenceDataset]);
+
+  const statistics = useMemo<Record<string, StatisticalMetrics>>(() => {
+    if (!referenceDataset || comparisonMode !== 'statistical') {
+      return {};
+    }
+    const results: Record<string, StatisticalMetrics> = {};
+    activeDatasets.forEach((dataset) => {
+      if (dataset.id === referenceDataset.id) {
+        return;
+      }
+      results[dataset.id] = computeStatistics(referenceDataset.data, dataset.data);
+    });
+    return results;
+  }, [activeDatasets, comparisonMode, referenceDataset]);
+
   useEffect(() => {
     const data = filteredData;
-    
-    if (ampChartRef.current && phiChartRef.current && data.length > 0) {
 
-      const preparePlotData = (data: CsemData[], type: string): [uPlot.AlignedData, number, { freqId: string; RxId: number; type: string; }[]] => {
-        const [plotData0, seriesNum, comb_info] = extractPlotData(data, type); // RxId/Freq/Data
-        // console.log('plotData0: ', plotData0);
-    
-        // Data flattened and grouped by frequency [Data][FreqId]
-        const parsedDataByFreq = plotData0.map((item) => // RxId
-          {
-            const dataPerFreq = item.map((subItem) => subItem[0]).concat(
-              item.map((subItem) => subItem[2]).concat(
-                item.map((subItem) => subItem[3]))
-            )
-            // console.log('item1: ', item);
-          return dataPerFreq;
+    const buildSeriesData = (
+      data: CsemData[],
+      type: string,
+    ): { plotData: Float64Array[][]; seriesNum: number; legendInfo: LegendInfo[] } => {
+      const [plotData0, seriesNum, comb_info] = extractPlotData(data, type); // RxId/Freq/Data
+      if (!plotData0.length) {
+        return { plotData: [], seriesNum: 0, legendInfo: [] };
+      }
+
+      // Data flattened and grouped by frequency [Data][FreqId]
+      const parsedDataByFreq = plotData0.map((item) => // RxId
+        {
+          const dataPerFreq = item.map((subItem) => subItem[0]).concat(
+            item.map((subItem) => subItem[2]).concat(
+              item.map((subItem) => subItem[3]))
+          )
+        return dataPerFreq;
+      }
+      );
+
+      if (!parsedDataByFreq.length) {
+        return { plotData: [], seriesNum: 0, legendInfo: [] };
+      }
+
+      const parsedData = parsedDataByFreq[0].map((_, index) =>
+        parsedDataByFreq.map((item) => item[index])
+      );
+
+      // Function to flatten the array in the first dimension
+      function flattenFirstDim(arr: Float64Array[][][]) {
+        return arr.reduce((acc, current) => acc.concat(current), []);
+      }
+
+      // plotData0 = [RxId][FreqId][DataSeries: Data/StdErr/UpperLimit/LowerLimit]
+      const plotData = flattenFirstDim(parsedData);
+
+      // update/reorder the legend info
+      const sortedArray = comb_info.sort((a, b) => a.RxId - b.RxId);
+
+      return { plotData, seriesNum, legendInfo: sortedArray };
+    };
+
+    const preparePlotData = (
+      data: CsemData[],
+      type: string,
+    ): [uPlot.AlignedData, number, LegendInfo[]] => {
+      const { plotData, seriesNum, legendInfo } = buildSeriesData(data, type);
+      return [uPlot.join(plotData), seriesNum, legendInfo];
+    };
+
+    const preparePlotDataForDatasets = (
+      datasetsToPlot: Dataset[],
+      type: string,
+    ): [uPlot.AlignedData, number, LegendInfo[]] => {
+      const seriesGroups = datasetsToPlot.map((dataset) => {
+        const series = buildSeriesData(dataset.data, type);
+        return {
+          ...series,
+          legendInfo: series.legendInfo.map((info) => ({
+            ...info,
+            datasetId: dataset.id,
+            datasetName: dataset.name,
+            datasetColor: dataset.color,
+          })),
+        };
+      });
+
+      const combinedLegendInfo: LegendInfo[] = [];
+      const dataSeries: Float64Array[][] = [];
+      const upperSeries: Float64Array[][] = [];
+      const lowerSeries: Float64Array[][] = [];
+      let combinedSeriesNum = 0;
+
+      seriesGroups.forEach((group) => {
+        if (!group.seriesNum) {
+          return;
         }
-        );
+        const dataChunk = group.plotData.slice(0, group.seriesNum);
+        const upperChunk = group.plotData.slice(group.seriesNum, group.seriesNum * 2);
+        const lowerChunk = group.plotData.slice(group.seriesNum * 2, group.seriesNum * 3);
+        dataSeries.push(...dataChunk);
+        upperSeries.push(...upperChunk);
+        lowerSeries.push(...lowerChunk);
+        combinedLegendInfo.push(...group.legendInfo);
+        combinedSeriesNum += group.seriesNum;
+      });
 
-        // console.log('parsedDataByFreq: ', parsedDataByFreq);
+      const combinedPlotData = [...dataSeries, ...upperSeries, ...lowerSeries];
 
-        const parsedData = parsedDataByFreq[0].map((_, index) => 
-          parsedDataByFreq.map((item) => item[index])
-        );
-        // console.log('parsedData: ', parsedData);
-    
-        // Function to flatten the array in the first dimension
-        function flattenFirstDim(arr: Float64Array[][][]) {
-          return arr.reduce((acc, current) => acc.concat(current), []);
-        }
-    
-        // plotData0 = [RxId][FreqId][DataSeries: Data/StdErr/UpperLimit/LowerLimit]
-        const plotData = flattenFirstDim(parsedData);
-    
-        // console.log('plotData0: ', plotData0);
-        // console.log('plotData: ', plotData);
+      return [uPlot.join(combinedPlotData), combinedSeriesNum, combinedLegendInfo];
+    };
 
-        //update/reorder the legend info
-        const sortedArray = comb_info.sort((a, b) => a.RxId - b.RxId);
-    
-        return [uPlot.join(plotData), seriesNum, sortedArray];
+    const parseHslColor = (color: string) => {
+      const match = color.match(/hsl\((\d+),\s*(\d+)%?,\s*(\d+)%?\)/);
+      if (!match) {
+        return null;
+      }
+      return {
+        h: Number.parseInt(match[1], 10),
+        s: Number.parseInt(match[2], 10),
+        l: Number.parseInt(match[3], 10),
       };
+    };
 
-      const initialPlotOptions = (seriesNum: number, type: string, legendInfo: { freqId: string; RxId: number; type: string; }[]): uPlot.Options => {
+    const hexToHsl = (hex: string) => {
+      const cleaned = hex.replace('#', '');
+      if (cleaned.length !== 6) {
+        return null;
+      }
+      const r = Number.parseInt(cleaned.slice(0, 2), 16) / 255;
+      const g = Number.parseInt(cleaned.slice(2, 4), 16) / 255;
+      const b = Number.parseInt(cleaned.slice(4, 6), 16) / 255;
+      const max = Math.max(r, g, b);
+      const min = Math.min(r, g, b);
+      let h = 0;
+      let s = 0;
+      const l = (max + min) / 2;
+
+      if (max !== min) {
+        const d = max - min;
+        s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+        switch (max) {
+          case r:
+            h = (g - b) / d + (g < b ? 6 : 0);
+            break;
+          case g:
+            h = (b - r) / d + 2;
+            break;
+          default:
+            h = (r - g) / d + 4;
+            break;
+        }
+        h *= 60;
+      }
+
+      return {
+        h: Math.round(h),
+        s: Math.round(s * 100),
+        l: Math.round(l * 100),
+      };
+    };
+
+    const normalizeColorToHsl = (color: string) => {
+      if (color.startsWith("#")) {
+        return hexToHsl(color);
+      }
+      if (color.startsWith("hsl")) {
+        return parseHslColor(color);
+      }
+      return null;
+    };
+
+    const updateLightness = (color: string, newLightness: number) => {
+      const hsl = normalizeColorToHsl(color);
+      if (!hsl) {
+        return color;
+      }
+      return `hsl(${hsl.h}, ${hsl.s}%, ${newLightness}%)`;
+    };
+
+    const useOverlay =
+      (comparisonMode === 'overlay' ||
+        comparisonMode === 'difference' ||
+        comparisonMode === 'statistical') &&
+      overlayDatasets.length > 0;
+
+    if (ampChartRef.current && phiChartRef.current && (data.length > 0 || useOverlay)) {
+
+      const initialPlotOptions = (seriesNum: number, type: string, legendInfo: LegendInfo[]): uPlot.Options => {
         // Define colors and labels for each dataset
         // console.log('seriesNum: ', seriesNum);
         // console.log('legendInfo: ', legendInfo);
@@ -177,35 +373,17 @@ export function ResponsesWithErrorBars() {
         // }
         // if RxId is the same, for different freqId, use the monochromatic colors centered at 50% of corresponding basicColor based on freqId
 
-        const changeLightness = (color: string, newLightness: number): string => {
-          const baseHue = parseInt(color.match(/\d+/)![0], 10);
-          const baseSaturation = parseInt(color.match(/(?<=\s)\d+(?=%)/)![0], 10);
-          return `hsl(${baseHue}, ${baseSaturation}%, ${newLightness}%)`;
-        }
-
-        const seriesColors = legendInfo.map((item) => {
-          const colorRxId = basicColors[(item.RxId - (legendInfo[0].RxId)) % basicColors.length];
-          // Extract the hue from the base color
-          const baseHue = parseInt(colorRxId.match(/\d+/)![0], 10);
-          // Extract the saturation from the base color
-          const baseSaturation = parseInt(colorRxId.match(/(?<=\s)\d+(?=%)/)![0], 10);
-          // Extract the lightness from the base color
-          const baseLightness = parseInt(colorRxId.match(/(?<=%\s*,\s*)\d+(?=%)/)![0], 10);
-
-          // // Calculate the hue shift based on the freqId
-          // const hueShift = (parseInt(item.freqId) - 1) * 10;
-          // // Calculate the new hue
-          // const newHue = (baseHue + hueShift) % 360;
-
-          // Calculate the lightness shift based on the freqId
+        const seriesColors = legendInfo.map((item, idx) => {
+          const fallbackColor =
+            basicColors[Math.abs(item.RxId - (legendInfo[0]?.RxId ?? 0)) % basicColors.length];
+          const baseColor = item.datasetColor ?? fallbackColor;
           const lightnessShift = (parseInt(item.freqId) - 1) * 15;
-          // Calculate the new lightness
-          // const newLightness = Math.min(100, baseLightness + lightnessShift);
-          const newLightness = (baseLightness + lightnessShift) % 100;
-
-          // Construct the new color
-          const newColor = `hsl(${baseHue}, ${baseSaturation}%, ${newLightness}%)`;
-          return newColor;
+          const normalized = normalizeColorToHsl(baseColor);
+          if (!normalized) {
+            return baseColor;
+          }
+          const newLightness = (normalized.l + lightnessShift) % 100;
+          return updateLightness(baseColor, newLightness);
         });
         // console.log('seriesColors: ', seriesColors);
 
@@ -214,8 +392,11 @@ export function ResponsesWithErrorBars() {
           { label: 'Distance (km)' },  // X-axis label
         ];
         for (let idx = 0; idx < seriesNum; idx++) {
+          const datasetLabel = legendInfo[idx]?.datasetName
+            ? `${legendInfo[idx].datasetName} - `
+            : "";
           series.push({
-            label: `rcv${legendInfo[idx].RxId} - freq${legendInfo[idx].freqId}`,
+            label: `${datasetLabel}rcv${legendInfo[idx].RxId} - freq${legendInfo[idx].freqId}`,
             stroke: seriesColors[idx],
             // width: 3,
             paths: () => null,
@@ -250,11 +431,11 @@ export function ResponsesWithErrorBars() {
         for (let idx = 0; idx < seriesNum; idx++) {
           bands.push({
             series: [idx + seriesNum + 1, idx + 1],
-            fill: changeLightness(seriesColors[idx], 90),
+            fill: updateLightness(seriesColors[idx], 90),
           });
           bands.push({
             series: [idx + seriesNum * 2 + 1, idx + 1],
-            fill: changeLightness(seriesColors[idx], 90),
+            fill: updateLightness(seriesColors[idx], 90),
             dir: 1,
           });
         }
@@ -306,8 +487,11 @@ export function ResponsesWithErrorBars() {
             { label: 'Distance (km)' },  // X-axis label
           ];
           for (let idx = 0; idx < seriesNum; idx++) {
+            const datasetLabel = legendInfo[idx]?.datasetName
+              ? `${legendInfo[idx].datasetName} - `
+              : "";
             seriesWithBands.push({
-              label: `rcv${legendInfo[idx].RxId} - freq${legendInfo[idx].freqId}`,
+              label: `${datasetLabel}rcv${legendInfo[idx].RxId} - freq${legendInfo[idx].freqId}`,
               stroke: seriesColors[idx],
               dash: [10, 10],
               // paths: () => null,
@@ -543,8 +727,62 @@ export function ResponsesWithErrorBars() {
         }
       }
 
-      const [ampDataWithBand, ampDataSize, ampLegendInfo] = preparePlotData(data, 'amp');
-      const [phiDataWithBand, phiDataSize, phiLegendInfo] = preparePlotData(data, 'phi');
+      if (comparisonMode === 'sidebyside') {
+        const plots: uPlot[] = [];
+        const resizeObservers: ResizeObserver[] = [];
+
+        activeDatasets.forEach((dataset, index) => {
+          const ampEl = sideBySideAmpRefs.current[index];
+          const phiEl = sideBySidePhiRefs.current[index];
+          if (!ampEl || !phiEl) {
+            return;
+          }
+
+          const [ampDataWithBand, ampDataSize, ampLegendInfo] = preparePlotData(dataset.data, 'amp');
+          const [phiDataWithBand, phiDataSize, phiLegendInfo] = preparePlotData(dataset.data, 'phi');
+
+          const options_amp = initialPlotOptions(ampDataSize, 'amp', ampLegendInfo);
+          const options_phi = initialPlotOptions(phiDataSize, 'phi', phiLegendInfo);
+          options_amp.title = `${dataset.name} - Amplitude`;
+          options_phi.title = `${dataset.name} - Phase`;
+
+          const plotAmpInstance = new uPlot(options_amp, ampDataWithBand, ampEl);
+          const plotPhiInstance = new uPlot(options_phi, phiDataWithBand, phiEl);
+          plots.push(plotAmpInstance, plotPhiInstance);
+
+          const resizeObserverAmp = new ResizeObserver(
+            debounce(() => {
+              plotAmpInstance.setSize({
+                width: ampEl.offsetWidth,
+                height: 350,
+              });
+            }, 100)
+          );
+          const resizeObserverPhi = new ResizeObserver(
+            debounce(() => {
+              plotPhiInstance.setSize({
+                width: phiEl.offsetWidth,
+                height: 350,
+              });
+            }, 100)
+          );
+          resizeObserverAmp.observe(ampEl);
+          resizeObserverPhi.observe(phiEl);
+          resizeObservers.push(resizeObserverAmp, resizeObserverPhi);
+        });
+
+        return () => {
+          plots.forEach((plot) => plot.destroy());
+          resizeObservers.forEach((observer) => observer.disconnect());
+        };
+      }
+
+      const [ampDataWithBand, ampDataSize, ampLegendInfo] = useOverlay
+        ? preparePlotDataForDatasets(overlayDatasets, 'amp')
+        : preparePlotData(data, 'amp');
+      const [phiDataWithBand, phiDataSize, phiLegendInfo] = useOverlay
+        ? preparePlotDataForDatasets(overlayDatasets, 'phi')
+        : preparePlotData(data, 'phi');
 
       const options_amp = initialPlotOptions(ampDataSize, 'amp', ampLegendInfo);
       const options_phi = initialPlotOptions(phiDataSize, 'phi', phiLegendInfo);
@@ -590,7 +828,18 @@ export function ResponsesWithErrorBars() {
         resizeObserverPhi.disconnect();
       };
     }
-  }, [filteredData, dragEnabled, scrollEnabled, legendLiveEnabled, selectedValue, showLegend]);
+  }, [
+    activeDatasets,
+    overlayDatasets,
+    comparisonMode,
+    filteredData,
+    dragEnabled,
+    scrollEnabled,
+    legendLiveEnabled,
+    wrapPhase,
+    selectedValue,
+    showLegend,
+  ]);
 
   const handleToggleDrag = () => {
     setDragEnabled(!dragEnabled);
@@ -607,6 +856,10 @@ export function ResponsesWithErrorBars() {
 
   const handleToggleLegendShow = () => {
     setShowLegend(!showLegend);
+  }
+
+  const handleTogglePhaseWrap = () => {
+    setWrapPhase(!wrapPhase);
   }
 
   return (
@@ -652,13 +905,76 @@ export function ResponsesWithErrorBars() {
           />
           <Label htmlFor="legend-show" className='text-lg'>Show Legend</Label>
         </div>
+        <div className="flex items-center space-x-2">
+          <Switch
+            id="phase-wrap"
+            checked={wrapPhase}
+            onCheckedChange={handleTogglePhaseWrap}
+          />
+          <Label htmlFor="phase-wrap" className='text-lg'>Wrap Phase</Label>
+        </div>
       </div>
       {/* <RadioGroupDemo /> */}
       <RadioGroupExample />
-      <div className="grid grid-cols-1 xl:grid-cols-2">
-        <div id="amp-chart" className="overflow-auto" ref={ampChartRef} ></div>
-        <div id="phi-chart" className="overflow-auto" ref={phiChartRef} ></div>
-      </div>
+      {comparisonMode === 'statistical' && referenceDataset && (
+        <div className="grid gap-2 rounded-lg border p-3 text-sm">
+          <div className="font-medium">
+            Statistical summary (reference: {referenceDataset.name})
+          </div>
+          {Object.entries(statistics).length === 0 ? (
+            <div className="text-muted-foreground">No comparison datasets selected.</div>
+          ) : (
+            Object.entries(statistics).map(([datasetId, metrics]) => {
+              const datasetName = activeDatasets.find((dataset) => dataset.id === datasetId)?.name ?? datasetId;
+              return (
+                <div key={datasetId} className="flex flex-wrap gap-3">
+                  <span className="font-medium">{datasetName}</span>
+                  <span>Pairs: {metrics.count}</span>
+                  <span>RMSE: {metrics.rmse?.toFixed(4) ?? 'N/A'}</span>
+                  <span>MAE: {metrics.mae?.toFixed(4) ?? 'N/A'}</span>
+                  <span>Corr: {metrics.correlation?.toFixed(3) ?? 'N/A'}</span>
+                </div>
+              );
+            })
+          )}
+        </div>
+      )}
+      {comparisonMode === 'sidebyside' ? (
+        <div className="grid gap-6">
+          {activeDatasets.length === 0 ? (
+            <div className="text-sm text-muted-foreground">
+              No datasets selected for side-by-side comparison.
+            </div>
+          ) : (
+            activeDatasets.map((dataset, index) => (
+              <div key={dataset.id} className="grid gap-2">
+                <div className="text-sm font-medium">{dataset.name}</div>
+                <div className="grid grid-cols-1 xl:grid-cols-2 gap-2">
+                  <div
+                    id={`amp-chart-${dataset.id}`}
+                    className="overflow-auto"
+                    ref={(el) => {
+                      sideBySideAmpRefs.current[index] = el;
+                    }}
+                  />
+                  <div
+                    id={`phi-chart-${dataset.id}`}
+                    className="overflow-auto"
+                    ref={(el) => {
+                      sideBySidePhiRefs.current[index] = el;
+                    }}
+                  />
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 xl:grid-cols-2">
+          <div id="amp-chart" className="overflow-auto" ref={ampChartRef} ></div>
+          <div id="phi-chart" className="overflow-auto" ref={phiChartRef} ></div>
+        </div>
+      )}
     </div>
 
   )

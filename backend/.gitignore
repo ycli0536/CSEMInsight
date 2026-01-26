@@ -3,11 +3,30 @@
 
 # Jupyter Notebook Cache
 __pycache__/
+*.py[cod]
 
 # Jupyter Notebook Metadata
 *.ipynb_metadata.json
+
+# Python tooling caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Python envs
+.venv/
+venv/
+
+# OS
+.DS_Store
+
+# Logs
+*.log
 
 # Pyinstaller
 dist/
 build/
 *.spec
+
+# test files
+test_data/

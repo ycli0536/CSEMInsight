@@ -15,6 +15,7 @@ interface UPlotState {
     dragEnabled: boolean;
     scrollEnabled: boolean;
     legendLiveEnabled: boolean;
+    wrapPhase: boolean;
     showErrorBars: boolean;
     showHighLowBands: boolean;
     showNoErrorBars: boolean;
@@ -22,6 +23,7 @@ interface UPlotState {
     setDragEnabled: (dragEnabled: boolean) => void;
     setScrollEnabled: (scrollEnabled: boolean) => void;
     setlegendLiveEnabled: (legendLiveEnabled: boolean) => void;
+    setWrapPhase: (wrapPhase: boolean) => void;
     setShowErrorBars: (showErrorBars: boolean) => void;
     setShowHighLowBands: (showHighLowBands: boolean) => void;
     setShowNoErrorBars: (showNoErrorBars: boolean) => void;
@@ -33,6 +35,7 @@ export const useUPlotStore = create<UPlotState>((set) => ({
     dragEnabled: false,
     scrollEnabled: false,
     legendLiveEnabled: false,
+    wrapPhase: true,
     showErrorBars: true,
     showHighLowBands: false,
     showNoErrorBars: false,
@@ -40,6 +43,7 @@ export const useUPlotStore = create<UPlotState>((set) => ({
     setDragEnabled: (dragEnabled: boolean) => set({ dragEnabled }),
     setScrollEnabled: (scrollEnabled: boolean) => set({ scrollEnabled }),
     setlegendLiveEnabled: (legendLiveEnabled: boolean) => set({ legendLiveEnabled }),
+    setWrapPhase: (wrapPhase: boolean) => set({ wrapPhase }),
     setShowErrorBars: (showErrorBars: boolean) => set({ showErrorBars }),
     setShowHighLowBands: (showHighLowBands: boolean) => set({ showHighLowBands }),
     setShowNoErrorBars: (showNoErrorBars: boolean) => set({ showNoErrorBars }),

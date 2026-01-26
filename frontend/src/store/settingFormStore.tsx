@@ -132,6 +132,21 @@ export interface GeometryData {
   Strike: number;
 }
 
+export type ComparisonMode = 'overlay' | 'sidebyside' | 'difference' | 'statistical';
+
+export interface Dataset {
+  id: string;
+  name: string;
+  data: CsemData[];
+  txData: TxData[];
+  rxData: RxData[];
+  geometryInfo: GeometryData;
+  dataBlocks: [];
+  color: string;
+  visible: boolean;
+  uploadTime: Date;
+}
+
 type DataTableStore = {
   data: CsemData[];
   txData: TxData[];
@@ -149,6 +164,9 @@ type DataTableStore = {
   geometryInfo: GeometryData;
   filterModel: FilterModel | null,
   isTxDepthAdjusted: boolean; // Track if Tx depths have been adjusted
+  datasets: Map<string, Dataset>;
+  activeDatasetIds: string[];
+  comparisonMode: ComparisonMode;
   setData: (data: CsemData[]) => void;
   setTxData: (txData: TxData[]) => void;
   setRxData: (rxData: RxData[]) => void;
@@ -165,6 +183,12 @@ type DataTableStore = {
   setFilterModel: (newFilterModel: FilterModel | null) => void;
   setSubDatasets: (newSubDatasets: []) => void;
   setIsTxDepthAdjusted: (adjusted: boolean) => void;
+  addDataset: (dataset: Dataset) => void;
+  updateDataset: (id: string, updates: Partial<Dataset>) => void;
+  removeDataset: (id: string) => void;
+  toggleDatasetVisibility: (id: string) => void;
+  setActiveDatasets: (ids: string[]) => void;
+  setComparisonMode: (mode: ComparisonMode) => void;
 }
 
 type Inv2DStore = {
@@ -383,6 +407,9 @@ export const useDataTableStore = create<DataTableStore>()((set) => ({
   filterModel: null,
   geometryInfo: { UTM_zone: 0, Hemisphere: "N", North: 0, East: 0, Strike: 0 },
   isTxDepthAdjusted: false,
+  datasets: new Map(),
+  activeDatasetIds: [],
+  comparisonMode: 'overlay',
   setData: (data) => set({ data: data }),
   setTxData: (txData) => set({ txData: txData }),
   setRxData: (rxData) => set({ rxData: rxData }),
@@ -399,6 +426,50 @@ export const useDataTableStore = create<DataTableStore>()((set) => ({
   setSubDatasets: (newSubDatasets) => set({ subDatasets: newSubDatasets }),
   setGeometryInfo: (newGeometryInfo) => set({ geometryInfo: newGeometryInfo }),
   setIsTxDepthAdjusted: (adjusted) => set({ isTxDepthAdjusted: adjusted }),
+  addDataset: (dataset) => set((state) => {
+    const datasets = new Map(state.datasets);
+    datasets.set(dataset.id, dataset);
+    return {
+      datasets,
+      activeDatasetIds: state.activeDatasetIds.includes(dataset.id)
+        ? state.activeDatasetIds
+        : [...state.activeDatasetIds, dataset.id],
+    };
+  }),
+  updateDataset: (id, updates) => set((state) => {
+    if (!state.datasets.has(id)) {
+      return state;
+    }
+    const datasets = new Map(state.datasets);
+    const current = datasets.get(id);
+    if (!current) {
+      return state;
+    }
+    datasets.set(id, { ...current, ...updates });
+    return { datasets };
+  }),
+  removeDataset: (id) => set((state) => {
+    const datasets = new Map(state.datasets);
+    datasets.delete(id);
+    return {
+      datasets,
+      activeDatasetIds: state.activeDatasetIds.filter((datasetId) => datasetId !== id),
+    };
+  }),
+  toggleDatasetVisibility: (id) => set((state) => {
+    if (!state.datasets.has(id)) {
+      return state;
+    }
+    const datasets = new Map(state.datasets);
+    const current = datasets.get(id);
+    if (!current) {
+      return state;
+    }
+    datasets.set(id, { ...current, visible: !current.visible });
+    return { datasets };
+  }),
+  setActiveDatasets: (ids) => set({ activeDatasetIds: ids }),
+  setComparisonMode: (mode) => set({ comparisonMode: mode }),
 }));
 
 export const useSettingFormStore = create<SettingFormState>()((set) => ({

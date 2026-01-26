@@ -2,7 +2,7 @@ import axios from 'axios';
 import { Button, FileTrigger, DropZone } from "react-aria-components";
 import type { FileDropItem } from "react-aria";
 
-import { useDataTableStore, 
+import { useDataTableStore,
          useSettingFormStore,
          useInv2DStore,
          CsemData,
@@ -10,35 +10,84 @@ import { useDataTableStore,
          xyzData } from '@/store/settingFormStore';
 import { useAlertDialog } from '@/hooks/useAlertDialog';
 import { CustomAlertDialog } from '@/components/custom/CustomAlertDialog';
+import { getTxRxData } from '@/utils/extractTxRxPlotData';
 
 export function InputFile() {
-    const { setData, setTableData, setGeometryInfo, setDataBlocks, setIsTxDepthAdjusted } = useDataTableStore();
+    const {
+        datasets,
+        addDataset,
+        setData,
+        setTableData,
+        setFilteredData,
+        setGeometryInfo,
+        setDataBlocks,
+        setIsTxDepthAdjusted,
+    } = useDataTableStore();
     const { setInvResult } = useInv2DStore();
     const { dataFiles, modelFiles, setDataFiles, setModelFiles } = useSettingFormStore();
     const { alertState, showAlert, hideAlert, handleConfirm } = useAlertDialog();
 
+    const datasetColors = [
+        '#2563eb',
+        '#dc2626',
+        '#16a34a',
+        '#9333ea',
+        '#d97706',
+        '#0891b2',
+        '#7c3aed',
+        '#0f766e',
+    ];
+
     const readData = (files: File[]) => {
         const formData = new FormData();
-        files.forEach((file, index) => {
-            formData.append(`file${index}`, file);
+        files.forEach((file) => {
+            formData.append('files', file);
         });
 
-        axios.post('http://127.0.0.1:3354/api/upload-data', formData)
+        axios.post('http://127.0.0.1:3354/api/upload-multiple-data', formData)
         .then(response => {
             console.log('response.json: ', response)
-            const geometryData: GeometryData = response.data[0];
-            const responseData: CsemData[] = JSON.parse(response.data[1]).data;
-            const dataBlocks = response.data[2];
-            console.log('responseData', responseData)
-            setData(responseData);
-            setTableData(responseData);
-            setDataBlocks(dataBlocks);
-            setGeometryInfo(geometryData);
-            // Reset Tx depth adjustment state when loading new data
-            setIsTxDepthAdjusted(false);
+            const datasetsResponse = response.data as {
+                id: string;
+                name: string;
+                geometryInfo: GeometryData;
+                data: string;
+                dataBlocks: [];
+            }[];
+
+            const parsedDatasets = datasetsResponse.map((dataset, index) => {
+                const responseData: CsemData[] = JSON.parse(dataset.data).data;
+                const { TxData, RxData } = getTxRxData(responseData);
+                return {
+                    id: dataset.id,
+                    name: dataset.name,
+                    data: responseData,
+                    txData: TxData,
+                    rxData: RxData,
+                    geometryInfo: dataset.geometryInfo,
+                    dataBlocks: dataset.dataBlocks,
+                    color: datasetColors[(datasets.size + index) % datasetColors.length],
+                    visible: true,
+                    uploadTime: new Date(),
+                };
+            });
+
+            parsedDatasets.forEach((dataset) => addDataset(dataset));
+
+            const referenceDataset = parsedDatasets[0];
+            if (referenceDataset) {
+                setData(referenceDataset.data);
+                setTableData(referenceDataset.data);
+                setFilteredData(referenceDataset.data);
+                setDataBlocks(referenceDataset.dataBlocks);
+                setGeometryInfo(referenceDataset.geometryInfo);
+                // Reset Tx depth adjustment state when loading new data
+                setIsTxDepthAdjusted(false);
+            }
+
             showAlert(
                 'Data Upload Successful',
-                'CSEM data uploaded and processed successfully!',
+                'CSEM data uploaded and processed successfully! (only can show reciprocity applied data correctly for now)',
                 'success'
             );
         })
@@ -69,7 +118,7 @@ return (
         }}
         >
         <FileTrigger
-            // allowsMultiple
+            allowsMultiple
             acceptedFileTypes={[".data", ".emdata"]}
             onSelect={(e) => {
                 if (e) {

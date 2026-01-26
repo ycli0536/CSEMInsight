@@ -11,6 +11,8 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { InputFile } from "@/components/custom/InputFile";
 import { Combobox } from "@/components/custom/Combobox";
 import { DataTableCtrl } from "@/components/custom/DataTableCtrl";
+import { DatasetManager } from "@/components/custom/DatasetManager";
+import { SampleDataLoader } from "@/components/custom/SampleDataLoader";
 import { useSettingFormStore} from '@/store/settingFormStore';
 
 
@@ -24,6 +26,13 @@ export function SettingForm() {
             Input
           </legend>
           <InputFile />
+        </fieldset>
+        <fieldset className="grid gap-6 rounded-lg border p-4">
+          <legend className="-ml-1 px-1 text-base font-medium">
+            Datasets
+          </legend>
+          <DatasetManager />
+          <SampleDataLoader />
         </fieldset>
         <fieldset className="grid gap-6 rounded-lg border p-4">
           <legend className="-ml-1 px-1 text-base font-medium">

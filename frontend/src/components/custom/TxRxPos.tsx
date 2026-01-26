@@ -1,7 +1,7 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import uPlot from 'uplot';
 import 'uplot/dist/uPlot.min.css';
-import { useDataTableStore, TxData, RxData, useBathymetryStore } from '@/store/settingFormStore';
+import { useDataTableStore, TxData, RxData, Dataset, useBathymetryStore } from '@/store/settingFormStore';
 import { wheelZoomPlugin } from '@/components/custom/uplot-wheel-zoom-plugin';
 import { getTxRxData } from '@/utils/extractTxRxPlotData';
 
@@ -13,12 +13,182 @@ declare module "uplot" {
 
 export function TxRxPosPlot() {
     const XYChartRef = useRef<HTMLDivElement>(null);
-    const { data, txData, originalTxData, isTxDepthAdjusted } = useDataTableStore();
+    const { data, txData, originalTxData, isTxDepthAdjusted, datasets, activeDatasetIds, comparisonMode } = useDataTableStore();
     const { setTxData, setRxData, setOriginalTxData } = useDataTableStore();
     const { bathymetryData } = useBathymetryStore();
 
+    const activeDatasets = useMemo(() => {
+        return activeDatasetIds
+          .map((id) => datasets.get(id))
+          .filter((dataset): dataset is Dataset => Boolean(dataset && dataset.visible));
+    }, [activeDatasetIds, datasets]);
+
     useEffect(() => {
-        if (XYChartRef.current && data.length > 0) {
+        const useOverlay = comparisonMode === 'overlay' && activeDatasets.length > 0;
+        if (!XYChartRef.current) {
+            return;
+        }
+
+        if (useOverlay) {
+            const xySeriesData: Float64Array[][] = [];
+            const yzSeriesData: Float64Array[][] = [];
+            const xySeries: uPlot.Series[] = [{ label: "Inline distance (m)" }];
+            const yzSeries: uPlot.Series[] = [{ label: "Inline distance (m)" }];
+
+            activeDatasets.forEach((dataset) => {
+                const { TxData, RxData } = dataset.txData.length && dataset.rxData.length
+                    ? { TxData: dataset.txData, RxData: dataset.rxData }
+                    : getTxRxData(dataset.data);
+
+                if (TxData.length > 0) {
+                    xySeriesData.push([
+                        new Float64Array(TxData.map((item) => item.Y_tx)),
+                        new Float64Array(TxData.map((item) => item.X_tx)),
+                    ]);
+                    xySeries.push({
+                        label: `${dataset.name} Tx`,
+                        stroke: dataset.color,
+                        paths: () => null,
+                        points: { show: true, size: 8, width: 2, space: 0 },
+                    });
+
+                    yzSeriesData.push([
+                        new Float64Array(TxData.map((item) => item.Y_tx)),
+                        new Float64Array(TxData.map((item) => item.Z_tx)),
+                    ]);
+                    yzSeries.push({
+                        label: `${dataset.name} Tx`,
+                        stroke: dataset.color,
+                        paths: () => null,
+                        points: { show: true, size: 8, width: 2, space: 0 },
+                    });
+                }
+
+                if (RxData.length > 0) {
+                    xySeriesData.push([
+                        new Float64Array(RxData.map((item) => item.Y_rx)),
+                        new Float64Array(RxData.map((item) => item.X_rx)),
+                    ]);
+                    xySeries.push({
+                        label: `${dataset.name} Rx`,
+                        stroke: dataset.color,
+                        points: { show: true, size: 4, space: 0 },
+                    });
+
+                    yzSeriesData.push([
+                        new Float64Array(RxData.map((item) => item.Y_rx)),
+                        new Float64Array(RxData.map((item) => item.Z_rx)),
+                    ]);
+                    yzSeries.push({
+                        label: `${dataset.name} Rx`,
+                        stroke: dataset.color,
+                        points: { show: true, size: 4, space: 0 },
+                    });
+                }
+            });
+
+            const options_xy: uPlot.Options = {
+                mode: 1,
+                width: 900,
+                height: 300,
+                title: 'Tx and Rx positions (overlay)',
+                series: xySeries,
+                scales: {
+                    x: { time: false },
+                    y: { time: false },
+                },
+                cursor: {
+                    show: true,
+                    drag: { x: true, y: true, uni: 1, dist: 30 },
+                    sync: {
+                        key: 'txrx',
+                        scales: ["x", null],
+                    },
+                },
+                plugins: [
+                    wheelZoomPlugin({
+                        factor: 0.9,
+                        drag: true,
+                        scroll: true,
+                    }),
+                ],
+                axes: [
+                    {
+                        labelFont: 'bold 20px Helvetica',
+                        stroke: 'black',
+                        grid: { stroke: 'black', show: true, dash: [2, 2] },
+                        ticks: { stroke: 'black', show: true, dash: [] },
+                    },
+                    {
+                        label: 'Crossline (X) distance (m)',
+                        labelFont: 'bold 20px Helvetica',
+                        stroke: 'black',
+                        grid: { stroke: 'black', show: true, dash: [2, 2] },
+                        ticks: { stroke: 'black', show: true, dash: [], size: 10 },
+                    },
+                ],
+                legend: {
+                    show: true,
+                },
+            };
+
+            const options_yz: uPlot.Options = {
+                mode: 1,
+                width: 900,
+                height: 400,
+                title: 'Depth profile (overlay)',
+                series: yzSeries,
+                scales: {
+                    x: { time: false },
+                    y: { time: false, dir: -1 },
+                },
+                cursor: {
+                    show: true,
+                    drag: { x: true, y: true, uni: 1, dist: 30 },
+                    sync: {
+                        key: 'txrx',
+                        scales: ["x", null],
+                    },
+                },
+                plugins: [
+                    wheelZoomPlugin({
+                        factor: 0.9,
+                        drag: true,
+                        scroll: true,
+                    }),
+                ],
+                axes: [
+                    {
+                        label: 'Inline (Y) distance (m)',
+                        labelFont: 'bold 20px Helvetica',
+                        stroke: 'black',
+                        size: 40,
+                        grid: { stroke: 'black', show: true, dash: [2, 2] },
+                        ticks: { stroke: 'black', show: true, dash: [] },
+                    },
+                    {
+                        label: 'Depth (m)',
+                        labelFont: 'bold 20px Helvetica',
+                        stroke: 'black',
+                        grid: { stroke: 'black', show: true, dash: [2, 2] },
+                        ticks: { stroke: 'black', show: true, dash: [], size: 10 },
+                    },
+                ],
+                legend: {
+                    show: true,
+                },
+            };
+
+            const plotTxRx1Instance = new uPlot(options_xy, uPlot.join(xySeriesData), XYChartRef.current!);
+            const plotTxRx2Instance = new uPlot(options_yz, uPlot.join(yzSeriesData), XYChartRef.current!);
+
+            return () => {
+                plotTxRx1Instance.destroy();
+                plotTxRx2Instance.destroy();
+            };
+        }
+
+        if (data.length > 0) {
 
             // Extract fresh data from raw CSEM data
             const {TxData: freshTxData, RxData} = getTxRxData(data);
@@ -463,7 +633,17 @@ export function TxRxPosPlot() {
                 plotTxRx2Instance.destroy();
             };
         }
-    }, [data, setRxData, setTxData, setOriginalTxData, bathymetryData, isTxDepthAdjusted, originalTxData]);
+    }, [
+        data,
+        setRxData,
+        setTxData,
+        setOriginalTxData,
+        bathymetryData,
+        isTxDepthAdjusted,
+        originalTxData,
+        activeDatasets,
+        comparisonMode,
+    ]);
 
     return (
         <div ref={XYChartRef} className="overflow-auto"></div>

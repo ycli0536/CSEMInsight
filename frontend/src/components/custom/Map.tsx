@@ -1,8 +1,9 @@
-import { useEffect, useRef, useState, useMemo } from 'react';
+import { useEffect, useRef, useState, useMemo, Fragment } from 'react';
 import { MapContainer, TileLayer, CircleMarker, Popup, useMap } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
-import { useDataTableStore } from '@/store/settingFormStore';
+import { Dataset, useDataTableStore } from '@/store/settingFormStore';
 import { Label } from '@/components/ui/label';
+import { getTxRxData } from '@/utils/extractTxRxPlotData';
 
 // Map layer types
 type MapLayerType = 'satellite' | 'bathymetry-ocean' | 'bathymetry-reference' | 'topographic' | 'osm-standard' | 'carto-dark';
@@ -37,28 +38,63 @@ const mapLayers = {
 
 const MapComponent = () => {
     const MapViewRef = useRef<HTMLDivElement>(null);
-    const { geometryInfo, txData, rxData } = useDataTableStore();
+    const { geometryInfo, txData, rxData, datasets, activeDatasetIds, comparisonMode } = useDataTableStore();
 
     const [txLoc, setTxLoc] = useState<[number, number][]>([]);
     const [rxLoc, setRxLoc] = useState<[number, number][]>([]);
     const [txSite, setTxSite] = useState<string[]>([]);
     const [currentLayer, setCurrentLayer] = useState<MapLayerType>('satellite');
 
+    const activeDatasets = useMemo(() => {
+        return activeDatasetIds
+            .map((id) => datasets.get(id))
+            .filter((dataset): dataset is Dataset => Boolean(dataset && dataset.visible));
+    }, [activeDatasetIds, datasets]);
+
+    const useOverlay = comparisonMode === 'overlay' && activeDatasets.length > 0;
+
+    const overlayMarkers = useMemo(() => {
+        if (!useOverlay) {
+            return [];
+        }
+        return activeDatasets.map((dataset) => {
+            const { TxData, RxData } = dataset.txData.length && dataset.rxData.length
+                ? { TxData: dataset.txData, RxData: dataset.rxData }
+                : getTxRxData(dataset.data);
+
+            return {
+                dataset,
+                txLoc: TxData.map((tx) => [tx.Lat_tx, tx.Lon_tx] as [number, number]),
+                rxLoc: RxData.map((rx) => [rx.Lat_rx, rx.Lon_rx] as [number, number]),
+                txSite: TxData.map((tx) => tx.Name_tx),
+            };
+        });
+    }, [activeDatasets, useOverlay]);
+
     useEffect(() => {
+        if (useOverlay) {
+            return;
+        }
         const newTxLoc: [number, number][] = txData.map((tx) => [tx.Lat_tx, tx.Lon_tx] as [number, number]);
         const newRxLoc: [number, number][] = rxData.map((rx) => [rx.Lat_rx, rx.Lon_rx] as [number, number]);
         const newTxSite = txData.map((tx) => tx.Name_tx);
         setRxLoc(newRxLoc);
         setTxLoc(newTxLoc);
         setTxSite(newTxSite);
-    }, [txData, rxData]);
+    }, [txData, rxData, useOverlay]);
 
     const txPosition = useMemo(() => {
         const defaultPosition: [number, number] = [0, 0];
+        if (useOverlay) {
+            const first = overlayMarkers[0]?.txLoc ?? [];
+            return first.length > 0
+                ? [first[Math.floor(first.length / 2)][0], first[Math.floor(first.length / 2)][1]] as [number, number]
+                : defaultPosition;
+        }
         return txLoc.length > 0 
             ? [txLoc[Math.floor(txLoc.length / 2)][0], txLoc[Math.floor(txLoc.length / 2)][1]] as [number, number]
             : defaultPosition;
-    }, [txLoc]);
+    }, [txLoc, useOverlay, overlayMarkers]);
 
     return (
         <div className="grid gap-2">
@@ -93,20 +129,56 @@ const MapComponent = () => {
                         attribution={mapLayers[currentLayer].attribution}
                     />
                     <MapUpdater position={txPosition} />
-                    {rxLoc.length > 0 && rxLoc.map((loc, index) => (
-                        <CircleMarker key={index} center={loc} radius={0.5} color="blue" fillOpacity={0.5}>
-                            <Popup>
-                                Rx Location: {loc[0].toFixed(2)}, {loc[1].toFixed(2)}
-                            </Popup>
-                        </CircleMarker>
-                    ))}
-                    {txLoc.length > 0 && txLoc.map((loc, index) => (
-                        <CircleMarker key={index} center={loc} radius={2} color="red" fillColor="red" fillOpacity={1}>
-                            <Popup>
-                                Tx Site: {txSite[index]}, Tx Location: {loc[0].toFixed(2)}, {loc[1].toFixed(2)}
-                            </Popup>
-                        </CircleMarker>
-                    ))}
+                    {useOverlay ? (
+                        overlayMarkers.map((group) => (
+                            <Fragment key={group.dataset.id}>
+                                {group.rxLoc.map((loc, index) => (
+                                    <CircleMarker
+                                        key={`${group.dataset.id}-rx-${index}`}
+                                        center={loc}
+                                        radius={0.5}
+                                        color={group.dataset.color}
+                                        fillOpacity={0.5}
+                                    >
+                                        <Popup>
+                                            {group.dataset.name} Rx Location: {loc[0].toFixed(2)}, {loc[1].toFixed(2)}
+                                        </Popup>
+                                    </CircleMarker>
+                                ))}
+                                {group.txLoc.map((loc, index) => (
+                                    <CircleMarker
+                                        key={`${group.dataset.id}-tx-${index}`}
+                                        center={loc}
+                                        radius={2}
+                                        color={group.dataset.color}
+                                        fillColor={group.dataset.color}
+                                        fillOpacity={1}
+                                    >
+                                        <Popup>
+                                            {group.dataset.name} Tx Site: {group.txSite[index]}, Tx Location: {loc[0].toFixed(2)}, {loc[1].toFixed(2)}
+                                        </Popup>
+                                    </CircleMarker>
+                                ))}
+                            </Fragment>
+                        ))
+                    ) : (
+                        <>
+                            {rxLoc.length > 0 && rxLoc.map((loc, index) => (
+                                <CircleMarker key={index} center={loc} radius={0.5} color="blue" fillOpacity={0.5}>
+                                    <Popup>
+                                        Rx Location: {loc[0].toFixed(2)}, {loc[1].toFixed(2)}
+                                    </Popup>
+                                </CircleMarker>
+                            ))}
+                            {txLoc.length > 0 && txLoc.map((loc, index) => (
+                                <CircleMarker key={index} center={loc} radius={2} color="red" fillColor="red" fillOpacity={1}>
+                                    <Popup>
+                                        Tx Site: {txSite[index]}, Tx Location: {loc[0].toFixed(2)}, {loc[1].toFixed(2)}
+                                    </Popup>
+                                </CircleMarker>
+                            ))}
+                        </>
+                    )}
                 </MapContainer>
             </div>
         </div>
