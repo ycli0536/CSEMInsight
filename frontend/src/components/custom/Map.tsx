@@ -52,6 +52,7 @@ const MapComponent = () => {
     }, [activeDatasetIds, datasets]);
 
     const useOverlay = comparisonMode === 'overlay' && activeDatasets.length > 0;
+    const useDefaultColors = activeDatasets.length === 1;
 
     const overlayMarkers = useMemo(() => {
         if (!useOverlay) {
@@ -64,12 +65,14 @@ const MapComponent = () => {
 
             return {
                 dataset,
+                txColor: useDefaultColors ? 'red' : dataset.color,
+                rxColor: useDefaultColors ? 'blue' : dataset.color,
                 txLoc: TxData.map((tx) => [tx.Lat_tx, tx.Lon_tx] as [number, number]),
                 rxLoc: RxData.map((rx) => [rx.Lat_rx, rx.Lon_rx] as [number, number]),
                 txSite: TxData.map((tx) => tx.Name_tx),
             };
         });
-    }, [activeDatasets, useOverlay]);
+    }, [activeDatasets, useDefaultColors, useOverlay]);
 
     useEffect(() => {
         if (useOverlay) {
@@ -137,7 +140,7 @@ const MapComponent = () => {
                                         key={`${group.dataset.id}-rx-${index}`}
                                         center={loc}
                                         radius={0.5}
-                                        color={group.dataset.color}
+                                        color={group.rxColor}
                                         fillOpacity={0.5}
                                     >
                                         <Popup>
@@ -150,8 +153,8 @@ const MapComponent = () => {
                                         key={`${group.dataset.id}-tx-${index}`}
                                         center={loc}
                                         radius={2}
-                                        color={group.dataset.color}
-                                        fillColor={group.dataset.color}
+                                        color={group.txColor}
+                                        fillColor={group.txColor}
                                         fillOpacity={1}
                                     >
                                         <Popup>

@@ -25,6 +25,7 @@ export function TxRxPosPlot() {
 
     useEffect(() => {
         const useOverlay = comparisonMode === 'overlay' && activeDatasets.length > 0;
+        const useDefaultColors = activeDatasets.length === 1;
         if (!XYChartRef.current) {
             return;
         }
@@ -39,6 +40,8 @@ export function TxRxPosPlot() {
                 const { TxData, RxData } = dataset.txData.length && dataset.rxData.length
                     ? { TxData: dataset.txData, RxData: dataset.rxData }
                     : getTxRxData(dataset.data);
+                const txColor = useDefaultColors ? 'red' : dataset.color;
+                const rxColor = useDefaultColors ? 'blue' : dataset.color;
 
                 if (TxData.length > 0) {
                     xySeriesData.push([
@@ -47,7 +50,7 @@ export function TxRxPosPlot() {
                     ]);
                     xySeries.push({
                         label: `${dataset.name} Tx`,
-                        stroke: dataset.color,
+                        stroke: txColor,
                         paths: () => null,
                         points: { show: true, size: 8, width: 2, space: 0 },
                     });
@@ -58,7 +61,7 @@ export function TxRxPosPlot() {
                     ]);
                     yzSeries.push({
                         label: `${dataset.name} Tx`,
-                        stroke: dataset.color,
+                        stroke: txColor,
                         paths: () => null,
                         points: { show: true, size: 8, width: 2, space: 0 },
                     });
@@ -71,7 +74,7 @@ export function TxRxPosPlot() {
                     ]);
                     xySeries.push({
                         label: `${dataset.name} Rx`,
-                        stroke: dataset.color,
+                        stroke: rxColor,
                         points: { show: true, size: 4, space: 0 },
                     });
 
@@ -81,7 +84,7 @@ export function TxRxPosPlot() {
                     ]);
                     yzSeries.push({
                         label: `${dataset.name} Rx`,
-                        stroke: dataset.color,
+                        stroke: rxColor,
                         points: { show: true, size: 4, space: 0 },
                     });
                 }

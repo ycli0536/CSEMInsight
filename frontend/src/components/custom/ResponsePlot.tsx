@@ -348,9 +348,7 @@ export function ResponsesWithErrorBars() {
         comparisonMode === 'statistical') &&
       overlayDatasets.length > 0;
 
-    if (ampChartRef.current && phiChartRef.current && (data.length > 0 || useOverlay)) {
-
-      const initialPlotOptions = (seriesNum: number, type: string, legendInfo: LegendInfo[]): uPlot.Options => {
+    const initialPlotOptions = (seriesNum: number, type: string, legendInfo: LegendInfo[]): uPlot.Options => {
         // Define colors and labels for each dataset
         // console.log('seriesNum: ', seriesNum);
         // console.log('legendInfo: ', legendInfo);
@@ -373,10 +371,15 @@ export function ResponsesWithErrorBars() {
         // }
         // if RxId is the same, for different freqId, use the monochromatic colors centered at 50% of corresponding basicColor based on freqId
 
+        const datasetIds = legendInfo
+          .map((item) => item.datasetId)
+          .filter((id): id is string => Boolean(id));
+        const useDefaultColors = new Set(datasetIds).size <= 1;
+
         const seriesColors = legendInfo.map((item, idx) => {
           const fallbackColor =
             basicColors[Math.abs(item.RxId - (legendInfo[0]?.RxId ?? 0)) % basicColors.length];
-          const baseColor = item.datasetColor ?? fallbackColor;
+          const baseColor = useDefaultColors ? fallbackColor : (item.datasetColor ?? fallbackColor);
           const lightnessShift = (parseInt(item.freqId) - 1) * 15;
           const normalized = normalizeColorToHsl(baseColor);
           if (!normalized) {
@@ -704,7 +707,8 @@ export function ResponsesWithErrorBars() {
             scales: { 
               x: { 
                 time: false,
-                auto: true,},
+                auto: true,
+              },
               y: { 
                 auto: true,
                 range: (u, min, max) => {
@@ -720,62 +724,68 @@ export function ResponsesWithErrorBars() {
                   return [Math.floor(minV), Math.ceil(maxV)];
                 }
               },
-              
-            }
-        }
-        return options;
+            },
+          };
+          return options;
         }
       }
 
-      if (comparisonMode === 'sidebyside') {
-        const plots: uPlot[] = [];
-        const resizeObservers: ResizeObserver[] = [];
-
-        activeDatasets.forEach((dataset, index) => {
-          const ampEl = sideBySideAmpRefs.current[index];
-          const phiEl = sideBySidePhiRefs.current[index];
-          if (!ampEl || !phiEl) {
-            return;
-          }
-
-          const [ampDataWithBand, ampDataSize, ampLegendInfo] = preparePlotData(dataset.data, 'amp');
-          const [phiDataWithBand, phiDataSize, phiLegendInfo] = preparePlotData(dataset.data, 'phi');
-
-          const options_amp = initialPlotOptions(ampDataSize, 'amp', ampLegendInfo);
-          const options_phi = initialPlotOptions(phiDataSize, 'phi', phiLegendInfo);
-          options_amp.title = `${dataset.name} - Amplitude`;
-          options_phi.title = `${dataset.name} - Phase`;
-
-          const plotAmpInstance = new uPlot(options_amp, ampDataWithBand, ampEl);
-          const plotPhiInstance = new uPlot(options_phi, phiDataWithBand, phiEl);
-          plots.push(plotAmpInstance, plotPhiInstance);
-
-          const resizeObserverAmp = new ResizeObserver(
-            debounce(() => {
-              plotAmpInstance.setSize({
-                width: ampEl.offsetWidth,
-                height: 350,
-              });
-            }, 100)
-          );
-          const resizeObserverPhi = new ResizeObserver(
-            debounce(() => {
-              plotPhiInstance.setSize({
-                width: phiEl.offsetWidth,
-                height: 350,
-              });
-            }, 100)
-          );
-          resizeObserverAmp.observe(ampEl);
-          resizeObserverPhi.observe(phiEl);
-          resizeObservers.push(resizeObserverAmp, resizeObserverPhi);
-        });
-
-        return () => {
-          plots.forEach((plot) => plot.destroy());
-          resizeObservers.forEach((observer) => observer.disconnect());
-        };
+    if (comparisonMode === 'sidebyside') {
+      if (activeDatasets.length === 0) {
+        return;
       }
+      const plots: uPlot[] = [];
+      const resizeObservers: ResizeObserver[] = [];
+
+      activeDatasets.forEach((dataset, index) => {
+        const ampEl = sideBySideAmpRefs.current[index];
+        const phiEl = sideBySidePhiRefs.current[index];
+        if (!ampEl || !phiEl) {
+          return;
+        }
+
+        const [ampDataWithBand, ampDataSize, ampLegendInfo] = preparePlotData(dataset.data, 'amp');
+        const [phiDataWithBand, phiDataSize, phiLegendInfo] = preparePlotData(dataset.data, 'phi');
+
+        const options_amp = initialPlotOptions(ampDataSize, 'amp', ampLegendInfo);
+        const options_phi = initialPlotOptions(phiDataSize, 'phi', phiLegendInfo);
+        options_amp.title = `${dataset.name} - Amplitude`;
+        options_phi.title = `${dataset.name} - Phase`;
+
+        const plotAmpInstance = new uPlot(options_amp, ampDataWithBand, ampEl);
+        const plotPhiInstance = new uPlot(options_phi, phiDataWithBand, phiEl);
+        plots.push(plotAmpInstance, plotPhiInstance);
+
+        const resizeObserverAmp = new ResizeObserver(
+          debounce(() => {
+            plotAmpInstance.setSize({
+              width: ampEl.offsetWidth,
+              height: 350,
+            });
+          }, 100)
+        );
+        const resizeObserverPhi = new ResizeObserver(
+          debounce(() => {
+            plotPhiInstance.setSize({
+              width: phiEl.offsetWidth,
+              height: 350,
+            });
+          }, 100)
+        );
+        resizeObserverAmp.observe(ampEl);
+        resizeObserverPhi.observe(phiEl);
+        resizeObservers.push(resizeObserverAmp, resizeObserverPhi);
+      });
+
+      return () => {
+        plots.forEach((plot) => plot.destroy());
+        resizeObservers.forEach((observer) => observer.disconnect());
+      };
+    }
+
+    if (!ampChartRef.current || !phiChartRef.current || (data.length === 0 && !useOverlay)) {
+      return;
+    }
 
       const [ampDataWithBand, ampDataSize, ampLegendInfo] = useOverlay
         ? preparePlotDataForDatasets(overlayDatasets, 'amp')
@@ -827,7 +837,6 @@ export function ResponsesWithErrorBars() {
         resizeObserverAmp.disconnect();
         resizeObserverPhi.disconnect();
       };
-    }
   }, [
     activeDatasets,
     overlayDatasets,
