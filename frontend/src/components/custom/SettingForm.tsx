@@ -17,7 +17,7 @@ import { useSettingFormStore} from '@/store/settingFormStore';
 
 
 export function SettingForm() {
-    const { showData, showModel, showResiduals, setShowData, setShowModel, setShowResiduals } = useSettingFormStore();
+    const { showData, setShowData } = useSettingFormStore();
 
     return (
       <form className="sticky w-full items-start gap-6 overflow-auto p-4 pt-0">
@@ -53,24 +53,6 @@ export function SettingForm() {
                         className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
                 Data
                 </label>
-              </div>
-              <div className="items-center space-x-2">
-                <Checkbox id="model" checked={showModel} onCheckedChange={(checked) => {
-                    setShowModel(checked as boolean)}} />
-                <label htmlFor="model"
-                        className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
-                Model
-                </label>
-              </div>
-              <div className="items-center space-x-2">
-                <Checkbox id="residuals" checked={showResiduals} onCheckedChange={(checked) => 
-                    setShowResiduals(checked as boolean)} />
-                    <label
-                        htmlFor="residuals"
-                        className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
-                    >
-                        Residuals
-              </label>
               </div>
             </div>
           </div>

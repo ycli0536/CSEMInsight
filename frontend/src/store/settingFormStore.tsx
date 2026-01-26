@@ -8,18 +8,12 @@ import TextFloatingFilterComponent from '@/components/custom/textFloatingFilterC
 
 interface SettingFormState {
   dataFiles: string | null;
-  modelFiles: string | null;
   showData: boolean;
-  showModel: boolean;
-  showResiduals: boolean;
   freqSelected: Selection;
   txSelected: Selection;
   rxSelected: Selection;
   setDataFiles: (dataFiles: string | null) => void;
-  setModelFiles: (modelFiles: string | null) => void;
   setShowData: (showData: boolean) => void;
-  setShowModel: (showModel: boolean) => void;
-  setShowResiduals: (showResiduals: boolean) => void;
   setFreqSelected: (selected: Selection) => void;
   setTxSelected: (selected: Selection) => void;
   setRxSelected: (selected: Selection) => void;
@@ -108,14 +102,6 @@ export interface RxData {
   Name_rx: string;
 }
 
-export interface xyzData {
-  X: number;
-  Y: number;
-  Y_dist: number;
-  Z: number;
-  rho1: number;
-}
-
 export interface BathymetryData {
   inline_distance: number[];
   depth: number[];
@@ -191,20 +177,10 @@ type DataTableStore = {
   setComparisonMode: (mode: ComparisonMode) => void;
 }
 
-type Inv2DStore = {
-  invData: xyzData[];
-  setInvResult: (invData: xyzData[]) => void;
-}
-
 type BathymetryStore = {
   bathymetryData: BathymetryData | null;
   setBathymetryData: (data: BathymetryData | null) => void;
 }
-
-export const useInv2DStore = create<Inv2DStore>()((set) => ({
-  invData: [],
-  setInvResult: (invData) => set({ invData }),
-}));
 
 export const useBathymetryStore = create<BathymetryStore>()((set) => ({
   bathymetryData: null,
@@ -474,18 +450,12 @@ export const useDataTableStore = create<DataTableStore>()((set) => ({
 
 export const useSettingFormStore = create<SettingFormState>()((set) => ({
   dataFiles: null,
-  modelFiles: null,
   showData: true,
-  showModel: true,
-  showResiduals: true,
   freqSelected: new Set([]),
   txSelected: new Set([]),
   rxSelected: new Set([]),
   setDataFiles: (dataFiles) => set({ dataFiles }),
-  setModelFiles: (modelFiles) => set({ modelFiles }),
   setShowData: (showData) => set({ showData }),
-  setShowModel: (showModel) => set({ showModel }),
-  setShowResiduals: (showResiduals) => set({ showResiduals }),
   setFreqSelected: (freqSelected) => set({ freqSelected }),
   setTxSelected: (txSelected) => set({ txSelected }),
   setRxSelected: (rxSelected) => set({ rxSelected }),

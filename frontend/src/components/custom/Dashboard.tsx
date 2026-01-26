@@ -21,7 +21,6 @@ import { DataPage } from "@/components/custom/table-page"
 import { ResponsesWithErrorBars } from "@/components/custom/ResponsePlot";
 import { TxRxPosPlot } from "@/components/custom/TxRxPos";
 import Map from "@/components/custom/Map";
-import HeatmapComponent from "@/components/custom/Heatmap";
 import { BathymetryUpload } from "@/components/custom/BathymetryUpload";
 
 export function Dashboard() {
@@ -126,18 +125,6 @@ return (
                   </div>
                 </section>
 
-                {/* Results Section */}
-                <section className="space-y-4">
-                  <div className="flex items-center gap-2">
-                    <div className="w-1 h-6 bg-orange-600 rounded-full"></div>
-                    <h2 className="text-lg font-semibold text-foreground">Inversion Results</h2>
-                  </div>
-                  <div className="bg-card rounded-lg border p-4 shadow-sm">
-                    <h3 className="font-medium text-card-foreground mb-3">Resistivity Model</h3>
-                    <HeatmapComponent />
-                  </div>
-                </section>
-                
               </div>
             </ResizablePanel>
         </ResizablePanelGroup>
