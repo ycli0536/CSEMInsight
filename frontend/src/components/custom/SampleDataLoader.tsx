@@ -1,10 +1,11 @@
 import axios from "axios";
 import { Button } from "@/components/ui/button";
-import { useDataTableStore, CsemData, GeometryData } from "@/store/settingFormStore";
+import type { CsemData, GeometryData } from "@/types";
+import { useDataTableStore } from "@/store/settingFormStore";
 import { useSettingFormStore } from "@/store/settingFormStore";
 import { useAlertDialog } from "@/hooks/useAlertDialog";
 import { CustomAlertDialog } from "@/components/custom/CustomAlertDialog";
-import { getTxRxData } from "@/utils/extractTxRxPlotData";
+import { getTxRxData } from "@/services/extractTxRxPlotData";
 
 const datasetColors = [
   "#2563eb",
@@ -44,6 +45,13 @@ const SAMPLE_DATASETS = [
       "EMAGE_LINE2_s4IC_m_ef3_test.data",
       "EMAGE_LINE2_s4IC_m_ef3.data",
       "EMAGE_LINE2_s4IC_m_ef4_offset3km.data",
+    ],
+  },
+  {
+    id: "response",
+    label: "Response file (.resp)",
+    files: [
+      "testIC2_m_ef3of3.19.resp",
     ],
   },
 ];

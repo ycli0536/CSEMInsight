@@ -87,7 +87,7 @@ def upload_data_file():
         if file.filename == '':
             return jsonify({'error': 'No selected file'}), 400
 
-        if file and (file.filename.endswith('.data') or file.filename.endswith('.emdata')):
+        if file and (file.filename.endswith('.data') or file.filename.endswith('.emdata') or file.filename.endswith('.resp')):
             try:
                 temp_dir = tempfile.gettempdir()
                 path = os.path.join(temp_dir, file.filename)
@@ -118,8 +118,8 @@ def upload_multiple_data_files():
         if file.filename == '':
             return jsonify({'error': 'No selected file'}), 400
 
-        if not (file.filename.endswith('.data') or file.filename.endswith('.emdata')):
-            return jsonify({'error': f'Invalid file format: {file.filename}'}), 400
+        if not (file.filename.endswith('.data') or file.filename.endswith('.emdata') or file.filename.endswith('.resp')):
+            return jsonify({'error': f'Invalid file format: {file.filename}. Supported formats: .data, .emdata, .resp'}), 400
 
         try:
             temp_dir = tempfile.gettempdir()
@@ -152,8 +152,8 @@ def load_sample_data_files():
         if not isinstance(filename, str) or filename == '':
             return jsonify({'error': 'Invalid file name'}), 400
 
-        if not (filename.endswith('.data') or filename.endswith('.emdata')):
-            return jsonify({'error': f'Invalid file format: {filename}'}), 400
+        if not (filename.endswith('.data') or filename.endswith('.emdata') or filename.endswith('.resp')):
+            return jsonify({'error': f'Invalid file format: {filename}. Supported formats: .data, .emdata, .resp'}), 400
 
         file_path = os.path.abspath(os.path.join(base_dir, filename))
         if not file_path.startswith(base_dir + os.sep):

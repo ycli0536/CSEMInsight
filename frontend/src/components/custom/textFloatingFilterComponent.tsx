@@ -1,11 +1,11 @@
-import { CustomFloatingFilterProps } from '@ag-grid-community/react';
+import { CustomFloatingFilterProps } from 'ag-grid-react';
 import {
     Select,
     SelectContent,
     SelectItem,
     SelectTrigger,
     SelectValue,
-  } from "@/components/ui/select"
+} from "@/components/ui/select"
 
 
 const TextFloatingFilterComponent = ({ model, onModelChange }: CustomFloatingFilterProps) => {
@@ -16,11 +16,11 @@ const TextFloatingFilterComponent = ({ model, onModelChange }: CustomFloatingFil
             newValue === ''
                 ? null
                 : {
-                      ...(model || {
-                          type: 'equals',
-                      }),
-                      filter: newValue,
-                  }
+                    ...(model || {
+                        type: 'equals',
+                    }),
+                    filter: newValue,
+                }
         );
     };
     return (

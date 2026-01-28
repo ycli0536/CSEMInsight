@@ -1,4 +1,4 @@
-import { Input } from "@/components/ui/input"
+
 import { Label } from "@/components/ui/label"
 import {
   Select,
@@ -7,107 +7,122 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { Checkbox } from "@/components/ui/checkbox"
+
 import { InputFile } from "@/components/custom/InputFile";
 import { Combobox } from "@/components/custom/Combobox";
 import { DataTableCtrl } from "@/components/custom/DataTableCtrl";
 import { DatasetManager } from "@/components/custom/DatasetManager";
 import { SampleDataLoader } from "@/components/custom/SampleDataLoader";
-import { useSettingFormStore} from '@/store/settingFormStore';
-
+import { useSettingFormStore, useDataTableStore } from '@/store/settingFormStore';
+import { useWindowStore } from '@/store/windowStore';
+import { Button } from "@/components/ui/button";
 
 export function SettingForm() {
-    const { showData, setShowData } = useSettingFormStore();
+  const {
+    xAxisColumn, setXAxisColumn,
+    yAxisColumn, setYAxisColumn,
+    splitByColumn, setSplitByColumn
+  } = useSettingFormStore();
+  const { colDefs } = useDataTableStore();
+  const { toggleWindow } = useWindowStore();
 
-    return (
-      <form className="sticky w-full items-start gap-6 overflow-auto p-4 pt-0">
-        <fieldset className="grid gap-6 rounded-lg border p-4">
-          <legend className="-ml-1 px-1 text-base font-medium">
-            Input
-          </legend>
-          <InputFile />
-        </fieldset>
-        <fieldset className="grid gap-6 rounded-lg border p-4">
-          <legend className="-ml-1 px-1 text-base font-medium">
-            Datasets
-          </legend>
-          <DatasetManager />
-          <SampleDataLoader />
-        </fieldset>
-        <fieldset className="grid gap-6 rounded-lg border p-4">
-          <legend className="-ml-1 px-1 text-base font-medium">
-            Data table
-          </legend>
-          <DataTableCtrl />
-        </fieldset>
-        <fieldset className="grid gap-6 rounded-lg border p-4">
-          <legend className="-ml-1 px-1 text-base font-medium">
-            Popular options
-          </legend>
-          <div className="grid gap-3 space-y-100">
-            <div className="grid">
-              <div className="items-center space-x-2">
-                <Checkbox id="data" checked={showData} onCheckedChange={(checked) => {
-                    setShowData(checked as boolean)}} />
-                <label htmlFor="data"
-                        className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
-                Data
-                </label>
-              </div>
-            </div>
-          </div>
-          <div className="grid gap-3">
+  const columnOptions = colDefs
+    .filter(col => col.field && col.headerName)
+    .map(col => ({
+      value: col.field!,
+      label: col.headerName!
+    }));
+
+  return (
+    <form className="sticky w-full items-start gap-6 overflow-auto p-4 pt-0">
+      <fieldset className="grid gap-6">
+        <InputFile />
+      </fieldset>
+      <fieldset className="grid gap-6 rounded-lg border p-4">
+        <legend className="-ml-1 px-1 text-base font-medium">
+          Datasets
+        </legend>
+        <DatasetManager />
+        <SampleDataLoader />
+      </fieldset>
+
+      <fieldset className="grid gap-6 rounded-lg border p-4">
+        <legend className="-ml-1 px-1 text-base font-medium">
+          Data table
+        </legend>
+        <DataTableCtrl />
+      </fieldset>
+      <fieldset className="grid gap-6 rounded-lg border p-4">
+        <legend className="-ml-1 px-1 text-base font-medium">
+          Popular options
+        </legend>
+
+        <div className="grid gap-3">
           <Label htmlFor="plot">Plot</Label>
           <Select defaultValue="response">
-          <SelectTrigger>
-            <SelectValue placeholder="Select a plot" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="response">Response Lines</SelectItem>
+            <SelectTrigger>
+              <SelectValue placeholder="Select a plot" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="response">Response Lines</SelectItem>
               <SelectItem value="uncertainty">Uncertainty</SelectItem>
               <SelectItem value="placeholder">placeholder</SelectItem>
-          </SelectContent>
+            </SelectContent>
           </Select>
-          </div>
-          <div className="grid gap-3">
+        </div>
+        <div className="grid gap-3">
           <Label htmlFor="position">Position</Label>
           <Select defaultValue="y-position">
-          <SelectTrigger>
-            <SelectValue placeholder="select the x-axis" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="y-position">Y Position</SelectItem>
-            <SelectItem value="in-tow-out-tow">In-tow & Out-tow</SelectItem>
-            <SelectItem value="placeholder1">placeholder1</SelectItem>
-          </SelectContent>
+            <SelectTrigger>
+              <SelectValue placeholder="select the x-axis" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="y-position">Y Position</SelectItem>
+              <SelectItem value="in-tow-out-tow">In-tow & Out-tow</SelectItem>
+              <SelectItem value="placeholder1">placeholder1</SelectItem>
+            </SelectContent>
           </Select>
-          </div>
-        </fieldset>
-        <fieldset className="grid gap-6 rounded-lg border p-4">
-          <legend className="-ml-1 px-1 text-base font-medium">
+        </div>
+      </fieldset>
+      <fieldset className="grid gap-6 rounded-lg border p-4">
+        <legend className="-ml-1 px-1 text-base font-medium">
           Customizations
-          </legend>
-          <div className="grid gap-3">
+        </legend>
+        <div className="grid gap-3">
           <Label htmlFor="x-axis">X Axis</Label>
-          <Combobox />
-          </div>
-          <div className="grid gap-3">
+          <Combobox
+            options={columnOptions}
+            value={xAxisColumn}
+            onSelect={setXAxisColumn}
+            placeholder="Select a column..."
+          />
+        </div>
+        <div className="grid gap-3">
           <Label htmlFor="y-axis">Y Axis</Label>
-          <Combobox />
-          </div>
-          <div className="grid gap-3">
-          <Label htmlFor="where">Where</Label>
-          <Input id="where" type="number" placeholder="0.0" />
-          </div>
-          <div className="grid gap-3">
-          <Label htmlFor="split">Split By</Label>
-          <Combobox />
-          </div>
-          <div className="grid gap-3">
-          <Label htmlFor="tooltip">Tooltip</Label>
-          <Combobox />
-          </div>
-        </fieldset>
+          <Combobox
+            options={columnOptions}
+            value={yAxisColumn}
+            onSelect={setYAxisColumn}
+            placeholder="Select a column..."
+          />
+        </div>
+        <div className="grid gap-3">
+          <Label htmlFor="split-by">Split By</Label>
+          <Combobox
+            options={columnOptions}
+            value={splitByColumn}
+            onSelect={setSplitByColumn}
+            placeholder="Select a column..."
+          />
+        </div>
+        <Button
+          type="button"
+          variant="secondary"
+          onClick={() => toggleWindow('custom-plot')}
+        >
+          Toggle Custom Plot Window
+        </Button>
+      </fieldset>
     </form>
   )
 }

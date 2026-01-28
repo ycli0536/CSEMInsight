@@ -1,4 +1,4 @@
-import { CsemData } from "@/store/settingFormStore";
+import type { CsemData } from "@/types";
 
 type MatchKey = keyof Pick<CsemData, "Freq_id" | "Tx_id" | "Rx_id" | "Type">;
 

@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { CsemData } from "@/store/settingFormStore";
+import type { CsemData } from "@/types";
 
 export type StatisticalMetrics = {
   count: number;

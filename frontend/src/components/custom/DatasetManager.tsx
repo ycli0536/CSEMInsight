@@ -9,7 +9,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { ComparisonMode, Dataset, useDataTableStore } from "@/store/settingFormStore";
+import type { ComparisonMode, Dataset } from "@/types";
+import { useDataTableStore } from "@/store/settingFormStore";
 import { useComparisonStore } from "@/store/comparisonStore";
 
 const comparisonOptions: { value: ComparisonMode; label: string }[] = [

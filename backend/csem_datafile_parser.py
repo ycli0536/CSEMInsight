@@ -209,32 +209,36 @@ class CSEMDataFileReader():
         # Extract data
         data_extracted = self.extract_data_block(data_block)
         data = pd.DataFrame.from_dict(data_extracted)
+        
+        # Determine which standard error column name is present in the raw data
+        has_stderr = 'StdErr' in data.columns
+        has_stderror = 'StdError' in data.columns
+        stderr_col = 'StdErr' if has_stderr else 'StdError' if has_stderror else None
+        
         if self.format == 'emdata':
-            data = data.astype({'Type': 'category',
-                                'Freq': 'int',
-                                'Tx': 'int',
-                                'Rx': 'int',
-                                'Data': 'float',
-                                'StdErr': 'float'})
+            if stderr_col:
+                data = data.astype({'Type': 'category',
+                                    'Freq': 'int',
+                                    'Tx': 'int',
+                                    'Rx': 'int',
+                                    'Data': 'float',
+                                    stderr_col: 'float'})
+                # Rename StdErr to StdError for consistency
+                if has_stderr:
+                    data.rename(columns={'StdErr': 'StdError'}, inplace=True)
         elif self.format == 'emresp':
-            if 'StdError' in data.columns:
+            if stderr_col:
                 data = data.astype({'Type': 'category',
                                     'Freq': 'int',
                                     'Tx': 'int',
                                     'Rx': 'int',
                                     'Data': 'float',
-                                    'StdError': 'float',
+                                    stderr_col: 'float',
                                     'Response': 'float',
                                     'Residual': 'float'})
-            elif 'StdErr' in data.columns:
-                data = data.astype({'Type': 'category',
-                                    'Freq': 'int',
-                                    'Tx': 'int',
-                                    'Rx': 'int',
-                                    'Data': 'float',
-                                    'StdErr': 'float',
-                                    'Response': 'float',
-                                    'Residual': 'float'})
+                # Rename StdErr to StdError for consistency
+                if has_stderr:
+                    data.rename(columns={'StdErr': 'StdError'}, inplace=True)
         data['Type'] = data['Type'].cat.set_categories(self.data_type_codes, ordered=True)
         return data
 
@@ -347,7 +351,7 @@ class CSEMDataFileManager():
 
     def split_data_rx_tx(self, merged_df:pd.DataFrame):
         """Anti-merge the data, Rx and Tx blocks. Re-index Rx and Tx columns."""
-        data = merged_df[['Type', 'Freq_id', 'Tx_id', 'Rx_id', 'Data', 'StdErr']].copy()
+        data = merged_df[['Type', 'Freq_id', 'Tx_id', 'Rx_id', 'Data', 'StdError']].copy()
         data.rename(columns={'Freq_id': 'Freq #',
                              'Tx_id': 'Tx #',
                              'Rx_id': 'Rx #'}, inplace=True)
@@ -413,7 +417,7 @@ class CSEMDataFileManager():
             "Tx #": "{:7d}".format,
             "Rx #": "{:7d}".format,
             "Data": "{:22.15g}".format,
-            "StdErr": "{:22.15g}".format
+            "StdError": "{:22.15g}".format
         }, index=False)
         return data_str
 
@@ -642,9 +646,9 @@ class CSEMDataFileManager():
         if data_type_code_amplitude in ['27', '28', '29', '37', '38', '39']: # amplitude in log10
             if rx == 'all':
                 # extract amplitude error in log10
-                eA_log10 = data_df_n.loc[data_df_n['Type'] == data_type_code_amplitude, ['StdErr']]
+                eA_log10 = data_df_n.loc[data_df_n['Type'] == data_type_code_amplitude, ['StdError']]
                 # extract phase error
-                eP = data_df_n.loc[data_df_n['Type'] == data_type_code_phase, ['StdErr']]
+                eP = data_df_n.loc[data_df_n['Type'] == data_type_code_phase, ['StdError']]
                 UncA = eA_log10 * np.log(10)
                 UncP = 2 * np.sin(np.deg2rad(eP / 2))
 
@@ -654,13 +658,13 @@ class CSEMDataFileManager():
                 # len(UncA) can be different from len(UncP)
                 eP_n = 2 * np.rad2deg(np.arcsin(UncP_n / 2))
 
-                data_df_n.loc[data_df_n['Type'] == data_type_code_amplitude, ['StdErr']] = eA_log10_n
-                data_df_n.loc[data_df_n['Type'] == data_type_code_phase, ['StdErr']] = eP_n.to_numpy()
+                data_df_n.loc[data_df_n['Type'] == data_type_code_amplitude, ['StdError']] = eA_log10_n
+                data_df_n.loc[data_df_n['Type'] == data_type_code_phase, ['StdError']] = eP_n.to_numpy()
             else:
                 # extract amplitude error in log10
-                eA_log10 = data_df_n.loc[(data_df_n['Type'] == data_type_code_amplitude) & (data_df_n['Rx'].isin(rx)), ['StdErr']]
+                eA_log10 = data_df_n.loc[(data_df_n['Type'] == data_type_code_amplitude) & (data_df_n['Rx'].isin(rx)), ['StdError']]
                 # extract phase error
-                eP = data_df_n.loc[(data_df_n['Type'] == data_type_code_phase) & (data_df_n['Rx'].isin(rx)), ['StdErr']]
+                eP = data_df_n.loc[(data_df_n['Type'] == data_type_code_phase) & (data_df_n['Rx'].isin(rx)), ['StdError']]
                 UncA = eA_log10 * np.log(10)
                 UncP = 2 * np.sin(np.deg2rad(eP / 2))
 
@@ -670,15 +674,15 @@ class CSEMDataFileManager():
                 # len(UncA) can be different from len(UncP)
                 eP_n = 2 * np.rad2deg(np.arcsin(UncP_n / 2))
 
-                data_df_n.loc[(data_df_n['Type'] == data_type_code_amplitude) & (data_df_n['Rx'].isin(rx)), ['StdErr']] = eA_log10_n
-                data_df_n.loc[(data_df_n['Type'] == data_type_code_phase) & (data_df_n['Rx'].isin(rx)), ['StdErr']] = eP_n.to_numpy()
+                data_df_n.loc[(data_df_n['Type'] == data_type_code_amplitude) & (data_df_n['Rx'].isin(rx)), ['StdError']] = eA_log10_n
+                data_df_n.loc[(data_df_n['Type'] == data_type_code_phase) & (data_df_n['Rx'].isin(rx)), ['StdError']] = eP_n.to_numpy()
         elif data_type_code_amplitude in ['21', '23', '25', '31', '33', '35']: # amplitude
             if rx == 'all':
                 # extract amplitude error
-                eA = data_df_n.loc[data_df_n['Type'] == data_type_code_amplitude, ['StdErr']]
+                eA = data_df_n.loc[data_df_n['Type'] == data_type_code_amplitude, ['StdError']]
                 # extract phase error
-                eP = data_df_n.loc[data_df_n['Type'] == data_type_code_phase, ['StdErr']]
-                UncA = eA['StdErr'] / data_df_n.loc[data_df_n['Type'] == data_type_code_amplitude, 'Data'].values
+                eP = data_df_n.loc[data_df_n['Type'] == data_type_code_phase, ['StdError']]
+                UncA = eA['StdError'] / data_df_n.loc[data_df_n['Type'] == data_type_code_amplitude, 'Data'].values
                 UncP = 2 * np.sin(np.deg2rad(eP / 2))
 
                 UncA_n = np.fmax(UncA, errfloor)
@@ -687,14 +691,14 @@ class CSEMDataFileManager():
                 # len(UncA) can be different from len(UncP)
                 eP_n = 2 * np.rad2deg(np.arcsin(UncP_n / 2))
 
-                data_df_n.loc[data_df_n['Type'] == data_type_code_amplitude, ['StdErr']] = eA_n
-                data_df_n.loc[data_df_n['Type'] == data_type_code_phase, ['StdErr']] = eP_n.to_numpy()
+                data_df_n.loc[data_df_n['Type'] == data_type_code_amplitude, ['StdError']] = eA_n
+                data_df_n.loc[data_df_n['Type'] == data_type_code_phase, ['StdError']] = eP_n.to_numpy()
             else:
                 # extract amplitude error
-                eA = data_df_n.loc[(data_df_n['Type'] == data_type_code_amplitude) & (data_df_n['Rx'].isin(rx)), ['StdErr']]
+                eA = data_df_n.loc[(data_df_n['Type'] == data_type_code_amplitude) & (data_df_n['Rx'].isin(rx)), ['StdError']]
                 # extract phase error
-                eP = data_df_n.loc[(data_df_n['Type'] == data_type_code_phase) & (data_df_n['Rx'].isin(rx)), ['StdErr']]
-                UncA = eA['StdErr'] / data_df_n.loc[(data_df_n['Type'] == data_type_code_amplitude) & (data_df_n['Rx'].isin(rx)), 'Data'].values
+                eP = data_df_n.loc[(data_df_n['Type'] == data_type_code_phase) & (data_df_n['Rx'].isin(rx)), ['StdError']]
+                UncA = eA['StdError'] / data_df_n.loc[(data_df_n['Type'] == data_type_code_amplitude) & (data_df_n['Rx'].isin(rx)), 'Data'].values
                 UncP = 2 * np.sin(np.deg2rad(eP / 2))
 
                 UncA_n = np.fmax(UncA, errfloor)
@@ -703,8 +707,8 @@ class CSEMDataFileManager():
                 # len(UncA) can be different from len(UncP)
                 eP_n = 2 * np.rad2deg(np.arcsin(UncP_n / 2))
 
-                data_df_n.loc[(data_df_n['Type'] == data_type_code_amplitude) & (data_df_n['Rx'].isin(rx)), ['StdErr']] = eA_n
-                data_df_n.loc[(data_df_n['Type'] == data_type_code_phase) & (data_df_n['Rx'].isin(rx)), ['StdErr']] = eP_n.to_numpy()
+                data_df_n.loc[(data_df_n['Type'] == data_type_code_amplitude) & (data_df_n['Rx'].isin(rx)), ['StdError']] = eA_n
+                data_df_n.loc[(data_df_n['Type'] == data_type_code_phase) & (data_df_n['Rx'].isin(rx)), ['StdError']] = eP_n.to_numpy()
         else:
             raise ValueError(f"Invalid data type code for amplitude (only support 21, 23, 25, 27, 28, 29, 31, 33, 35, 37, 38, 39): {data_type_code_amplitude}")
         return data_df_n
@@ -723,9 +727,9 @@ class CSEMDataFileManager():
         if data_type_code_amplitude in ['27', '28', '29', '37', '38', '39']: # amplitude in log10
             if tx == 'all':
                 # extract amplitude error in log10
-                eA_log10 = data_df_n.loc[data_df_n['Type'] == data_type_code_amplitude, ['StdErr']]
+                eA_log10 = data_df_n.loc[data_df_n['Type'] == data_type_code_amplitude, ['StdError']]
                 # extract phase error
-                eP = data_df_n.loc[data_df_n['Type'] == data_type_code_phase, ['StdErr']]
+                eP = data_df_n.loc[data_df_n['Type'] == data_type_code_phase, ['StdError']]
                 UncA = eA_log10 * np.log(10)
                 UncP = 2 * np.sin(np.deg2rad(eP / 2))
 
@@ -735,13 +739,13 @@ class CSEMDataFileManager():
                 # len(UncA) can be different from len(UncP)
                 eP_n = 2 * np.rad2deg(np.arcsin(UncP_n / 2))
 
-                data_df_n.loc[data_df_n['Type'] == data_type_code_amplitude, ['StdErr']] = eA_log10_n
-                data_df_n.loc[data_df_n['Type'] == data_type_code_phase, ['StdErr']] = eP_n.to_numpy()
+                data_df_n.loc[data_df_n['Type'] == data_type_code_amplitude, ['StdError']] = eA_log10_n
+                data_df_n.loc[data_df_n['Type'] == data_type_code_phase, ['StdError']] = eP_n.to_numpy()
             else:
                 # extract amplitude error in log10
-                eA_log10 = data_df_n.loc[(data_df_n['Type'] == data_type_code_amplitude) & (data_df_n['Tx'].isin(tx)), ['StdErr']]
+                eA_log10 = data_df_n.loc[(data_df_n['Type'] == data_type_code_amplitude) & (data_df_n['Tx'].isin(tx)), ['StdError']]
                 # extract amplitude error
-                eP = data_df_n.loc[(data_df_n['Type'] == data_type_code_phase) & (data_df_n['Tx'].isin(tx)), ['StdErr']]
+                eP = data_df_n.loc[(data_df_n['Type'] == data_type_code_phase) & (data_df_n['Tx'].isin(tx)), ['StdError']]
                 UncA = eA_log10 * np.log(10)
                 UncP = 2 * np.sin(np.deg2rad(eP / 2))
 
@@ -751,16 +755,16 @@ class CSEMDataFileManager():
                 # len(UncA) can be different from len(UncP)
                 eP_n = 2 * np.rad2deg(np.arcsin(UncP_n / 2))
 
-                data_df_n.loc[(data_df_n['Type'] == data_type_code_amplitude) & (data_df_n['Tx'].isin(tx)), ['StdErr']] = eA_log10_n
-                data_df_n.loc[(data_df_n['Type'] == data_type_code_phase) & (data_df_n['Tx'].isin(tx)), ['StdErr']] = eP_n.to_numpy()
+                data_df_n.loc[(data_df_n['Type'] == data_type_code_amplitude) & (data_df_n['Tx'].isin(tx)), ['StdError']] = eA_log10_n
+                data_df_n.loc[(data_df_n['Type'] == data_type_code_phase) & (data_df_n['Tx'].isin(tx)), ['StdError']] = eP_n.to_numpy()
         elif data_type_code_amplitude in ['21', '23', '25', '31', '33', '35']: # amplitude
             if tx == 'all':
                 # extract amplitude error
-                eA = data_df_n.loc[data_df_n['Type'] == data_type_code_amplitude, ['StdErr']]
+                eA = data_df_n.loc[data_df_n['Type'] == data_type_code_amplitude, ['StdError']]
                 # extract phase error
-                eP = data_df_n.loc[data_df_n['Type'] == data_type_code_phase, ['StdErr']]
-                # Select the amplitude 'Data' column as a Series to align dimensions with eA['StdErr']
-                UncA = eA['StdErr'] / data_df_n.loc[data_df_n['Type'] == data_type_code_amplitude, 'Data'].values
+                eP = data_df_n.loc[data_df_n['Type'] == data_type_code_phase, ['StdError']]
+                # Select the amplitude 'Data' column as a Series to align dimensions with eA['StdError']
+                UncA = eA['StdError'] / data_df_n.loc[data_df_n['Type'] == data_type_code_amplitude, 'Data'].values
                 UncP = 2 * np.sin(np.deg2rad(eP / 2))
 
                 UncA_n = np.fmax(UncA, errfloor)
@@ -769,15 +773,15 @@ class CSEMDataFileManager():
                 # len(UncA) can be different from len(UncP)
                 eP_n = 2 * np.rad2deg(np.arcsin(UncP_n / 2))
 
-                data_df_n.loc[data_df_n['Type'] == data_type_code_amplitude, ['StdErr']] = eA_n
-                data_df_n.loc[data_df_n['Type'] == data_type_code_phase, ['StdErr']] = eP_n.to_numpy()
+                data_df_n.loc[data_df_n['Type'] == data_type_code_amplitude, ['StdError']] = eA_n
+                data_df_n.loc[data_df_n['Type'] == data_type_code_phase, ['StdError']] = eP_n.to_numpy()
             else:
                 # extract amplitude error
-                eA = data_df_n.loc[(data_df_n['Type'] == data_type_code_amplitude) & (data_df_n['Tx'].isin(tx)), ['StdErr']]
+                eA = data_df_n.loc[(data_df_n['Type'] == data_type_code_amplitude) & (data_df_n['Tx'].isin(tx)), ['StdError']]
                 # extract phase error
-                eP = data_df_n.loc[(data_df_n['Type'] == data_type_code_phase) & (data_df_n['Tx'].isin(tx)), ['StdErr']]
-                # Select the amplitude 'Data' column as a Series to align dimensions with eA['StdErr']
-                UncA = eA['StdErr'] / data_df_n.loc[(data_df_n['Type'] == data_type_code_amplitude) & (data_df_n['Tx'].isin(tx)), 'Data'].values
+                eP = data_df_n.loc[(data_df_n['Type'] == data_type_code_phase) & (data_df_n['Tx'].isin(tx)), ['StdError']]
+                # Select the amplitude 'Data' column as a Series to align dimensions with eA['StdError']
+                UncA = eA['StdError'] / data_df_n.loc[(data_df_n['Type'] == data_type_code_amplitude) & (data_df_n['Tx'].isin(tx)), 'Data'].values
                 UncP = 2 * np.sin(np.deg2rad(eP / 2))
 
                 UncA_n = np.fmax(UncA, errfloor)
@@ -786,8 +790,8 @@ class CSEMDataFileManager():
                 # len(UncA) can be different from len(UncP)
                 eP_n = 2 * np.rad2deg(np.arcsin(UncP_n / 2))
 
-                data_df_n.loc[(data_df_n['Type'] == data_type_code_amplitude) & (data_df_n['Tx'].isin(tx)), ['StdErr']] = eA_n
-                data_df_n.loc[(data_df_n['Type'] == data_type_code_phase) & (data_df_n['Tx'].isin(tx)), ['StdErr']] = eP_n.to_numpy()
+                data_df_n.loc[(data_df_n['Type'] == data_type_code_amplitude) & (data_df_n['Tx'].isin(tx)), ['StdError']] = eA_n
+                data_df_n.loc[(data_df_n['Type'] == data_type_code_phase) & (data_df_n['Tx'].isin(tx)), ['StdError']] = eP_n.to_numpy()
         else:
             raise ValueError(f"Invalid data type code for amplitude (only support 21, 23, 25, 27, 28, 29, 31, 33, 35, 37, 38, 39): {data_type_code_amplitude}")
         return data_df_n
@@ -810,7 +814,7 @@ class CSEMDataFileManager():
         # Update each column separately to avoid dtype incompatibility
         data_df_n.loc[mask, 'Type'] = data_type_code_amplitude_new
         data_df_n.loc[mask, 'Data'] = 10 ** data_df_n.loc[mask, 'Data'].values
-        data_df_n.loc[mask, 'StdErr'] = data_df_n.loc[mask, 'StdErr'].values * np.log(10) * data_df_n.loc[mask, 'Data'].values
+        data_df_n.loc[mask, 'StdError'] = data_df_n.loc[mask, 'StdError'].values * np.log(10) * data_df_n.loc[mask, 'Data'].values
         return data_df_n
 
     def update_depth_bathymetry(self, data_df, bathymetry_data: pd.DataFrame, tx_or_rx: str = 'tx'):
@@ -1288,7 +1292,7 @@ class CSEMDataFileManager():
                 
                 # Check if stdErr values are the same (within tolerance)
                 stderr_tolerance = 1e-10
-                stderr_match = abs(row1['StdErr'] - row2['StdErr']) < stderr_tolerance
+                stderr_match = abs(row1['StdError'] - row2['StdError']) < stderr_tolerance
                 
                 if data_match and stderr_match:
                     # Perfect match - use first file's data
@@ -1303,8 +1307,8 @@ class CSEMDataFileManager():
                         'Type': data_type,
                         'data1': row1['Data'],
                         'data2': row2['Data'],
-                        'stderr1': row1['StdErr'],
-                        'stderr2': row2['StdErr'],
+                        'stderr1': row1['StdError'],
+                        'stderr2': row2['StdError'],
                         'conflict_type': 'different_stdErr'
                     })
                 else:
@@ -1317,8 +1321,8 @@ class CSEMDataFileManager():
                         'Type': data_type,
                         'data1': row1['Data'],
                         'data2': row2['Data'],
-                        'stderr1': row1['StdErr'],
-                        'stderr2': row2['StdErr'],
+                        'stderr1': row1['StdError'],
+                        'stderr2': row2['StdError'],
                         'conflict_type': 'different_data'
                     })
         

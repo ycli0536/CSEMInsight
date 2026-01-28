@@ -1,4 +1,4 @@
-import { TxData, BathymetryData } from '@/store/settingFormStore';
+import type { BathymetryData, TxData } from "@/types";
 
 /**
  * Interpolate bathymetry depth at a given inline distance

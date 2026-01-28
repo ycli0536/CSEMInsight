@@ -1,7 +1,17 @@
-import { create } from 'zustand'
-import type {Selection} from 'react-aria-components';
-import { ColDef, FilterModel } from '@ag-grid-community/core'; // Import ColDef type
-import { ITextFilterParams, INumberFilterParams } from '@ag-grid-community/core'; // Import ITextFilterParams type
+import { create } from "zustand";
+import type { MapLayerKey } from "@/lib/mapLayers";
+import type { Selection } from "react-aria-components";
+import type {
+  BathymetryData,
+  CsemData,
+  ComparisonMode,
+  Dataset,
+  GeometryData,
+  RxData,
+  TxData,
+} from "@/types";
+import { ColDef, FilterModel } from "ag-grid-community";
+import { ITextFilterParams, INumberFilterParams } from "ag-grid-community";
 import NumberFloatingFilterComponent from '@/components/custom/numberFloatingFilterComponent';
 import TextFloatingFilterComponent from '@/components/custom/textFloatingFilterComponent';
 
@@ -12,125 +22,21 @@ interface SettingFormState {
   freqSelected: Selection;
   txSelected: Selection;
   rxSelected: Selection;
+  mapLayer: MapLayerKey;
+  recenterTimestamp: number;
+  xAxisColumn: string;
+  yAxisColumn: string;
+  splitByColumn: string;
   setDataFiles: (dataFiles: string | null) => void;
+  triggerRecenter: () => void;
   setShowData: (showData: boolean) => void;
   setFreqSelected: (selected: Selection) => void;
   setTxSelected: (selected: Selection) => void;
   setRxSelected: (selected: Selection) => void;
-}
-
-type UPlotData = number | string | null | undefined;
-type UPlotSeries = [
-  null: null,
-  series: [
-    xValues: UPlotData[],
-    yValues: UPlotData[],
-    sizes: UPlotData[] | null,
-    fills: UPlotData[] | null,
-    strokes: UPlotData[] | null,
-    labels: (number | string)[] | null,
-  ]
-];
-
-export interface UPlotScatterProps {
-  data: UPlotSeries;
-  options: Partial<uPlot.Options>;
-  tooltipLabels: (string | null)[];
-}
-
-export interface UPlotPoint {
-  idx: number;
-  seriesIdx: number;
-}
-
-export interface CsemData {
-  index: number;
-  Type: string;
-  Freq_id: string;
-  Freq: number;
-  Tx_id: number;
-  Rx_id: number;
-  Data: number;
-  StdErr: number;
-  X_rx: number;
-  Y_rx: number;
-  Lon_rx: number;
-  Lat_rx: number;
-  Z_rx: number;
-  Theta: number;
-  Alpha: number;
-  Beta: number;
-  Length_rx: number;
-  Name_rx: string;
-  X_tx: number;
-  Y_tx: number;
-  Lon_tx: number;
-  Lat_tx: number;
-  Z_tx: number;
-  Azimuth: number;
-  Dip: number;
-  Length_tx: number;
-  Type_tx: string;
-  Name_tx: string;
-}
-
-export interface TxData {
-  Tx_id: number;
-  X_tx: number;
-  Y_tx: number;
-  Lon_tx: number;
-  Lat_tx: number;
-  Z_tx: number;
-  Azimuth: number;
-  Dip: number;
-  Length_tx: number;
-  Type_tx: string;
-  Name_tx: string;
-}
-
-export interface RxData {
-  Rx_id: number;
-  X_rx: number;
-  Y_rx: number;
-  Lon_rx: number;
-  Lat_rx: number;
-  Z_rx: number;
-  Theta: number;
-  Alpha: number;
-  Beta: number;
-  Length_rx: number;
-  Name_rx: string;
-}
-
-export interface BathymetryData {
-  inline_distance: number[];
-  depth: number[];
-  num_points: number;
-  distance_range: [number, number];
-  depth_range: [number, number];
-}
-
-export interface GeometryData {
-  UTM_zone: number;
-  Hemisphere: string;
-  North: number;
-  East: number;
-  Strike: number;
-}
-
-export type ComparisonMode = 'overlay' | 'sidebyside' | 'difference' | 'statistical';
-
-export interface Dataset {
-  id: string;
-  name: string;
-  data: CsemData[];
-  txData: TxData[];
-  rxData: RxData[];
-  geometryInfo: GeometryData;
-  dataBlocks: [];
-  color: string;
-  visible: boolean;
-  uploadTime: Date;
+  setMapLayer: (mapLayer: MapLayerKey) => void;
+  setXAxisColumn: (column: string) => void;
+  setYAxisColumn: (column: string) => void;
+  setSplitByColumn: (column: string) => void;
 }
 
 type DataTableStore = {
@@ -226,8 +132,20 @@ const defaultColDefs: ColDef[] = [
     floatingFilter: true,
   },
   {
-    headerName: "Std Err",
-    field: "StdErr",
+    headerName: "Std Error",
+    field: "StdError",
+    filter: true,
+    floatingFilter: true,
+  },
+  {
+    headerName: "Response",
+    field: "Response",
+    filter: true,
+    floatingFilter: true,
+  },
+  {
+    headerName: "Residual",
+    field: "Residual",
     filter: true,
     floatingFilter: true,
   },
@@ -361,10 +279,10 @@ const defaultColDefs: ColDef[] = [
   { headerName: "Index", field: "index" },
 ];
 
-const initialVisibleColumns = ['Freq_id', 'Tx_id', 'Rx_id', 'Data', 'StdErr', 'Type'];
+const initialVisibleColumns = ['Freq_id', 'Tx_id', 'Rx_id', 'Data', 'StdError', 'Type'];
 const initialColumns = defaultColDefs
-.map((col) => col.field)
-.filter((field): field is string => field !== undefined && initialVisibleColumns.includes(field)); // Set only default visible columns
+  .map((col) => col.field)
+  .filter((field): field is string => field !== undefined && initialVisibleColumns.includes(field)); // Set only default visible columns
 
 export const useDataTableStore = create<DataTableStore>()((set) => ({
   data: [],
@@ -386,7 +304,7 @@ export const useDataTableStore = create<DataTableStore>()((set) => ({
   datasets: new Map(),
   activeDatasetIds: [],
   comparisonMode: 'overlay',
-  setData: (data) => set({ data: data }),
+  setData: (data) => set({ data: data, filteredData: data }),
   setTxData: (txData) => set({ txData: txData }),
   setRxData: (rxData) => set({ rxData: rxData }),
   setOriginalTxData: (txData) => set({ originalTxData: txData }),
@@ -394,7 +312,7 @@ export const useDataTableStore = create<DataTableStore>()((set) => ({
   setDataBlocks: (dataBlocks) => set({ dataBlocks: dataBlocks }),
   setVisibleColumns: (visibleColumns) => set({ visibleColumns }),
   setDataFileString: (dataFileString) => set({ dataFileString }),
-  setTableData: (tableData) => set({ tableData: tableData }),
+  setTableData: (tableData) => set({ tableData: tableData, filteredData: tableData }),
   setFilteredData: (newFilteredData) => set({ filteredData: newFilteredData }),
   setFilteredTxData: (newFilteredTxData) => set({ filteredTxData: newFilteredTxData }),
   setFilteredRxData: (newFilteredRxData) => set({ filteredRxData: newFilteredRxData }),
@@ -451,12 +369,36 @@ export const useDataTableStore = create<DataTableStore>()((set) => ({
 export const useSettingFormStore = create<SettingFormState>()((set) => ({
   dataFiles: null,
   showData: true,
-  freqSelected: new Set([]),
-  txSelected: new Set([]),
-  rxSelected: new Set([]),
+  freqSelected: 'all',
+  txSelected: 'all',
+  rxSelected: 'all',
+  mapLayer: "satellite",
+  recenterTimestamp: 0,
+  xAxisColumn: "",
+  yAxisColumn: "",
+  splitByColumn: "",
   setDataFiles: (dataFiles) => set({ dataFiles }),
+  triggerRecenter: () => set(() => ({ recenterTimestamp: Date.now() })),
   setShowData: (showData) => set({ showData }),
   setFreqSelected: (freqSelected) => set({ freqSelected }),
   setTxSelected: (txSelected) => set({ txSelected }),
   setRxSelected: (rxSelected) => set({ rxSelected }),
+  setMapLayer: (mapLayer) => set({ mapLayer }),
+  setXAxisColumn: (xAxisColumn) => set({ xAxisColumn }),
+  setYAxisColumn: (yAxisColumn) => set({ yAxisColumn }),
+  setSplitByColumn: (splitByColumn) => set({ splitByColumn }),
 }));
+
+export type {
+  BathymetryData,
+  CsemData,
+  ComparisonMode,
+  Dataset,
+  GeometryData,
+  RxData,
+  TxData,
+  UPlotData,
+  UPlotPoint,
+  UPlotScatterProps,
+  UPlotSeries,
+} from "@/types";

@@ -1,12 +1,16 @@
 import axios from 'axios';
 import { Button, FileTrigger, DropZone } from "react-aria-components";
 import type { FileDropItem } from "react-aria";
-import { useState } from 'react';
-import { useBathymetryStore, BathymetryData, useDataTableStore } from '@/store/settingFormStore';
-import { adjustTxDepthsToBathymetry } from '@/utils/depthAdjustment';
-import { updateCsemDataWithAdjustedTx, revertCsemDataToOriginalTx } from '@/utils/updateCsemData';
-import { useAlertDialog } from '@/hooks/useAlertDialog';
-import { CustomAlertDialog } from '@/components/custom/CustomAlertDialog';
+import { useState } from "react";
+import type { BathymetryData } from "@/types";
+import { useBathymetryStore, useDataTableStore } from "@/store/settingFormStore";
+import { adjustTxDepthsToBathymetry } from "@/utils/depthAdjustment";
+import {
+  updateCsemDataWithAdjustedTx,
+  revertCsemDataToOriginalTx,
+} from "@/services/updateCsemData";
+import { useAlertDialog } from "@/hooks/useAlertDialog";
+import { CustomAlertDialog } from "@/components/custom/CustomAlertDialog";
 
 export function BathymetryUpload() {
     const [bathymetryFile, setBathymetryFile] = useState<string | null>(null);

@@ -1,23 +1,39 @@
 import { useRef, useState, useCallback, useEffect, useMemo } from 'react';
-// import { AgGridReact } from 'ag-grid-react'; // React Data Grid Component
-import { AgGridReact } from '@ag-grid-community/react';
-import { ClientSideRowModelModule } from "@ag-grid-community/client-side-row-model";
-import { 
+import { AgGridReact } from 'ag-grid-react';
+import {
+  ClientSideRowModelModule,
+  ClientSideRowModelApiModule,
   ModuleRegistry,
-  PaginationNumberFormatterParams,
-  RowSelectionOptions,
-} from "@ag-grid-community/core";
-import "@ag-grid-community/styles/ag-grid.css"; // Mandatory CSS required by the Data Grid
-import "@ag-grid-community/styles/ag-theme-quartz.css"; // Optional theme for the Data Grid
+  TextFilterModule,
+  NumberFilterModule,
+  RowSelectionModule,
+  PaginationModule,
+  ValidationModule,
+  themeQuartz,
+  type ColDef,
+  type PaginationNumberFormatterParams,
+  type RowSelectionOptions,
+} from 'ag-grid-community';
 import { useDataTableStore } from '@/store/settingFormStore';
+import { useTheme } from '@/hooks/useTheme';
 
-// Register the ClientSideRowModelModule
-ModuleRegistry.register(ClientSideRowModelModule);
+// Register AG Grid modules
+ModuleRegistry.registerModules([
+  ClientSideRowModelModule,
+  ClientSideRowModelApiModule,
+  TextFilterModule,
+  NumberFilterModule,
+  RowSelectionModule,
+  PaginationModule,
+  ...(process.env.NODE_ENV !== 'production' ? [ValidationModule] : []),
+]);
 
 export function DataPage() {
   const gridRef = useRef<AgGridReact>(null);
   const { tableData, colDefs, visibleColumns, setFilteredData, setFilterModel } = useDataTableStore();
   const [loading, setLoading] = useState<boolean>(true);
+  const { theme, systemTheme } = useTheme();
+  const resolvedTheme = theme === "system" ? systemTheme : theme;
 
   const rowSelection = useMemo<
     RowSelectionOptions | "single" | "multiple"
@@ -40,6 +56,13 @@ export function DataPage() {
     [],
   );
 
+  // Default column definition - enable filters for all columns
+  const defaultColDef = useMemo<ColDef>(() => ({
+    filter: true,
+    sortable: true,
+    resizable: true,
+  }), []);
+
   // Update column definitions based on visible columns
   const getFilteredColDefs = () => {
     if (visibleColumns === 'all') {
@@ -48,33 +71,37 @@ export function DataPage() {
     else {
       const filteredColDefs = colDefs.filter(col => col.field && Array.from(visibleColumns).includes(col.field));
       return filteredColDefs;
-  
+
     }
   };
 
-  // const onFilterChanged = useCallback(() => {
-  //   // console.log('onFilterChanged is called')
-  //   const api = gridRef.current?.api;
-  //   if (api) {
-  //     const filteredData: typeof tableData = [];
-  //     api.forEachNodeAfterFilterAndSort((node) => {
-  //       filteredData.push(node.data);
-  //     });
-  //     setFilteredData(filteredData);
-  //     setFilterModel(api.getFilterModel());
-  //     // console.log('filterModel', api.getFilterModel());
-  //     // console.log('filteredData', filteredData);
-  //   }
-  // }, [setFilteredData, setFilterModel]);
+  const onFilterChanged = useCallback(() => {
+    const api = gridRef.current?.api;
+    if (api) {
+      const filteredData: typeof tableData = [];
+      api.forEachNodeAfterFilterAndSort((node) => {
+        filteredData.push(node.data);
+      });
+      setFilteredData(filteredData);
+      setFilterModel(api.getFilterModel());
+    }
+  }, [setFilteredData, setFilterModel]);
 
   const onSelectionChanged = useCallback(() => {
-    // console.log('onRowSelected is called');
     const api = gridRef.current?.api;
     if (api) {
       const selectedNodes = api.getSelectedNodes();
-      const selectedData = selectedNodes.map(node => node.data);
-      // console.log('selectedData', selectedData);
-      setFilteredData(selectedData);
+      // If items are selected, show only them. If selection cleared, show all filtered items.
+      if (selectedNodes.length > 0) {
+        const selectedData = selectedNodes.map(node => node.data);
+        setFilteredData(selectedData);
+      } else {
+        const filteredData: typeof tableData = [];
+        api.forEachNodeAfterFilterAndSort((node) => {
+          filteredData.push(node.data);
+        });
+        setFilteredData(filteredData);
+      }
     }
   }, [setFilteredData]);
 
@@ -99,21 +126,36 @@ export function DataPage() {
   // useEffect(onFilterChanged, [onFilterChanged]);
   useEffect(onSelectionChanged, [onSelectionChanged]);
 
+  // Build theme based on resolved theme
+  const gridTheme = useMemo(() => {
+    return resolvedTheme === 'dark'
+      ? themeQuartz.withParams({
+        accentColor: '#3b82f6',
+        backgroundColor: '#1e293b',
+        foregroundColor: '#e2e8f0',
+        headerBackgroundColor: '#0f172a',
+        headerTextColor: '#f1f5f9',
+        borderColor: '#334155',
+      })
+      : themeQuartz;
+  }, [resolvedTheme]);
+
   const style = {
-    height: 350,
+    height: '100%',
     width: '100%',
-    '--ag-grid-size': '6px' as string,
   };
 
   return (
-    <div className="grid-flow-col">
+    <div className="flex h-full flex-col">
       {/* AG Grid */}
-      <div className="ag-theme-quartz" style={style}>
+      <div className="flex-1" style={style}>
         <AgGridReact
           loading={loading}
           ref={gridRef}
+          theme={gridTheme}
           rowData={tableData}
           columnDefs={getFilteredColDefs()} // Use filtered columns
+          defaultColDef={defaultColDef}
           rowSelection={rowSelection}
           pagination={true}
           paginationPageSize={500}
@@ -121,7 +163,7 @@ export function DataPage() {
           paginationNumberFormatter={paginationNumberFormatter}
           // onGridReady={onGridReady}
           onSelectionChanged={onSelectionChanged}
-          // onFilterChanged={onFilterChanged}
+          onFilterChanged={onFilterChanged}
           onRowDataUpdated={onRowDataUpdated}
         />
       </div>

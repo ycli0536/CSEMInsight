@@ -1,27 +1,58 @@
 import { useEffect, useMemo, useRef } from 'react';
 import uPlot from 'uplot';
 import 'uplot/dist/uPlot.min.css';
-import { useDataTableStore, TxData, RxData, Dataset, useBathymetryStore } from '@/store/settingFormStore';
+import type { Dataset, RxData, TxData } from "@/types";
+import { useBathymetryStore, useDataTableStore } from "@/store/settingFormStore";
 import { wheelZoomPlugin } from '@/components/custom/uplot-wheel-zoom-plugin';
-import { getTxRxData } from '@/utils/extractTxRxPlotData';
+import { getTxRxData } from "@/services/extractTxRxPlotData";
+import { useTheme } from "@/hooks/useTheme";
+import { getTxRxColors, getChartColors, dataVizPalette } from "@/lib/colorPalette";
 
 declare module "uplot" {
     interface Series {
-      _hide?: boolean;
+        _hide?: boolean;
     }
-  }
+}
 
 export function TxRxPosPlot() {
     const XYChartRef = useRef<HTMLDivElement>(null);
-    const { data, txData, originalTxData, isTxDepthAdjusted, datasets, activeDatasetIds, comparisonMode } = useDataTableStore();
+    const { data, txData, rxData, originalTxData, isTxDepthAdjusted, datasets, activeDatasetIds, comparisonMode } = useDataTableStore();
     const { setTxData, setRxData, setOriginalTxData } = useDataTableStore();
     const { bathymetryData } = useBathymetryStore();
+    const { theme, systemTheme } = useTheme();
+    const resolvedTheme = theme === 'system' ? systemTheme : theme;
+    const isDark = resolvedTheme === 'dark';
+
+    // CVD-friendly color palette
+    const txRxColors = getTxRxColors(isDark);
+    const chartColors = getChartColors(isDark);
+    const axisStroke = chartColors.axis;
+    const gridStroke = chartColors.grid;
 
     const activeDatasets = useMemo(() => {
         return activeDatasetIds
-          .map((id) => datasets.get(id))
-          .filter((dataset): dataset is Dataset => Boolean(dataset && dataset.visible));
+            .map((id) => datasets.get(id))
+            .filter((dataset): dataset is Dataset => Boolean(dataset && dataset.visible));
     }, [activeDatasetIds, datasets]);
+
+    // Data Synchronization Effect
+    useEffect(() => {
+        if (data.length > 0) {
+            const { TxData: freshTxData, RxData: freshRxData } = getTxRxData(data);
+
+            if (!isTxDepthAdjusted) {
+                setTxData(freshTxData);
+                console.log('Updated TxData with fresh data:', freshTxData);
+            }
+
+            setRxData(freshRxData);
+
+            if (originalTxData.length === 0 && freshTxData.length > 0) {
+                console.log('Storing original Tx data from CSEM file:', freshTxData);
+                setOriginalTxData([...freshTxData]);
+            }
+        }
+    }, [data, isTxDepthAdjusted, setTxData, setRxData, setOriginalTxData, originalTxData.length]);
 
     useEffect(() => {
         const useOverlay = comparisonMode === 'overlay' && activeDatasets.length > 0;
@@ -40,8 +71,8 @@ export function TxRxPosPlot() {
                 const { TxData, RxData } = dataset.txData.length && dataset.rxData.length
                     ? { TxData: dataset.txData, RxData: dataset.rxData }
                     : getTxRxData(dataset.data);
-                const txColor = useDefaultColors ? 'red' : dataset.color;
-                const rxColor = useDefaultColors ? 'blue' : dataset.color;
+                const txColor = useDefaultColors ? txRxColors.tx : dataset.color;
+                const rxColor = useDefaultColors ? txRxColors.rx : dataset.color;
 
                 if (TxData.length > 0) {
                     xySeriesData.push([
@@ -118,16 +149,16 @@ export function TxRxPosPlot() {
                 axes: [
                     {
                         labelFont: 'bold 20px Helvetica',
-                        stroke: 'black',
-                        grid: { stroke: 'black', show: true, dash: [2, 2] },
-                        ticks: { stroke: 'black', show: true, dash: [] },
+                        stroke: axisStroke,
+                        grid: { stroke: gridStroke, show: true, dash: [2, 2] },
+                        ticks: { stroke: axisStroke, show: true, dash: [] },
                     },
                     {
                         label: 'Crossline (X) distance (m)',
                         labelFont: 'bold 20px Helvetica',
-                        stroke: 'black',
-                        grid: { stroke: 'black', show: true, dash: [2, 2] },
-                        ticks: { stroke: 'black', show: true, dash: [], size: 10 },
+                        stroke: axisStroke,
+                        grid: { stroke: gridStroke, show: true, dash: [2, 2] },
+                        ticks: { stroke: axisStroke, show: true, dash: [], size: 10 },
                     },
                 ],
                 legend: {
@@ -164,17 +195,17 @@ export function TxRxPosPlot() {
                     {
                         label: 'Inline (Y) distance (m)',
                         labelFont: 'bold 20px Helvetica',
-                        stroke: 'black',
+                        stroke: axisStroke,
                         size: 40,
-                        grid: { stroke: 'black', show: true, dash: [2, 2] },
-                        ticks: { stroke: 'black', show: true, dash: [] },
+                        grid: { stroke: gridStroke, show: true, dash: [2, 2] },
+                        ticks: { stroke: axisStroke, show: true, dash: [] },
                     },
                     {
                         label: 'Depth (m)',
                         labelFont: 'bold 20px Helvetica',
-                        stroke: 'black',
-                        grid: { stroke: 'black', show: true, dash: [2, 2] },
-                        ticks: { stroke: 'black', show: true, dash: [], size: 10 },
+                        stroke: axisStroke,
+                        grid: { stroke: gridStroke, show: true, dash: [2, 2] },
+                        ticks: { stroke: axisStroke, show: true, dash: [], size: 10 },
                     },
                 ],
                 legend: {
@@ -193,31 +224,8 @@ export function TxRxPosPlot() {
 
         if (data.length > 0) {
 
-            // Extract fresh data from raw CSEM data
-            const {TxData: freshTxData, RxData} = getTxRxData(data);
-            
-            // Use existing txData if it has been adjusted, otherwise use fresh data
-            const currentTxData = isTxDepthAdjusted ? txData : freshTxData;
-            
-            // Only update TxData if it's not currently adjusted (to avoid conflicts with BathymetryUpload)
-            if (!isTxDepthAdjusted) {
-                setTxData(freshTxData);
-                console.log('Updated TxData with fresh data:', freshTxData);
-            } else {
-                console.log('Using existing adjusted TxData:', txData);
-            }
-            
-            // Always update RxData (no conflicts)
-            setRxData(RxData);
-            
-            // Store original Tx data when CSEM data is first loaded (only if not already stored)
-            if (originalTxData.length === 0 && freshTxData.length > 0) {
-                console.log('Storing original Tx data from CSEM file:', freshTxData);
-                setOriginalTxData([...freshTxData]);
-            }
-            
             const prepareTxRxPlotData = (TxDataInput: TxData[], RxData: RxData[]): [uPlot.AlignedData, { [key: string]: number }] => {
-                
+
                 // Convert the data to uPlot format
                 const uplotTxData = [
                     TxDataInput.map(d => d.Y_tx),      // x-series: Y_tx
@@ -229,8 +237,8 @@ export function TxRxPosPlot() {
                     TxDataInput.map(d => d.Length_tx), // y-series: Length_tx (optional)
                     TxDataInput.map(d => d.Type_tx),   // y-series: Type_tx (optional)
                     TxDataInput.map(d => d.Name_tx)    // y-series: Name_tx (optional)
-                  ];
-                  
+                ];
+
 
                 // Create a mapping of names to indices
                 const txNameToIndexMap = {
@@ -256,7 +264,7 @@ export function TxRxPosPlot() {
                     RxData.map(d => d.Beta),      // y-series: Beta
                     RxData.map(d => d.Length_rx), // y-series: Length_rx (optional)
                     RxData.map(d => d.Name_rx)    // y-series: Name_rx (optional)
-                  ];
+                ];
 
                 // Create a mapping of names to indices
                 const rxNameToIndexMap = ({
@@ -280,7 +288,7 @@ export function TxRxPosPlot() {
                 return [uplotTxRxData, nameToIndexMap];
             }
 
-            const [uplotTxRxData, nameToIndexMap] = prepareTxRxPlotData(currentTxData, RxData);
+            const [uplotTxRxData, nameToIndexMap] = prepareTxRxPlotData(txData, rxData);
 
             console.log('nameToIndexMap["Y_tx"]:', nameToIndexMap['Y_tx']);
 
@@ -314,22 +322,22 @@ export function TxRxPosPlot() {
 
                 // Join the Tx/Rx data with bathymetry data using uPlot.join
                 uplotTxRxData_yz = uPlot.join([txRxData_yz, bathyData]);
-                
+
                 // If Tx depths have been adjusted, add original Tx positions after bathymetry join
                 if (isTxDepthAdjusted && originalTxData.length > 0) {
                     const originalTxY = originalTxData.map(tx => tx.Y_tx);
                     const originalTxDepths = originalTxData.map(tx => tx.Z_tx);
-                    
+
                     // Create original Tx dataset
                     const originalTxData_yz: uPlot.AlignedData = [
                         originalTxY,     // x-axis for original Tx
                         originalTxDepths // depths for original Tx
                     ];
-                    
+
                     // Join with original Tx data
                     uplotTxRxData_yz = uPlot.join([uplotTxRxData_yz, originalTxData_yz]);
                 }
-                
+
                 console.log('After uPlot.join():');
                 console.log('- Original Tx/Rx data length:', txRxData_yz[0].length);
                 console.log('- Final joined data length:', uplotTxRxData_yz[0].length);
@@ -341,35 +349,35 @@ export function TxRxPosPlot() {
             // uPlot options
             const series_xy: uPlot.Series[] = [
                 { label: "Inline distance (m)" },
-                { 
+                {
                     label: "Tx crossline distance (m)",
-                    stroke: "red",
+                    stroke: txRxColors.tx,
                     paths: () => null,
                     points: {
                         show: true,
                         size: 10,
                         width: 2,
                         space: 0,
-                      },
+                    },
                 },
-                { 
+                {
                     label: "Rx crossline distance (m)",
-                    stroke: "blue",
+                    stroke: txRxColors.rx,
                     points: {
                         show: true,
                         space: 0,
-                      },
+                    },
                 },
-                { 
-                    label: "Tx Site", 
+                {
+                    label: "Tx Site",
                     show: false, // Do not plot this series
                     value: (_self, _rawValue, _seriesIdx, idx) => `${uplotTxRxData[nameToIndexMap['Name_tx']][idx]}` // Display string in legend
-                  },
-                  { 
+                },
+                {
                     label: "Rx Theta",
                     show: false,
                 },
-                { 
+                {
                     label: "Tx Length (m)",
                     show: false,
                     _hide: true,
@@ -379,16 +387,16 @@ export function TxRxPosPlot() {
             // Create series configuration - only 3 valid cases since Tx adjustment requires bathymetry
             let series_yz: uPlot.Series[];
             const hasAdjustedTx = isTxDepthAdjusted && originalTxData.length > 0 && bathymetryData;
-            
+
             if (bathymetryData) {
                 if (hasAdjustedTx) {
                     // Case: Bathymetry + Adjusted Tx
                     // Data structure after joins: [0] merged x-axis, [1] Z_tx_adjusted, [2] Z_rx, [3] Dip, [4] Name, [5] Bathymetry, [6] Z_tx_original
                     series_yz = [
                         { label: "Y (inline) distance (m)" }, // x-axis
-                        { 
+                        {
                             label: "Tx depth (adjusted)",
-                            stroke: "red",
+                            stroke: txRxColors.tx,
                             paths: () => null,
                             points: {
                                 show: true,
@@ -397,34 +405,34 @@ export function TxRxPosPlot() {
                                 space: 0,
                             },
                         },
-                        { 
+                        {
                             label: "Rx depth (m)",
-                            stroke: "blue",
+                            stroke: txRxColors.rx,
                             points: {
                                 show: true,
                                 space: 0,
                             },
                         },
-                        { 
+                        {
                             label: "Dip",
                             show: false,
                         },
-                        { 
-                            label: "Rx Site", 
+                        {
+                            label: "Rx Site",
                             show: false,
                             _hide: true,
                         },
-                        { 
+                        {
                             label: "Bathymetry",
-                            stroke: "green",
+                            stroke: isDark ? dataVizPalette.bathymetry.dark : dataVizPalette.bathymetry.light,
                             width: 2,
                             points: {
                                 show: false,
                             },
                         },
-                        { 
+                        {
                             label: "Tx depth (original)",
-                            stroke: "orange",
+                            stroke: txRxColors.txOriginal,
                             paths: () => null,
                             points: {
                                 show: true,
@@ -439,9 +447,9 @@ export function TxRxPosPlot() {
                     // Data structure: [0] merged x-axis, [1] Z_tx, [2] Z_rx, [3] Dip, [4] Name, [5] Bathymetry
                     series_yz = [
                         { label: "Y (inline) distance (m)" }, // x-axis
-                        { 
+                        {
                             label: "Tx depth (m)",
-                            stroke: "red",
+                            stroke: txRxColors.tx,
                             paths: () => null,
                             points: {
                                 show: true,
@@ -450,26 +458,26 @@ export function TxRxPosPlot() {
                                 space: 0,
                             },
                         },
-                        { 
+                        {
                             label: "Rx depth (m)",
-                            stroke: "blue",
+                            stroke: txRxColors.rx,
                             points: {
                                 show: true,
                                 space: 0,
                             },
                         },
-                        { 
+                        {
                             label: "Dip",
                             show: false,
                         },
-                        { 
-                            label: "Rx Site", 
+                        {
+                            label: "Rx Site",
                             show: false,
                             _hide: true,
                         },
-                        { 
+                        {
                             label: "Bathymetry",
-                            stroke: "green",
+                            stroke: isDark ? dataVizPalette.bathymetry.dark : dataVizPalette.bathymetry.light,
                             width: 2,
                             points: {
                                 show: false,
@@ -482,9 +490,9 @@ export function TxRxPosPlot() {
                 // Data structure: [0] Y_tx, [1] Z_tx, [2] Z_rx, [3] Dip, [4] Name
                 series_yz = [
                     { label: "Y (inline) distance (m)" },
-                    { 
+                    {
                         label: "Tx depth (m)",
-                        stroke: "red",
+                        stroke: txRxColors.tx,
                         paths: () => null,
                         points: {
                             show: true,
@@ -493,20 +501,20 @@ export function TxRxPosPlot() {
                             space: 0,
                         },
                     },
-                    { 
+                    {
                         label: "Rx depth (m)",
-                        stroke: "blue",
+                        stroke: txRxColors.rx,
                         points: {
                             show: true,
                             space: 0,
                         },
                     },
-                    { 
+                    {
                         label: "Dip",
                         show: false,
                     },
-                    { 
-                        label: "Rx Site", 
+                    {
+                        label: "Rx Site",
                         show: false,
                         _hide: true,
                     },
@@ -519,57 +527,57 @@ export function TxRxPosPlot() {
                 title: 'Tx and Rx positions (MARE2DEM coordinate system)',
                 series: series_xy,
                 scales: {
-                    x: { 
-                        time: false 
+                    x: {
+                        time: false
                     },
-                    y: { 
-                        time: false 
+                    y: {
+                        time: false
                     }
                 },
-                cursor: { 
+                cursor: {
                     show: true,
                     drag: { x: true, y: true, uni: 1, dist: 30 },
                     sync: {
                         key: 'txrx',
                         scales: ["x", null],
                     },
-                 },
+                },
                 plugins: [
                     wheelZoomPlugin({
-                      factor: 0.9,
-                      drag: true,
-                      scroll: true,
+                        factor: 0.9,
+                        drag: true,
+                        scroll: true,
                     }),
-                  ],
+                ],
                 axes: [
                     {
-                    labelFont: 'bold 20px Helvetica',
-                    stroke: 'black',
-                    // size: 10,
-                    grid: {stroke: 'black', show: true, dash: [2, 2]},
-                    ticks: {stroke: 'black', show: true, dash: []}
-                },
-                
-                {
-                    label: 'Crossline (X) distance (m)',
-                    labelFont: 'bold 20px Helvetica',
-                    // font: "14px Arial",
-                    stroke: 'black',
-                    grid: {stroke: 'black', show: true, dash: [2, 2]},
-                    ticks: {stroke: 'black', show: true, dash: [], size: 10}
-                }
+                        labelFont: 'bold 20px Helvetica',
+                        stroke: axisStroke,
+                        // size: 10,
+                        grid: { stroke: gridStroke, show: true, dash: [2, 2] },
+                        ticks: { stroke: axisStroke, show: true, dash: [] }
+                    },
+
+                    {
+                        label: 'Crossline (X) distance (m)',
+                        labelFont: 'bold 20px Helvetica',
+                        // font: "14px Arial",
+                        stroke: axisStroke,
+                        grid: { stroke: gridStroke, show: true, dash: [2, 2] },
+                        ticks: { stroke: axisStroke, show: true, dash: [], size: 10 }
+                    }
                 ],
                 hooks: {
                     init: [
-                      u => {
-                        [...u.root.querySelectorAll('.u-legend .u-series')].forEach((el, i) => {
-                          if (u.series[i]._hide) {
-                            (el as HTMLElement).style.display = 'none';
-                          }
-                        });
-                      }
+                        u => {
+                            [...u.root.querySelectorAll('.u-legend .u-series')].forEach((el, i) => {
+                                if (u.series[i]._hide) {
+                                    (el as HTMLElement).style.display = 'none';
+                                }
+                            });
+                        }
                     ]
-                  }
+                }
             };
 
             const options_yz: uPlot.Options = {
@@ -578,47 +586,47 @@ export function TxRxPosPlot() {
                 height: 400,
                 series: series_yz,
                 scales: {
-                    x: { 
+                    x: {
                         time: false,
                     },
-                    y: { 
+                    y: {
                         time: false,
                         dir: -1,
                     }
                 },
-                cursor: { 
+                cursor: {
                     show: true,
                     drag: { x: true, y: true, uni: 1, dist: 30 },
                     sync: {
                         key: 'txrx',
                         scales: ["x", null],
                     },
-                 },
+                },
                 plugins: [
                     wheelZoomPlugin({
-                      factor: 0.9,
-                      drag: true,
-                      scroll: true,
+                        factor: 0.9,
+                        drag: true,
+                        scroll: true,
                     }),
-                  ],
+                ],
                 axes: [
                     {
-                    label: 'Inline (Y) distance (m)',
-                    labelFont: 'bold 20px Helvetica',
-                    stroke: 'black',
-                    size: 40,
-                    grid: {stroke: 'black', show: true, dash: [2, 2]},
-                    ticks: {stroke: 'black', show: true, dash: []}
-                },
-                
-                {
-                    label: 'Depth (m)',
-                    labelFont: 'bold 20px Helvetica',
-                    // font: "14px Arial",
-                    stroke: 'black',
-                    grid: {stroke: 'black', show: true, dash: [2, 2]},
-                    ticks: {stroke: 'black', show: true, dash: [], size: 10}
-                }
+                        label: 'Inline (Y) distance (m)',
+                        labelFont: 'bold 20px Helvetica',
+                        stroke: axisStroke,
+                        size: 40,
+                        grid: { stroke: gridStroke, show: true, dash: [2, 2] },
+                        ticks: { stroke: axisStroke, show: true, dash: [] }
+                    },
+
+                    {
+                        label: 'Depth (m)',
+                        labelFont: 'bold 20px Helvetica',
+                        // font: "14px Arial",
+                        stroke: axisStroke,
+                        grid: { stroke: gridStroke, show: true, dash: [2, 2] },
+                        ticks: { stroke: axisStroke, show: true, dash: [], size: 10 }
+                    }
                 ],
                 legend: {
                     show: true,
@@ -638,14 +646,14 @@ export function TxRxPosPlot() {
         }
     }, [
         data,
-        setRxData,
-        setTxData,
-        setOriginalTxData,
+        txData,
+        rxData,
         bathymetryData,
         isTxDepthAdjusted,
         originalTxData,
         activeDatasets,
         comparisonMode,
+        isDark, // Add triggering dependency
     ]);
 
     return (

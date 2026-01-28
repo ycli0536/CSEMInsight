@@ -1,4 +1,4 @@
-import { CsemData } from "@/store/settingFormStore";
+import type { CsemData } from "@/types";
 
 type MatchKey = keyof Pick<CsemData, "Freq_id" | "Tx_id" | "Rx_id" | "Type">;
 
@@ -24,12 +24,12 @@ export const computeDifferenceData = (
     }
 
     const diffValue = match.Data - item.Data;
-    const diffStdErr = Math.sqrt(match.StdErr ** 2 + item.StdErr ** 2);
+    const diffStdError = Math.sqrt(match.StdError ** 2 + item.StdError ** 2);
 
     diffs.push({
       ...match,
       Data: diffValue,
-      StdErr: diffStdErr,
+      StdError: diffStdError,
     });
   });
 

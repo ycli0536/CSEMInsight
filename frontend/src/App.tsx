@@ -1,15 +1,12 @@
 import "./App.css";
-import { Dashboard } from "@/components/custom/Dashboard";
+import SpatialLayout from "@/components/layout/SpatialLayout";
+import { TooltipProvider } from "@/components/ui/tooltip";
 
 function App() {
   return (
-    <>
-      <div className="relative flex min-h-screen flex-col bg-background">
-        <div className="relative w-full h-full theme-zinc">
-          <Dashboard />
-        </div>
-      </div>
-    </>
+    <TooltipProvider>
+      <SpatialLayout />
+    </TooltipProvider>
   );
 }
 
