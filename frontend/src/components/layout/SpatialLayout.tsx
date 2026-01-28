@@ -1,4 +1,4 @@
-import { Activity, Settings, Table, Waves, LineChart } from "lucide-react";
+import { Activity, Settings, Table, Waves, LineChart, BarChart3 } from "lucide-react";
 import { useWindowStore } from "@/store/windowStore";
 import MapSubstrate from "@/components/layout/MapSubstrate";
 import { WindowManager } from "@/components/layout/WindowManager";
@@ -16,7 +16,9 @@ export default function SpatialLayout() {
     { id: "response-plot", icon: Activity, label: "Response" },
     { id: "bathymetry", icon: Waves, label: "Bathymetry" },
     { id: "custom-plot", icon: LineChart, label: "Plot" },
+    { id: "misfit-stats", icon: BarChart3, label: "Misfit" },
   ] as const;
+
 
   return (
     <div className="relative h-screen w-screen overflow-hidden bg-background">

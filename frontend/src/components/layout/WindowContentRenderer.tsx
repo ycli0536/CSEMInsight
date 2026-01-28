@@ -22,13 +22,19 @@ const CustomPlot = lazy(() =>
   import("@/components/custom/CustomPlot").then((mod) => ({ default: mod.CustomPlot }))
 );
 
+const MisfitStatsWindow = lazy(() =>
+  import("@/components/custom/MisfitStatsWindow").then((mod) => ({ default: mod.MisfitStatsWindow }))
+);
+
 const windowContentRegistry: Record<WindowId, ComponentType> = {
   settings: SettingForm,
   "data-table": DataPage,
   "response-plot": ResponsesWithErrorBars,
   bathymetry: BathymetryWidget,
   "custom-plot": CustomPlot,
+  "misfit-stats": MisfitStatsWindow,
 };
+
 
 const LoadingFallback = () => (
   <div className="flex h-full items-center justify-center p-8">

@@ -259,5 +259,86 @@ def upload_bathymetry_file():
 
     return jsonify({'error': 'Invalid file format. Please upload a .txt file.'}), 400
 
+@app.route('/api/misfit_stats', methods=['POST'])
+def calculate_misfit_stats():
+    """
+    Calculate RMS statistics from CSEM data residuals.
+    Groups by Type, Y_rx, Y_tx, Y_range, and Frequency.
+    """
+    try:
+        import pandas as pd
+        import numpy as np
+        
+        payload = request.get_json(silent=True) or {}
+        data_array = payload.get('data', [])
+        
+        if not data_array:
+            return jsonify({'error': 'No data provided'}), 400
+        
+        # Convert to DataFrame
+        df = pd.DataFrame(data_array)
+        
+        # Ensure required columns exist
+        required_cols = ['Type', 'Y_rx', 'Y_tx', 'Freq_id', 'Residual']
+        missing_cols = [col for col in required_cols if col not in df.columns]
+        if missing_cols:
+            return jsonify({'error': f'Missing required columns: {missing_cols}'}), 400
+        
+        # Calculate Y_range (signed difference between Y_rx and Y_tx)
+        df['Y_range'] = df['Y_rx'] - df['Y_tx']
+        
+        # Function to calculate RMS
+        def calc_rms(residuals):
+            if len(residuals) == 0:
+                return np.nan
+            return np.sqrt((residuals ** 2).sum() / len(residuals))
+        
+        # Group and calculate RMS for each grouping
+        # 1. By Type and Y_rx
+        rms_by_rx = df.groupby(['Type', 'Y_rx'], as_index=False)['Residual'].apply(calc_rms)
+        rms_by_rx.columns = ['Type', 'Y_rx', 'RMS']
+        rms_by_rx['Y_rx_km'] = rms_by_rx['Y_rx'] / 1000  # Convert to km
+        
+        # 2. By Type and Y_tx
+        rms_by_tx = df.groupby(['Type', 'Y_tx'], as_index=False)['Residual'].apply(calc_rms)
+        rms_by_tx.columns = ['Type', 'Y_tx', 'RMS']
+        rms_by_tx['Y_tx_km'] = rms_by_tx['Y_tx'] / 1000  # Convert to km
+        
+        # 3. By Type and Y_range
+        rms_by_range = df.groupby(['Type', 'Y_range'], as_index=False)['Residual'].apply(calc_rms)
+        rms_by_range.columns = ['Type', 'Y_range', 'RMS']
+        rms_by_range['Y_range_km'] = rms_by_range['Y_range'] / 1000  # Convert to km
+        
+        # 4. By Type and Freq_id
+        rms_by_freq = df.groupby(['Type', 'Freq_id'], as_index=False)['Residual'].apply(calc_rms)
+        rms_by_freq.columns = ['Type', 'Freq_id', 'RMS']
+        
+        # Separate by Type (28 = amplitude, 24 = phase for Ey)
+        # Type 28 = Log10 Amplitude, Type 24 = Phase
+        result = {
+            'byRx': {
+                'amplitude': rms_by_rx[rms_by_rx['Type'] == '28'][['Y_rx_km', 'RMS']].to_dict('records'),
+                'phase': rms_by_rx[rms_by_rx['Type'] == '24'][['Y_rx_km', 'RMS']].to_dict('records'),
+            },
+            'byTx': {
+                'amplitude': rms_by_tx[rms_by_tx['Type'] == '28'][['Y_tx_km', 'RMS']].to_dict('records'),
+                'phase': rms_by_tx[rms_by_tx['Type'] == '24'][['Y_tx_km', 'RMS']].to_dict('records'),
+            },
+            'byRange': {
+                'amplitude': rms_by_range[rms_by_range['Type'] == '28'][['Y_range_km', 'RMS']].to_dict('records'),
+                'phase': rms_by_range[rms_by_range['Type'] == '24'][['Y_range_km', 'RMS']].to_dict('records'),
+            },
+            'byFreq': {
+                'amplitude': rms_by_freq[rms_by_freq['Type'] == '28'][['Freq_id', 'RMS']].to_dict('records'),
+                'phase': rms_by_freq[rms_by_freq['Type'] == '24'][['Freq_id', 'RMS']].to_dict('records'),
+            }
+        }
+        
+        return jsonify(result)
+        
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
 if __name__ == '__main__':
     app.run(debug=True, port=3354)

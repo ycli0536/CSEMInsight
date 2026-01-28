@@ -65,7 +65,18 @@ export const initialWindows: Record<WindowId, WindowState> = {
     position: { x: 400, y: 400 },
     size: { width: 600, height: 400 },
   },
+  "misfit-stats": {
+    id: "misfit-stats",
+    type: "misfit-stats",
+    title: "Misfit Statistics",
+    container: "main",
+    isOpen: false,
+    zIndex: 10,
+    position: { x: 150, y: 150 },
+    size: { width: 900, height: 700 },
+  },
 };
+
 
 export const defaultSidebarOrder: WindowId[] = ["settings"];
 export const defaultGlobalZIndex = 100;

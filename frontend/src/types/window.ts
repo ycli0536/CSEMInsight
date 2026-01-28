@@ -3,7 +3,9 @@ export type WindowId =
   | "data-table"
   | "response-plot"
   | "bathymetry"
-  | "custom-plot";
+  | "custom-plot"
+  | "misfit-stats";
+
 
 export type WindowContainer = "main" | "sidebar";
 
