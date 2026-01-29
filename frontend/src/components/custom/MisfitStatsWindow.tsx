@@ -227,6 +227,9 @@ export const MisfitStatsWindow = () => {
 
     // Fetch misfit statistics from backend
     useEffect(() => {
+        const controller = new AbortController();
+        const signal = controller.signal;
+
         const fetchMisfitStats = async () => {
             // Check datasets
             const targets: { id: string; name: string; color: string; data: any[] }[] = [];
@@ -245,48 +248,70 @@ export const MisfitStatsWindow = () => {
             }
 
             if (targets.length === 0) {
-                setDatasetStats([]);
+                if (!signal.aborted) setDatasetStats([]);
                 return;
             }
 
+            if (!signal.aborted) {
+                setLoading(true);
+                setMissingResidual(false);
+            }
+
             const results: DatasetStat[] = [];
-            setLoading(true);
-            setMissingResidual(false);
 
-            // Fetch sequentially or parallel? Parallel is better.
-            await Promise.all(targets.map(async (target) => {
-                const valid = target.data.some((d: any) => d.Residual !== undefined && isFinite(d.Residual));
-                if (!valid) return;
+            try {
+                // Fetch sequentially or parallel? Parallel is better.
+                await Promise.all(targets.map(async (target) => {
+                    if (signal.aborted) return;
 
-                try {
-                    const response = await fetch("http://localhost:3354/api/misfit_stats", {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ data: target.data }),
-                    });
-                    if (!response.ok) return;
-                    const stats: MisfitStatsData = await response.json();
-                    results.push({ id: target.id, name: target.name, color: target.color, stats });
-                } catch (e) {
-                    console.error(`Error fetching stats for ${target.name}`, e);
+                    const valid = target.data.some((d: any) => d.Residual !== undefined && isFinite(d.Residual));
+                    if (!valid) return;
+
+                    try {
+                        const response = await fetch("http://localhost:3354/api/misfit_stats", {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ data: target.data }),
+                            signal
+                        });
+                        if (!response.ok) return;
+                        const stats: MisfitStatsData = await response.json();
+                        if (!signal.aborted) {
+                            results.push({ id: target.id, name: target.name, color: target.color, stats });
+                        }
+                    } catch (e: any) {
+                        if (e.name !== 'AbortError') {
+                            console.error(`Error fetching stats for ${target.name}`, e);
+                        }
+                    }
+                }));
+
+                if (!signal.aborted) {
+                    setDatasetStats(results);
+                    setLoading(false);
+
+                    if (results.length === 0 && targets.length > 0) {
+                        // If we had targets but no results, likely missing residuals
+                        // Check if any target *invalid* because of missing residuals
+                        const anyMissing = targets.some(t => !t.data.some((d: any) => d.Residual !== undefined));
+                        if (anyMissing) {
+                            setMissingResidual(true);
+                            setShowInfoDialog(true);
+                        }
+                    }
                 }
-            }));
-
-            setDatasetStats(results);
-            setLoading(false);
-
-            if (results.length === 0 && targets.length > 0) {
-                // If we had targets but no results, likely missing residuals
-                // Check if any target *invalid* because of missing residuals
-                const anyMissing = targets.some(t => !t.data.some((d: any) => d.Residual !== undefined));
-                if (anyMissing) {
-                    setMissingResidual(true);
-                    setShowInfoDialog(true);
+            } catch (e: any) {
+                if (!signal.aborted && e.name !== 'AbortError') {
+                    setLoading(false);
                 }
             }
         };
 
         fetchMisfitStats();
+
+        return () => {
+            controller.abort();
+        };
     }, [filteredData, activeDatasetIds, datasets]);
 
     // Initialize and update plots
@@ -312,7 +337,7 @@ export const MisfitStatsWindow = () => {
                     stroke: ds.color,
                     fill: ds.color,
                     width: 0,
-                    paths: uPlot.paths.points!({ size: 6 }),
+                    paths: uPlot.paths.points!(),
                     points: { show: true, size: 6, fill: ds.color },
                 });
 
@@ -323,7 +348,7 @@ export const MisfitStatsWindow = () => {
                     stroke: phiColor,
                     fill: phiColor,
                     width: 0,
-                    paths: uPlot.paths.points!({ size: 6 }), // Square?
+                    paths: uPlot.paths.points!(), // Square?
                     points: { show: true, size: 6, fill: phiColor },
                     dash: [4, 4],
                 });

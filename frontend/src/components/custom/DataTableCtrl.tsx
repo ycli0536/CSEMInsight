@@ -2,7 +2,7 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { ListBoxItem, ListBox as MyListBox } from "@/components/custom/ListBox";
 import { Item, ListBox, Provider, lightTheme, darkTheme } from "@adobe/react-spectrum";
-import { useCallback } from "react";
+import { useCallback, useEffect, useMemo } from "react";
 import type { Selection } from 'react-aria-components';
 // import { FilterModel } from "@ag-grid-community/core";
 
@@ -37,9 +37,20 @@ export function DataTableCtrl() {
     setRxSelected,
   } = useSettingFormStore();
   const { alertState, showAlert, hideAlert, handleConfirm } = useAlertDialog();
+  /* 
+     Performance Optimization:
+     We deliberately DO NOT subscribe to `filteredData` here.
+     If we did, every time AG-Grid updates filteredData (via column filters),
+     this component would re-render. If that re-render triggers the useEffect below,
+     it effectively resets the data, clearing the AG-Grid filter.
+     
+     We only need `filteredData` for the Save/Export function, so we access it
+     directly from the store state when needed.
+  */
   const {
     data,
-    filteredData,
+    // filteredData, // Don't subscribe!
+    tableData,
     txData,
     rxData,
     dataBlocks,
@@ -52,126 +63,122 @@ export function DataTableCtrl() {
   const resolvedTheme = theme === "system" ? systemTheme : theme;
   const spectrumTheme = resolvedTheme === "dark" ? darkTheme : lightTheme;
 
-  const uniqueFreqs = Array.from(new Set(data.map((item) => item.Freq))).sort((a, b) => a - b);
-  const uniqueFreqIds = Array.from(new Set(data.map((item) => item.Freq_id))).sort((a, b) => Number(a) - Number(b));
+  // Memoize unique values to ensure performance
+  const uniqueFreqs = useMemo(() => Array.from(new Set(data.map((item) => item.Freq))).sort((a, b) => a - b), [data]);
+  const uniqueFreqIds = useMemo(() => Array.from(new Set(data.map((item) => item.Freq_id))).sort((a, b) => Number(a) - Number(b)), [data]);
+
+  // Centralized filtering logic
+  const filteredResult = useMemo(() => {
+    // If no data, nothing to filter
+    if (!data || data.length === 0) {
+      return [];
+    }
+
+    let result = data;
+
+    // 1. Filter by Frequency
+    if (freqSelected !== 'all' && (freqSelected as Set<string>).size > 0 && (freqSelected as Set<string>).size < uniqueFreqIds.length) {
+      const selectedSet = freqSelected as Set<string>;
+      result = result.filter((row) => selectedSet.has(String(row.Freq_id)));
+    }
+
+    // 2. Filter by Tx
+    if (txSelected !== 'all' && (txSelected as Set<string>).size > 0 && (txSelected as Set<string>).size < txData.length) {
+      const selectedSet = txSelected as Set<string>;
+      result = result.filter((row) => selectedSet.has(row.Tx_id.toString()));
+    }
+
+    // 3. Filter by Rx
+    if (rxSelected !== 'all' && (rxSelected as Set<string>).size > 0 && (rxSelected as Set<string>).size < rxData.length) {
+      const selectedSet = rxSelected as Set<string>;
+      result = result.filter((row) => selectedSet.has(String(row.Rx_id)));
+    }
+
+    return result;
+  }, [data, freqSelected, txSelected, rxSelected, uniqueFreqIds.length, txData.length, rxData.length]);
+
+  useEffect(() => {
+    // Optimization: Skip update if no meaningful change or initialization
+    if (filteredResult.length === 0 && (!data || data.length === 0)) {
+      if (tableData.length > 0) {
+        setFilteredData([]);
+        setTableData([]);
+      }
+      return;
+    }
+
+    // CRITICAL FIX: Prevent overwriting AG-Grid filters if sidebar filters haven't changed.
+    if (filteredResult === tableData) {
+      return;
+    }
+
+    setTableData(filteredResult);
+    // setFilteredData(filteredResult); // Redundant if setTableData handles it
+
+  }, [filteredResult, tableData, setTableData, setFilteredData, data]);
+
+
 
 
   // Function to handle Freq selection changes
   const onFreqSelectedChange = useCallback((newSelection: Selection) => {
-
     const getAntiSelection = (allItems: string[], newSelection: Selection) => {
       const antiSelectedFreq = allItems.filter((item) => !(newSelection as Set<string>).has(String(item)));
-      const antiSelection = new Set<string>(antiSelectedFreq.map(String));
-      return antiSelection;
+      return new Set<string>(antiSelectedFreq.map(String));
     };
 
     if ((newSelection as Set<string>).size === uniqueFreqIds.length) {
-      console.log("All Freq are selected");
-      newSelection = 'all';
-      setFreqSelected(newSelection);
+      setFreqSelected('all');
     }
     else {
       const isAllSelected = newSelection === 'all' || (newSelection as Set<string>).size === uniqueFreqIds.length;
       if (freqSelected === 'all' && !isAllSelected) {
-        const antiSelection = getAntiSelection(uniqueFreqIds, newSelection);
-        newSelection = antiSelection;
-        setFreqSelected(newSelection);
+        setFreqSelected(getAntiSelection(uniqueFreqIds, newSelection));
       } else {
         setFreqSelected(newSelection);
       }
     }
-
-    if (newSelection && newSelection !== 'all' && (newSelection as Set<string>).size > 0) {
-      const filteredTableData = data.filter((row) => (newSelection as Set<string>).has(String(row.Freq_id)));
-      setTableData(filteredTableData);
-      setFilteredData(filteredTableData);
-    }
-    else if (newSelection === 'all') {
-      setTableData(data);
-      setFilteredData(data);
-    }
-  }, [setFreqSelected, setTableData, setFilteredData, data, uniqueFreqIds, freqSelected]);
+  }, [setFreqSelected, uniqueFreqIds, freqSelected]);
 
   // Function to handle Tx selection changes
   const onTxSelectedChange = useCallback((newSelection: Selection) => {
-
-    // Function to calculate anti-selection
     const getAntiSelection = (allItems: TxData[], newSelection: Selection) => {
       const antiSelectedTx = allItems.filter((item) => !(newSelection as Set<string>).has(item.Tx_id.toString()));
-      const antiSelection = new Set<string>(antiSelectedTx.map((item) => item.Tx_id.toString()));
-      return antiSelection;
+      return new Set<string>(antiSelectedTx.map((item) => item.Tx_id.toString()));
     };
 
     if ((newSelection as Set<string>).size === txData.length) {
-      console.log("All Tx are selected");
-      newSelection = 'all';
-      setTxSelected(newSelection);
+      setTxSelected('all');
     }
     else {
       const isAllSelected = newSelection === 'all' || (newSelection as Set<string>).size === txData.length;
       if (txSelected === 'all' && !isAllSelected) {
-        // console.log("'All' was previously selected, and now another item is clicked");
-        const antiSelection = getAntiSelection(txData, newSelection);
-        // console.log("Anti-Selected Tx Items:", antiSelection);
-        newSelection = antiSelection;
-        setTxSelected(newSelection);
+        setTxSelected(getAntiSelection(txData, newSelection));
       } else {
-        // console.log("Normal selection behavior");
         setTxSelected(newSelection);
       }
     }
-
-    // Filter the data based on the selected Tx values
-    if (newSelection && (newSelection as Set<string>).size > 0) {
-      const filteredTableData = data.filter((row) => (newSelection as Set<string>).has(row.Tx_id.toString()));
-      setTableData(filteredTableData);
-      setFilteredData(filteredTableData);
-      // updataTxFilterModel(newSelection);
-    }
-    else if (newSelection === 'all') {
-      setTableData(data);
-      setFilteredData(data);
-      // updataTxFilterModel(newSelection);
-    }
-  }, [setTxSelected, setTableData, setFilteredData, data, txData, txSelected]);
+  }, [setTxSelected, txData, txSelected]);
 
   // Function to handle Rx selection changes
   const onRxSelectedChange = useCallback((newSelection: Selection) => {
-
-    // Function to calculate anti-selection
     const getAntiSelection = (allItems: RxData[], newSelection: Selection) => {
       const antiSelectedRx = allItems.filter((item) => !(newSelection as Set<string>).has(item.Rx_id.toString()));
-      const antiSelection = new Set<string>(antiSelectedRx.map((item) => item.Rx_id.toString()));
-      return antiSelection;
+      return new Set<string>(antiSelectedRx.map((item) => item.Rx_id.toString()));
     };
 
     if ((newSelection as Set<string>).size === rxData.length) {
-      console.log("All Rx are selected");
-      newSelection = 'all';
-      setRxSelected(newSelection);
+      setRxSelected('all');
     }
     else {
       const isAllSelected = newSelection === 'all' || (newSelection as Set<string>).size === rxData.length;
       if (rxSelected === 'all' && !isAllSelected) {
-        const antiSelection = getAntiSelection(rxData, newSelection);
-        newSelection = antiSelection;
-        setRxSelected(newSelection);
+        setRxSelected(getAntiSelection(rxData, newSelection));
       } else {
         setRxSelected(newSelection);
       }
     }
-
-    // Filter the data based on the selected Rx values
-    if (newSelection && newSelection !== 'all' && (newSelection as Set<string>).size > 0) {
-      const matchRx = data.filter((row) => (newSelection as Set<string>).has(String(row.Rx_id)));
-      setTableData(matchRx);
-      setFilteredData(matchRx);
-    }
-    else if (newSelection === 'all') {
-      setTableData(data);
-      setFilteredData(data);
-    }
-  }, [setRxSelected, setTableData, setFilteredData, data, rxData, rxSelected]);
+  }, [setRxSelected, rxData, rxSelected]);
 
   const handleSave = async () => {
     try {
@@ -190,12 +197,12 @@ export function DataTableCtrl() {
           },
         ],
       });
-      const content = JSON.stringify(filteredData);
-      console.log("filteredData: ", filteredData);
+      const content = JSON.stringify(useDataTableStore.getState().filteredData);
+      console.log("filteredData (export): ", useDataTableStore.getState().filteredData);
 
       // Send the file name to the backend
       const response = await axios.post(
-        "http://127.0.0.1:3354/api/write-data-file",
+        "http://localhost:3354/api/write-data-file",
         {
           content,
           dataBlocks,

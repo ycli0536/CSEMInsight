@@ -32,7 +32,13 @@ export function ResponsesWithErrorBars() {
   const phiResidualRef = useRef<HTMLDivElement>(null); // New ref for Phi Residual
   const sideBySideAmpRefs = useRef<(HTMLDivElement | null)[]>([]);
   const sideBySidePhiRefs = useRef<(HTMLDivElement | null)[]>([]);
-  const { filteredData, datasets, activeDatasetIds, comparisonMode } = useDataTableStore();
+  const {
+    filteredData,
+    data: rawData, // Destructure raw data
+    datasets,
+    activeDatasetIds,
+    comparisonMode
+  } = useDataTableStore();
   const { showLegend, dragEnabled, scrollEnabled, legendLiveEnabled, wrapPhase,
     setShowLegend, setDragEnabled, setScrollEnabled, setlegendLiveEnabled, setWrapPhase,
     showModel, setShowModel,
@@ -219,6 +225,17 @@ export function ResponsesWithErrorBars() {
 
   useEffect(() => {
     const data = filteredData;
+    console.log("ResponsePlot useEffect:");
+    console.log("filteredData len:", filteredData.length);
+    console.log("data len:", data.length);
+    console.log("comparisonMode:", comparisonMode);
+    // console.log("useOverlay:", useOverlay); // useOverlay is defined later, can't log here easily without moving it.
+
+    // Check if useOverlay is effectively true
+    const overlayEffective = (comparisonMode === 'overlay' || comparisonMode === 'difference' || comparisonMode === 'statistical') && overlayDatasets.length > 0;
+    console.log("overlayEffective:", overlayEffective);
+    console.log("activeDatasets len:", activeDatasets.length);
+
 
     const buildSeriesData = (
       data: CsemData[],
@@ -1028,15 +1045,26 @@ export function ResponsesWithErrorBars() {
     }
 
     const filterDatasets = (datasets: typeof overlayDatasets) => {
-      return datasets.map(d => ({
-        ...d,
-        data: d.data.filter(row => {
-          const freqMatch = freqSelected === 'all' || (freqSelected as Set<string>).has(String(row.Freq_id));
-          const txMatch = txSelected === 'all' || (txSelected as Set<string>).has(String(row.Tx_id));
-          const rxMatch = rxSelected === 'all' || (rxSelected as Set<string>).has(String(row.Rx_id));
-          return freqMatch && txMatch && rxMatch;
-        })
-      }));
+      return datasets.map(d => {
+        // If this dataset is the one currently displayed in the table (raw data matches),
+        // we use the store's filteredData which includes AG-Grid filters + Sidebar filters.
+        if (d.data === rawData) {
+          return {
+            ...d,
+            data: filteredData
+          };
+        }
+        // For other datasets, use Sidebar filters only
+        return {
+          ...d,
+          data: d.data.filter(row => {
+            const freqMatch = freqSelected === 'all' || (freqSelected as Set<string>).has(String(row.Freq_id));
+            const txMatch = txSelected === 'all' || (txSelected as Set<string>).has(String(row.Tx_id));
+            const rxMatch = rxSelected === 'all' || (rxSelected as Set<string>).has(String(row.Rx_id));
+            return freqMatch && txMatch && rxMatch;
+          })
+        }
+      });
     };
 
     const filteredOverlayDatasets = useOverlay ? filterDatasets(overlayDatasets) : [];
