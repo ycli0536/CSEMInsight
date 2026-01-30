@@ -27,6 +27,7 @@ interface SettingFormState {
   xAxisColumn: string;
   yAxisColumn: string;
   splitByColumn: string;
+  resetColumnFilters: boolean;
   setDataFiles: (dataFiles: string | null) => void;
   triggerRecenter: () => void;
   setShowData: (showData: boolean) => void;
@@ -37,6 +38,7 @@ interface SettingFormState {
   setXAxisColumn: (column: string) => void;
   setYAxisColumn: (column: string) => void;
   setSplitByColumn: (column: string) => void;
+  setResetColumnFilters: (reset: boolean) => void;
 }
 
 type DataTableStore = {
@@ -377,6 +379,7 @@ export const useSettingFormStore = create<SettingFormState>()((set) => ({
   xAxisColumn: "",
   yAxisColumn: "",
   splitByColumn: "",
+  resetColumnFilters: true,
   setDataFiles: (dataFiles) => set({ dataFiles }),
   triggerRecenter: () => set(() => ({ recenterTimestamp: Date.now() })),
   setShowData: (showData) => set({ showData }),
@@ -387,6 +390,7 @@ export const useSettingFormStore = create<SettingFormState>()((set) => ({
   setXAxisColumn: (xAxisColumn) => set({ xAxisColumn }),
   setYAxisColumn: (yAxisColumn) => set({ yAxisColumn }),
   setSplitByColumn: (splitByColumn) => set({ splitByColumn }),
+  setResetColumnFilters: (resetColumnFilters) => set({ resetColumnFilters }),
 }));
 
 export type {

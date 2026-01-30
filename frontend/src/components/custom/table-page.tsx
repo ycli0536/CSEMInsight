@@ -13,8 +13,9 @@ import {
   type ColDef,
   type PaginationNumberFormatterParams,
   type RowSelectionOptions,
+  type FilterChangedEvent,
 } from 'ag-grid-community';
-import { useDataTableStore } from '@/store/settingFormStore';
+import { useDataTableStore, useSettingFormStore } from '@/store/settingFormStore';
 import { useTheme } from '@/hooks/useTheme';
 
 // Register AG Grid modules
@@ -31,6 +32,7 @@ ModuleRegistry.registerModules([
 export function DataPage() {
   const gridRef = useRef<AgGridReact>(null);
   const { tableData, colDefs, visibleColumns, setFilteredData, setFilterModel } = useDataTableStore();
+  const { resetColumnFilters, setResetColumnFilters } = useSettingFormStore();
   const [loading, setLoading] = useState<boolean>(true);
   const { theme, systemTheme } = useTheme();
   const resolvedTheme = theme === "system" ? systemTheme : theme;
@@ -75,9 +77,13 @@ export function DataPage() {
     }
   };
 
-  const onFilterChanged = useCallback(() => {
+  const onFilterChanged = useCallback((event: FilterChangedEvent) => {
     const api = gridRef.current?.api;
     if (api) {
+      if (event.source === 'columnFilter') {
+        setResetColumnFilters(false);
+      }
+
       const filteredData: typeof tableData = [];
       api.forEachNodeAfterFilterAndSort((node) => {
         filteredData.push(node.data);
@@ -85,7 +91,7 @@ export function DataPage() {
       setFilteredData(filteredData);
       setFilterModel(api.getFilterModel());
     }
-  }, [setFilteredData, setFilterModel]);
+  }, [setFilteredData, setFilterModel, setResetColumnFilters]);
 
   const onSelectionChanged = useCallback(() => {
     const api = gridRef.current?.api;
@@ -105,6 +111,26 @@ export function DataPage() {
     }
   }, [setFilteredData]);
 
+  // Handle data updates and filter priority
+  useEffect(() => {
+    const api = gridRef.current?.api;
+    if (!api) return;
+
+    if (resetColumnFilters) {
+      // If user wants to reset filters on new data, we clear them.
+      api.setFilterModel(null);
+    } else {
+      // If user wants to keep filters, we leave them.
+      // AG-Grid automatically re-applies active filters to new rowData.
+      // 'onFilterChanged' will trigger automatically if the resulting set changes.
+    }
+
+    // Explicitly update filteredData to match what's in the grid
+    // We do this in a timeout or on proper event to ensure grid has processed
+    // but onRowDataUpdated handles it.
+  }, [tableData, resetColumnFilters]);
+
+  // Keep onRowDataUpdated to ensure store sync
   const onRowDataUpdated = useCallback(() => {
     // console.log('onRowDataUpdated is called');
     const api = gridRef.current?.api;

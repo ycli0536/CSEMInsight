@@ -1,5 +1,6 @@
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
 import { ListBoxItem, ListBox as MyListBox } from "@/components/custom/ListBox";
 import { Item, ListBox, Provider, lightTheme, darkTheme } from "@adobe/react-spectrum";
 import { useCallback, useEffect, useMemo } from "react";
@@ -35,6 +36,8 @@ export function DataTableCtrl() {
     setFreqSelected,
     setTxSelected,
     setRxSelected,
+    resetColumnFilters,
+    setResetColumnFilters,
   } = useSettingFormStore();
   const { alertState, showAlert, hideAlert, handleConfirm } = useAlertDialog();
   /* 
@@ -107,17 +110,24 @@ export function DataTableCtrl() {
       return;
     }
 
-    // CRITICAL FIX: Prevent overwriting AG-Grid filters if sidebar filters haven't changed.
+    // Prevent overwriting AG-Grid filters if sidebar filters haven't changed.
     if (filteredResult === tableData) {
       return;
     }
 
     setTableData(filteredResult);
-    // setFilteredData(filteredResult); // Redundant if setTableData handles it
 
-  }, [filteredResult, tableData, setTableData, setFilteredData, data]);
+    // If Reset is enabled, we force the store's filteredData to match the fresh Sidebar result.
+    // This tells the app (Plot, etc) that "Here is the new view", effectively clearing AG-Grid's influence
+    // until/unless AG-Grid re-applies filters (which we will clear in DataPage if this flag is set).
+    if (resetColumnFilters) {
+      setFilteredData(filteredResult);
+    }
+    // If Reset is disabled, we DON'T update filteredData here.
+    // We let AG-Grid (in DataPage) react to the new tableData, re-apply its EXISTING filters,
+    // and then update filteredData via onFilterChanged. This prevents the "Flash of Unfiltered Data".
 
-
+  }, [filteredResult, tableData, setTableData, setFilteredData, data, resetColumnFilters]);
 
 
   // Function to handle Freq selection changes
@@ -236,6 +246,19 @@ export function DataTableCtrl() {
       <div className="flex flex-1 gap-4">
         <div className="flex-1 flex flex-col space-y-3">
           <Label htmlFor="toggle-col">Toggle Columns</Label>
+
+          {/* Reset Filters Option */}
+          <div className="flex items-center space-x-2 pt-2">
+            <Switch
+              id="reset-filters"
+              checked={resetColumnFilters}
+              onCheckedChange={setResetColumnFilters}
+            />
+            <Label htmlFor="reset-filters" className="text-sm font-medium leading-none">
+              Reset Table Column Filters
+            </Label>
+          </div>
+
           <MyListBox
             aria-label="Toggle Columns"
             selectionMode="multiple"
