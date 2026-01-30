@@ -1,3 +1,5 @@
+import { FilterModel } from "ag-grid-community"; // Or core if using new packages
+
 export type UPlotData = number | string | null | undefined;
 
 export type UPlotSeries = [
@@ -116,6 +118,13 @@ export interface Dataset {
   color: string;
   visible: boolean;
   uploadTime: Date;
+  filteredData?: CsemData[];
+  filterSettings?: {
+    freqSelected: any;
+    txSelected: any;
+    rxSelected: any;
+  };
+  filterModel?: FilterModel | null;
 }
 
 export type { WindowContainer, WindowId, WindowState } from "./window";

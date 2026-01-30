@@ -15,9 +15,13 @@ import { ITextFilterParams, INumberFilterParams } from "ag-grid-community";
 import NumberFloatingFilterComponent from '@/components/custom/numberFloatingFilterComponent';
 import TextFloatingFilterComponent from '@/components/custom/textFloatingFilterComponent';
 
+// Define Selection here or import it if compatible, but stores usually import `Selection` from react-aria-components.
+// Let's use the imported one.
+
+
 
 interface SettingFormState {
-  dataFiles: string | null;
+  dataFiles: string | null; // This should be derived from datasets, not stored separately if possible, or synced.
   showData: boolean;
   freqSelected: Selection;
   txSelected: Selection;
@@ -39,6 +43,7 @@ interface SettingFormState {
   setYAxisColumn: (column: string) => void;
   setSplitByColumn: (column: string) => void;
   setResetColumnFilters: (reset: boolean) => void;
+  resetFilters: () => void;
 }
 
 type DataTableStore = {
@@ -83,6 +88,10 @@ type DataTableStore = {
   toggleDatasetVisibility: (id: string) => void;
   setActiveDatasets: (ids: string[]) => void;
   setComparisonMode: (mode: ComparisonMode) => void;
+  setActiveTableDataset: (id: string) => void;
+  activeTableDatasetId: string | null;
+  updateDatasetFilter: (id: string, filteredData: CsemData[], filterSettings: { freqSelected: Selection, txSelected: Selection, rxSelected: Selection }, filterModel?: FilterModel | null) => void;
+  resetAllFilters: () => void;
 }
 
 type BathymetryStore = {
@@ -305,6 +314,7 @@ export const useDataTableStore = create<DataTableStore>()((set) => ({
   isTxDepthAdjusted: false,
   datasets: new Map(),
   activeDatasetIds: [],
+  activeTableDatasetId: null,
   comparisonMode: 'overlay',
   setData: (data) => set({ data: data, filteredData: data }),
   setTxData: (txData) => set({ txData: txData }),
@@ -330,6 +340,7 @@ export const useDataTableStore = create<DataTableStore>()((set) => ({
       activeDatasetIds: state.activeDatasetIds.includes(dataset.id)
         ? state.activeDatasetIds
         : [...state.activeDatasetIds, dataset.id],
+      activeTableDatasetId: state.datasets.size === 0 ? dataset.id : state.activeTableDatasetId, // Set first dataset as active table if empty
     };
   }),
   updateDataset: (id, updates) => set((state) => {
@@ -346,10 +357,65 @@ export const useDataTableStore = create<DataTableStore>()((set) => ({
   }),
   removeDataset: (id) => set((state) => {
     const datasets = new Map(state.datasets);
+    const deletedDataset = datasets.get(id);
     datasets.delete(id);
+
+    const activeDatasetIds = state.activeDatasetIds.filter((datasetId) => datasetId !== id);
+
+    // If no datasets left, clear everything
+    if (datasets.size === 0) {
+      return {
+        datasets,
+        activeDatasetIds: [],
+        data: [],
+        tableData: [],
+        filteredData: [],
+        txData: [],
+        rxData: [],
+        originalTxData: [],
+        filteredTxData: [],
+        filteredRxData: [],
+        dataBlocks: [],
+        geometryInfo: { UTM_zone: 0, Hemisphere: "N", North: 0, East: 0, Strike: 0 },
+        isTxDepthAdjusted: false,
+        activeTableDatasetId: null,
+      };
+    }
+
+    // Check if we need to update dataFiles in SettingFormStore (this is a separate store, so we might need a reaction or just rely on component sync)
+    // The user's request is to Sync Dropzone and DataManager.
+    // The easiest way is for InputFile to derive the displayed file list from the datasets map, OR for this method to trigger a cleanup.
+    // But since stores are separate, let's update InputFile to READ from datasets instead of `dataFiles` string for display if possible,
+    // OR we expose a way to clear it.
+
+    // However, the prompt asks to "unify" the state.
+    // Let's modify the return statement above.
+    // Ideally `dataFiles` should just reflect `datasets`.
+
+    if (deletedDataset && state.data === deletedDataset.data) {
+      const nextDataset = datasets.values().next().value;
+      if (nextDataset) {
+        return {
+          datasets,
+          activeDatasetIds,
+          data: nextDataset.data,
+          tableData: nextDataset.data,
+          filteredData: nextDataset.data,
+          txData: nextDataset.txData,
+          rxData: nextDataset.rxData,
+          dataBlocks: nextDataset.dataBlocks,
+          geometryInfo: nextDataset.geometryInfo,
+          isTxDepthAdjusted: false,
+          originalTxData: [],
+          activeTableDatasetId: nextDataset.id,
+        };
+      }
+    }
+
     return {
       datasets,
-      activeDatasetIds: state.activeDatasetIds.filter((datasetId) => datasetId !== id),
+      activeDatasetIds,
+      activeTableDatasetId: deletedDataset && state.data === deletedDataset.data ? null : state.activeTableDatasetId, // Will be updated by next block if cleared
     };
   }),
   toggleDatasetVisibility: (id) => set((state) => {
@@ -366,6 +432,73 @@ export const useDataTableStore = create<DataTableStore>()((set) => ({
   }),
   setActiveDatasets: (ids) => set({ activeDatasetIds: ids }),
   setComparisonMode: (mode) => set({ comparisonMode: mode }),
+  setActiveTableDataset: (id) => set((state) => {
+    const dataset = state.datasets.get(id);
+    if (!dataset) return state;
+
+
+    // Sync filter settings to UI (SettingFormStore)
+    const { setFreqSelected, setTxSelected, setRxSelected } = useSettingFormStore.getState();
+    if (dataset.filterSettings) {
+      setFreqSelected(dataset.filterSettings.freqSelected);
+      setTxSelected(dataset.filterSettings.txSelected);
+      setRxSelected(dataset.filterSettings.rxSelected);
+    } else {
+      // Reset if no saved settings
+      setFreqSelected('all');
+      setTxSelected('all');
+      setRxSelected('all');
+    }
+
+    // If we have saved filtered data, use it to initialize the view to prevent "flash" of full data
+    const initialViewData = (dataset.filteredData && dataset.filteredData.length > 0) ? dataset.filteredData : dataset.data;
+
+    // Unified Logic: tableData is ALWAYS the full dataset.
+    // Filtering is applied by AG Grid based on imported settings (freqSelected etc)
+    // which are synced to UI stores above.
+
+    // However, filteredData should reflect the saved state if available, for the Plot.
+    // But DataPage will update it immediately upon mount/filter application.
+    // So good to initialize it.
+
+    return {
+      data: dataset.data,
+      tableData: dataset.data, // Full data for AG Grid
+      filteredData: initialViewData, // Filtered view for Plot
+      txData: dataset.txData,
+      rxData: dataset.rxData,
+      originalTxData: [],
+      filteredTxData: [],
+      filteredRxData: [],
+      dataBlocks: dataset.dataBlocks,
+      geometryInfo: dataset.geometryInfo,
+      isTxDepthAdjusted: false,
+      activeTableDatasetId: id,
+    };
+  }),
+  updateDatasetFilter: (id, filteredData, filterSettings, filterModel) => set((state) => {
+    const datasets = new Map(state.datasets);
+    const dataset = datasets.get(id);
+    if (!dataset) return state;
+
+    // Merge new filter model with existing updates
+    // If filterModel is undefined, we don't overwrite it unless explicitly passed as null
+    const updates: Partial<Dataset> = { filteredData, filterSettings };
+    if (filterModel !== undefined) {
+      updates.filterModel = filterModel;
+    }
+
+    datasets.set(id, { ...dataset, ...updates });
+    return { datasets };
+  }),
+  resetAllFilters: () => set(() => {
+    // Reset the filterModel in the store
+    // Also trigger control panel filter reset via SettingFormStore
+    const settingStore = useSettingFormStore.getState();
+    settingStore.resetFilters();
+    settingStore.setResetColumnFilters(true);
+    return { filterModel: null };
+  }),
 }));
 
 export const useSettingFormStore = create<SettingFormState>()((set) => ({
@@ -391,6 +524,7 @@ export const useSettingFormStore = create<SettingFormState>()((set) => ({
   setYAxisColumn: (yAxisColumn) => set({ yAxisColumn }),
   setSplitByColumn: (splitByColumn) => set({ splitByColumn }),
   setResetColumnFilters: (resetColumnFilters) => set({ resetColumnFilters }),
+  resetFilters: () => set({ freqSelected: 'all', txSelected: 'all', rxSelected: 'all' }),
 }));
 
 export type {

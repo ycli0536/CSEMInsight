@@ -12,12 +12,8 @@ export function InputFile() {
     const {
         datasets,
         addDataset,
-        setData,
-        setTableData,
-        setFilteredData,
-        setGeometryInfo,
-        setDataBlocks,
-        setIsTxDepthAdjusted,
+        setActiveTableDataset,
+        resetAllFilters,
     } = useDataTableStore();
     const { dataFiles, setDataFiles } = useSettingFormStore();
     const { alertState, showAlert, hideAlert, handleConfirm } = useAlertDialog();
@@ -67,17 +63,16 @@ export function InputFile() {
                     };
                 });
 
+                // Reset all filters (AG Grid and control panel) before adding new datasets
+                resetAllFilters();
+
                 parsedDatasets.forEach((dataset) => addDataset(dataset));
 
                 const referenceDataset = parsedDatasets[0];
                 if (referenceDataset) {
-                    setData(referenceDataset.data);
-                    setTableData(referenceDataset.data);
-                    setFilteredData(referenceDataset.data);
-                    setDataBlocks(referenceDataset.dataBlocks);
-                    setGeometryInfo(referenceDataset.geometryInfo);
-                    // Reset Tx depth adjustment state when loading new data
-                    setIsTxDepthAdjusted(false);
+                    // Use the unified switching logic
+                    // This ensures filters are reset/restored correctly and all store state is synced.
+                    setActiveTableDataset(referenceDataset.id);
                 }
 
                 showAlert(
@@ -97,9 +92,9 @@ export function InputFile() {
     }
 
     const renderFileDisplay = () => {
-        if (!dataFiles) return "Click to upload or drag and drop data file here";
-        const files = dataFiles.split(", ");
-        if (files.length <= 2) return dataFiles;
+        if (datasets.size === 0) return "Click to upload or drag and drop data file here";
+        const files = Array.from(datasets.values()).map(d => d.name);
+        if (files.length <= 2) return files.join(", ");
 
         return (
             <div className="flex flex-col items-center p-2">

@@ -50,16 +50,18 @@ export function DataTableCtrl() {
      We only need `filteredData` for the Save/Export function, so we access it
      directly from the store state when needed.
   */
+  /* filteredData used to represent active subset, but now filtering is unified in AG Grid (DataPage). */
+  /* We don't subscribe to filteredData here to avoid re-renders. */
   const {
     data,
-    // filteredData, // Don't subscribe!
-    tableData,
-    txData,
-    rxData,
-    dataBlocks,
-    setTableData,
-    setFilteredData,
+    /* variables unused but kept for destructuring safety if needed later, or remove */
+    activeTableDatasetId,
+    // updateDatasetFilter, // Unused
     setDataFileString,
+    txData, // Used for items
+    rxData, // Used for items
+    dataBlocks, // Used for export
+    /* We access filteredData directly from store via getState() in save if needed */
   } = useDataTableStore();
   const { colDefs, visibleColumns, setVisibleColumns } = useDataTableStore();
   const { theme, systemTheme } = useTheme();
@@ -70,64 +72,21 @@ export function DataTableCtrl() {
   const uniqueFreqs = useMemo(() => Array.from(new Set(data.map((item) => item.Freq))).sort((a, b) => a - b), [data]);
   const uniqueFreqIds = useMemo(() => Array.from(new Set(data.map((item) => item.Freq_id))).sort((a, b) => Number(a) - Number(b)), [data]);
 
-  // Centralized filtering logic
-  const filteredResult = useMemo(() => {
-    // If no data, nothing to filter
-    if (!data || data.length === 0) {
-      return [];
-    }
+  // Centralized filtering logic removed. 
+  // Filtering is now handled directly by AG Grid in DataPage to ensure unified logic.
+  // The Sidebar now just updates the store selections, which DataPage listens to.
 
-    let result = data;
-
-    // 1. Filter by Frequency
-    if (freqSelected !== 'all' && (freqSelected as Set<string>).size > 0 && (freqSelected as Set<string>).size < uniqueFreqIds.length) {
-      const selectedSet = freqSelected as Set<string>;
-      result = result.filter((row) => selectedSet.has(String(row.Freq_id)));
-    }
-
-    // 2. Filter by Tx
-    if (txSelected !== 'all' && (txSelected as Set<string>).size > 0 && (txSelected as Set<string>).size < txData.length) {
-      const selectedSet = txSelected as Set<string>;
-      result = result.filter((row) => selectedSet.has(row.Tx_id.toString()));
-    }
-
-    // 3. Filter by Rx
-    if (rxSelected !== 'all' && (rxSelected as Set<string>).size > 0 && (rxSelected as Set<string>).size < rxData.length) {
-      const selectedSet = rxSelected as Set<string>;
-      result = result.filter((row) => selectedSet.has(String(row.Rx_id)));
-    }
-
-    return result;
-  }, [data, freqSelected, txSelected, rxSelected, uniqueFreqIds.length, txData.length, rxData.length]);
-
+  // We still need to update the active dataset filter settings when selections change,
+  // but DataPage handles the heavy lifting of updating filteredData.
   useEffect(() => {
-    // Optimization: Skip update if no meaningful change or initialization
-    if (filteredResult.length === 0 && (!data || data.length === 0)) {
-      if (tableData.length > 0) {
-        setFilteredData([]);
-        setTableData([]);
-      }
-      return;
+    if (activeTableDatasetId) {
+      // Just update settings here? Or let DataPage do it all?
+      // If DataPage handles it, we don't need to do anything here.
+      // But DataPage updates on `filteredData` change.
+      // If we change Selection -> DataPage updates Grid -> onFilterChanged -> updateDatasetFilter.
+      // So we are good.
     }
-
-    // Prevent overwriting AG-Grid filters if sidebar filters haven't changed.
-    if (filteredResult === tableData) {
-      return;
-    }
-
-    setTableData(filteredResult);
-
-    // If Reset is enabled, we force the store's filteredData to match the fresh Sidebar result.
-    // This tells the app (Plot, etc) that "Here is the new view", effectively clearing AG-Grid's influence
-    // until/unless AG-Grid re-applies filters (which we will clear in DataPage if this flag is set).
-    if (resetColumnFilters) {
-      setFilteredData(filteredResult);
-    }
-    // If Reset is disabled, we DON'T update filteredData here.
-    // We let AG-Grid (in DataPage) react to the new tableData, re-apply its EXISTING filters,
-    // and then update filteredData via onFilterChanged. This prevents the "Flash of Unfiltered Data".
-
-  }, [filteredResult, tableData, setTableData, setFilteredData, data, resetColumnFilters]);
+  }, [activeTableDatasetId]);
 
 
   // Function to handle Freq selection changes

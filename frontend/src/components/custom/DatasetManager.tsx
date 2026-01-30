@@ -37,6 +37,8 @@ export function DatasetManager() {
     removeDataset,
     setActiveDatasets,
     setComparisonMode,
+    setActiveTableDataset,
+    data,
   } = useDataTableStore();
   const { referenceDatasetId, setReferenceDatasetId } = useComparisonStore();
 
@@ -102,45 +104,58 @@ export function DatasetManager() {
           </div>
         ) : (
           <div className="grid gap-2">
-            {datasetList.map((dataset) => (
-              <div
-                key={dataset.id}
-                className="flex flex-wrap items-center gap-3 rounded-md border px-3 py-2"
-              >
-                <Checkbox
-                  id={`dataset-${dataset.id}`}
-                  checked={activeDatasetIds.includes(dataset.id)}
-                  onCheckedChange={() => toggleActive(dataset.id)}
-                />
-                <label
-                  htmlFor={`dataset-${dataset.id}`}
-                  className="text-sm font-medium"
+            {datasetList.map((dataset) => {
+              const isActiveTable = data === dataset.data;
+              return (
+                <div
+                  key={dataset.id}
+                  className={`flex flex-wrap items-center gap-3 rounded-md border px-3 py-2 ${isActiveTable ? "bg-muted/50 border-primary/50" : ""}`}
                 >
-                  {dataset.name}
-                </label>
-                <input
-                  aria-label={`Color for ${dataset.name}`}
-                  type="color"
-                  value={dataset.color}
-                  className="h-6 w-6 cursor-pointer rounded border"
-                  onChange={(event) =>
-                    updateDataset(dataset.id, { color: event.target.value })
-                  }
-                />
-                <span className="text-xs text-muted-foreground">
-                  {formatUploadTime(dataset.uploadTime)}
-                </span>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className="ml-auto text-destructive hover:text-destructive"
-                  onClick={() => removeDataset(dataset.id)}
-                >
-                  Remove
-                </Button>
-              </div>
-            ))}
+                  <Checkbox
+                    id={`dataset-${dataset.id}`}
+                    checked={activeDatasetIds.includes(dataset.id)}
+                    onCheckedChange={() => toggleActive(dataset.id)}
+                  />
+                  <label
+                    htmlFor={`dataset-${dataset.id}`}
+                    className="text-sm font-medium flex-1 truncate"
+                    title={dataset.name}
+                  >
+                    {dataset.name}
+                  </label>
+                  <input
+                    aria-label={`Color for ${dataset.name}`}
+                    type="color"
+                    value={dataset.color}
+                    className="h-6 w-6 cursor-pointer rounded border shrink-0"
+                    onChange={(event) =>
+                      updateDataset(dataset.id, { color: event.target.value })
+                    }
+                  />
+
+                  <Button
+                    type="button"
+                    variant={isActiveTable ? "secondary" : "outline"}
+                    size="sm"
+                    className="h-7 text-xs px-2"
+                    onClick={() => setActiveTableDataset(dataset.id)}
+                    disabled={isActiveTable}
+                  >
+                    {isActiveTable ? "Viewing" : "View"}
+                  </Button>
+
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="ml-auto text-destructive hover:text-destructive h-7 w-7 p-0"
+                    onClick={() => removeDataset(dataset.id)}
+                  >
+                    ✕
+                  </Button>
+                </div>
+              );
+            })}
           </div>
         )}
       </div>

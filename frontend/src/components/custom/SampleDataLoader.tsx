@@ -60,12 +60,8 @@ export function SampleDataLoader() {
   const {
     datasets,
     addDataset,
-    setData,
-    setTableData,
-    setFilteredData,
-    setGeometryInfo,
-    setDataBlocks,
-    setIsTxDepthAdjusted,
+    setActiveTableDataset,
+    resetAllFilters,
   } = useDataTableStore();
   const { setDataFiles } = useSettingFormStore();
   const { alertState, showAlert, hideAlert, handleConfirm } = useAlertDialog();
@@ -99,17 +95,16 @@ export function SampleDataLoader() {
           };
         });
 
+        // Reset all filters (AG Grid and control panel) before adding new datasets
+        resetAllFilters();
+
         parsedDatasets.forEach((dataset) => addDataset(dataset));
         setDataFiles(files.join(", "));
 
         const referenceDataset = parsedDatasets[0];
         if (referenceDataset) {
-          setData(referenceDataset.data);
-          setTableData(referenceDataset.data);
-          setFilteredData(referenceDataset.data);
-          setGeometryInfo(referenceDataset.geometryInfo);
-          setDataBlocks(referenceDataset.dataBlocks);
-          setIsTxDepthAdjusted(false);
+          // Use the unified switching logic
+          setActiveTableDataset(referenceDataset.id);
         }
 
         showAlert("Sample data loaded", "Sample datasets loaded successfully.", "success");

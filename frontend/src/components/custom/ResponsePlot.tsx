@@ -37,6 +37,7 @@ export function ResponsesWithErrorBars() {
     data: rawData, // Destructure raw data
     datasets,
     activeDatasetIds,
+    activeTableDatasetId, // Need this to check which dataset should use the 'live' filteredData
     comparisonMode
   } = useDataTableStore();
   const { showLegend, dragEnabled, scrollEnabled, legendLiveEnabled, wrapPhase,
@@ -225,16 +226,8 @@ export function ResponsesWithErrorBars() {
 
   useEffect(() => {
     const data = filteredData;
-    console.log("ResponsePlot useEffect:");
-    console.log("filteredData len:", filteredData.length);
-    console.log("data len:", data.length);
-    console.log("comparisonMode:", comparisonMode);
-    // console.log("useOverlay:", useOverlay); // useOverlay is defined later, can't log here easily without moving it.
-
     // Check if useOverlay is effectively true
     const overlayEffective = (comparisonMode === 'overlay' || comparisonMode === 'difference' || comparisonMode === 'statistical') && overlayDatasets.length > 0;
-    console.log("overlayEffective:", overlayEffective);
-    console.log("activeDatasets len:", activeDatasets.length);
 
 
     const buildSeriesData = (
@@ -984,8 +977,25 @@ export function ResponsesWithErrorBars() {
           return;
         }
 
-        const ampRes = preparePlotData(dataset.data, 'amp');
-        const phiRes = preparePlotData(dataset.data, 'phi');
+        // Check for filters
+        // Logic:
+        // 1. If dataset is the Active Table Dataset, use the global 'filteredData' (live view).
+        // 2. If not, check if 'dataset.filteredData' exists (saved view).
+        // 3. Fallback to 'dataset.data' (raw).
+
+        // Note: dataset.filteredData may be empty array if filter excludes all.
+        // So we check if it is defined (not null/undefined).
+        // BUT 'filteredData' (global) is initialized to dataset.data or saved filter.
+
+        let dataToUse = dataset.data;
+        if (dataset.id === activeTableDatasetId) {
+          dataToUse = filteredData;
+        } else if (dataset.filteredData) {
+          dataToUse = dataset.filteredData;
+        }
+
+        const ampRes = preparePlotData(dataToUse, 'amp');
+        const phiRes = preparePlotData(dataToUse, 'phi');
 
         // Check if data is valid to prevent uPlot crash
         if (!ampRes.mainData || !phiRes.mainData) return;
@@ -1046,24 +1056,22 @@ export function ResponsesWithErrorBars() {
 
     const filterDatasets = (datasets: typeof overlayDatasets) => {
       return datasets.map(d => {
-        // If this dataset is the one currently displayed in the table (raw data matches),
-        // we use the store's filteredData which includes AG-Grid filters + Sidebar filters.
-        if (d.data === rawData) {
-          return {
-            ...d,
-            data: filteredData
-          };
+        // Use the dataset's own filteredData if available (it represents the "view" configured for that dataset)
+        // If it's the active table dataset, store.filteredData is the source of truth (and syncs to dataset.filteredData anyway).
+        // But simply checking `d.filteredData` covers background datasets.
+
+        let dataToUse = d.data;
+        if (d.filteredData && d.filteredData.length > 0) {
+          dataToUse = d.filteredData;
+        } else if (d.data === rawData) {
+          // Fallback for active dataset if not yet synced to .filteredData property on object
+          dataToUse = filteredData;
         }
-        // For other datasets, use Sidebar filters only
+
         return {
           ...d,
-          data: d.data.filter(row => {
-            const freqMatch = freqSelected === 'all' || (freqSelected as Set<string>).has(String(row.Freq_id));
-            const txMatch = txSelected === 'all' || (txSelected as Set<string>).has(String(row.Tx_id));
-            const rxMatch = rxSelected === 'all' || (rxSelected as Set<string>).has(String(row.Rx_id));
-            return freqMatch && txMatch && rxMatch;
-          })
-        }
+          data: dataToUse
+        };
       });
     };
 

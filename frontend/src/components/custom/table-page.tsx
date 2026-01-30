@@ -14,6 +14,7 @@ import {
   type PaginationNumberFormatterParams,
   type RowSelectionOptions,
   type FilterChangedEvent,
+  ExternalFilterModule,
 } from 'ag-grid-community';
 import { useDataTableStore, useSettingFormStore } from '@/store/settingFormStore';
 import { useTheme } from '@/hooks/useTheme';
@@ -26,13 +27,17 @@ ModuleRegistry.registerModules([
   NumberFilterModule,
   RowSelectionModule,
   PaginationModule,
+  ExternalFilterModule,
   ...(process.env.NODE_ENV !== 'production' ? [ValidationModule] : []),
 ]);
 
 export function DataPage() {
   const gridRef = useRef<AgGridReact>(null);
-  const { tableData, colDefs, visibleColumns, setFilteredData, setFilterModel } = useDataTableStore();
-  const { resetColumnFilters, setResetColumnFilters } = useSettingFormStore();
+  /* Removed duplicate getState call */
+  // Converting to hook for reactivity:
+  const { tableData, colDefs, visibleColumns, setFilteredData, setFilterModel, activeTableDatasetId, datasets } = useDataTableStore();
+  const { freqSelected, txSelected, rxSelected, resetColumnFilters, setResetColumnFilters } = useSettingFormStore();
+
   const [loading, setLoading] = useState<boolean>(true);
   const { theme, systemTheme } = useTheme();
   const resolvedTheme = theme === "system" ? systemTheme : theme;
@@ -90,8 +95,18 @@ export function DataPage() {
       });
       setFilteredData(filteredData);
       setFilterModel(api.getFilterModel());
+
+      // Save filter model to active dataset
+      // Save filter model to active dataset
+      const { activeTableDatasetId, updateDatasetFilter } = useDataTableStore.getState();
+
+      if (activeTableDatasetId) {
+        const { freqSelected, txSelected, rxSelected } = useSettingFormStore.getState();
+        // We pass filteredData and filterModel (fourth arg)
+        updateDatasetFilter(activeTableDatasetId, filteredData, { freqSelected, txSelected, rxSelected }, api.getFilterModel());
+      }
     }
-  }, [setFilteredData, setFilterModel, setResetColumnFilters]);
+  }, [setFilteredData, setFilterModel, setResetColumnFilters]); // Removed updateDatasetFilter from deps as we use getState()
 
   const onSelectionChanged = useCallback(() => {
     const api = gridRef.current?.api;
@@ -111,24 +126,75 @@ export function DataPage() {
     }
   }, [setFilteredData]);
 
-  // Handle data updates and filter priority
+  // -- External Filter Logic (Unified with Sidebar) -- 
+  const isExternalFilterPresent = useCallback((): boolean => {
+    // Check if any sidebar selection is active (not 'all' and not empty)
+    // We assume 'all' means no filter.
+    // Note: 'all' string check for Set<string>? Types say Selection = 'all' | Set<Key>.
+    const hasFreq = freqSelected !== 'all';
+    const hasTx = txSelected !== 'all';
+    const hasRx = rxSelected !== 'all';
+    return hasFreq || hasTx || hasRx;
+  }, [freqSelected, txSelected, rxSelected]);
+
+  const doesExternalFilterPass = useCallback((node: any): boolean => {
+    if (!node.data) return true;
+    const { Freq_id, Tx_id, Rx_id } = node.data;
+
+    // Freq
+    if (freqSelected !== 'all') {
+      // freqSelected is Set<Key>
+      if (!(freqSelected as Set<string>).has(String(Freq_id))) return false;
+    }
+    // Tx
+    if (txSelected !== 'all') {
+      if (!(txSelected as Set<string>).has(String(Tx_id))) return false;
+    }
+    // Rx
+    if (rxSelected !== 'all') {
+      if (!(rxSelected as Set<string>).has(String(Rx_id))) return false;
+    }
+    return true;
+  }, [freqSelected, txSelected, rxSelected]);
+
+  // Trigger external filter re-eval when selections change
   useEffect(() => {
     const api = gridRef.current?.api;
-    if (!api) return;
+    if (api) {
+      api.onFilterChanged();
+    }
+  }, [freqSelected, txSelected, rxSelected]);
 
-    if (resetColumnFilters) {
-      // If user wants to reset filters on new data, we clear them.
+  // Ref to track the previous dataset ID to detect switches
+  const prevDatasetIdRef = useRef<string | null>(activeTableDatasetId);
+
+  // Handle dataset switching and filter restoration
+  useEffect(() => {
+    const api = gridRef.current?.api;
+    if (!api || !activeTableDatasetId) return;
+
+    const datasetChanged = prevDatasetIdRef.current !== activeTableDatasetId;
+    if (datasetChanged) {
+      prevDatasetIdRef.current = activeTableDatasetId;
+
+      // Restore saved filters for this dataset immediately upon switch
+      const activeDataset = datasets?.get(activeTableDatasetId);
+      if (activeDataset && activeDataset.filterModel) {
+        api.setFilterModel(activeDataset.filterModel);
+      } else {
+        // Only clear if we really switched to a dataset without filters.
+        // But be careful not to override 'initial' state if we want to default to something.
+        // For now, null is correct (no column filters).
+        api.setFilterModel(null);
+      }
+    } else if (resetColumnFilters) {
+      // If presumably same dataset but User requests reset (e.g. Reload Data button logic if exists), or just plain reset check
+      // NOTE: resetColumnFilters is set to true by some external action?
+      // If logic is "Reset on new data load", we handle it here.
       api.setFilterModel(null);
-    } else {
-      // If user wants to keep filters, we leave them.
-      // AG-Grid automatically re-applies active filters to new rowData.
-      // 'onFilterChanged' will trigger automatically if the resulting set changes.
     }
 
-    // Explicitly update filteredData to match what's in the grid
-    // We do this in a timeout or on proper event to ensure grid has processed
-    // but onRowDataUpdated handles it.
-  }, [tableData, resetColumnFilters]);
+  }, [activeTableDatasetId, datasets, resetColumnFilters]);
 
   // Keep onRowDataUpdated to ensure store sync
   const onRowDataUpdated = useCallback(() => {
@@ -148,9 +214,12 @@ export function DataPage() {
     }
   }, [setFilteredData, setFilterModel, setLoading]);
 
-  useEffect(onRowDataUpdated, [onRowDataUpdated]);
-  // useEffect(onFilterChanged, [onFilterChanged]);
-  useEffect(onSelectionChanged, [onSelectionChanged]);
+  // Function to save current filter model when it changes
+  // We already do this in onFilterChanged.
+  // But onRowDataUpdated resets filters if resetColumnFilters is true.
+
+  // Actually, onFilterChanged is sufficient for user interactions.
+
 
   // Build theme based on resolved theme
   const gridTheme = useMemo(() => {
@@ -182,6 +251,8 @@ export function DataPage() {
           rowData={tableData}
           columnDefs={getFilteredColDefs()} // Use filtered columns
           defaultColDef={defaultColDef}
+          isExternalFilterPresent={isExternalFilterPresent}
+          doesExternalFilterPass={doesExternalFilterPass}
           rowSelection={rowSelection}
           pagination={true}
           paginationPageSize={500}
