@@ -9,6 +9,8 @@
 .idea/
 .sisyphus/
 .agent/
+.gemini/
+conductor/
 
 # Python
 __pycache__/

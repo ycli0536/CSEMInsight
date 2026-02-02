@@ -9,9 +9,6 @@ type WindowContentRendererProps = {
   type: WindowId;
 };
 
-const DataPage = lazy(() =>
-  import("@/components/custom/table-page").then((mod) => ({ default: mod.DataPage }))
-);
 const ResponsesWithErrorBars = lazy(() =>
   import("@/components/custom/ResponsePlot").then((mod) => ({
     default: mod.ResponsesWithErrorBars,
@@ -28,7 +25,6 @@ const MisfitStatsWindow = lazy(() =>
 
 const windowContentRegistry: Record<WindowId, ComponentType> = {
   settings: SettingForm,
-  "data-table": DataPage,
   "response-plot": ResponsesWithErrorBars,
   bathymetry: BathymetryWidget,
   "custom-plot": CustomPlot,

@@ -24,16 +24,6 @@ export const initialWindows: Record<WindowId, WindowState> = {
     position: { x: 0, y: 0 },
     size: { width: 0, height: 0 },
   },
-  "data-table": {
-    id: "data-table",
-    type: "data-table",
-    title: "Data Overview",
-    container: "main",
-    isOpen: true,
-    zIndex: 10,
-    position: { x: 50, y: 50 },
-    size: { width: 800, height: 600 },
-  },
   "response-plot": {
     id: "response-plot",
     type: "response-plot",

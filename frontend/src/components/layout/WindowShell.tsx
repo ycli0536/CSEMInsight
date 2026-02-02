@@ -236,7 +236,7 @@ export const WindowShell = React.forwardRef<HTMLDivElement, WindowShellProps>(
           <div
             onPointerDown={(e) => handleResizeStart(e, "se")}
             className="absolute bottom-0 right-0 h-4 w-4 cursor-nwse-resize z-50 flex items-center justify-center opacity-70 hover:opacity-100 transition-opacity"
-            aria-hidden="true"
+            role="presentation"
           >
             <svg
               width="6"

@@ -1,5 +1,5 @@
 import React, { Fragment, useEffect, useMemo } from "react";
-import { CircleMarker, MapContainer, Popup, TileLayer, useMap, ZoomControl, AttributionControl } from "react-leaflet";
+import { CircleMarker, MapContainer, Popup, TileLayer, useMap, AttributionControl } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
 import { getTxRxData } from "@/services/extractTxRxPlotData";
 import { mapLayers } from "@/lib/mapLayers";
@@ -7,7 +7,6 @@ import type { Dataset } from "@/types";
 import { useDataTableStore, useSettingFormStore } from "@/store/settingFormStore";
 import { MapLayerControl } from "../custom/MapLayerControl";
 import { SurveyGeometryInfo } from "../custom/SurveyGeometryInfo";
-import { RecenterButton } from "../custom/RecenterButton";
 import { dataVizPalette } from "@/lib/colorPalette";
 
 const MapSubstrate = React.memo(() => {
@@ -78,7 +77,6 @@ const MapSubstrate = React.memo(() => {
         zoomControl={false}
         attributionControl={false}
       >
-        <ZoomControl position="topleft" />
         <AttributionControl position="bottomleft" />
         <TileLayer
           url={mapLayers[mapLayer].url}
@@ -159,7 +157,6 @@ const MapSubstrate = React.memo(() => {
 
       </MapContainer>
       <MapLayerControl />
-      <RecenterButton />
       <SurveyGeometryInfo />
     </div>
   );
@@ -172,6 +169,21 @@ const MapUpdater = ({ position }: { position: [number, number] }) => {
   useEffect(() => {
     map.setView(position);
   }, [position, map, recenterTimestamp]);
+
+  // Handle custom zoom events from MapLayerControl
+  useEffect(() => {
+    const handleZoom = (event: Event) => {
+      const customEvent = event as CustomEvent<{ direction: 'in' | 'out' }>;
+      if (customEvent.detail.direction === 'in') {
+        map.zoomIn();
+      } else {
+        map.zoomOut();
+      }
+    };
+
+    window.addEventListener('map-zoom', handleZoom);
+    return () => window.removeEventListener('map-zoom', handleZoom);
+  }, [map]);
 
   return null;
 };
