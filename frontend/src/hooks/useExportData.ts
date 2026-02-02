@@ -27,9 +27,13 @@ export function useExportData() {
   const [status, setStatus] = useState<ExportStatus>("idle");
   const [message, setMessage] = useState("");
 
-  const { dataBlocks, setDataFileString, data } = useDataTableStore();
+  const { dataBlocks, setDataFileString, data, datasets, activeTableDatasetId } = useDataTableStore();
 
   const hasData = data.length > 0;
+  
+  const activeDataset = activeTableDatasetId ? datasets.get(activeTableDatasetId) : null;
+  const activeDatasetName = activeDataset?.name ?? null;
+  const filteredDataCount = useDataTableStore.getState().filteredData?.length ?? 0;
 
   const exportData = useCallback(async (): Promise<ExportResult> => {
     if (!hasData) {
@@ -49,8 +53,15 @@ export function useExportData() {
         );
       }
 
+      const currentDataset = activeTableDatasetId 
+        ? useDataTableStore.getState().datasets.get(activeTableDatasetId) 
+        : null;
+      const suggestedName = currentDataset?.name 
+        ? `${currentDataset.name.replace(/\.[^/.]+$/, "")}_export.data`
+        : "export.data";
+
       const fileHandle = await (window as SaveFilePickerWindow).showSaveFilePicker({
-        suggestedName: "myDataFile.data",
+        suggestedName,
         types: [
           {
             description: "MARE2DEM Data Files",
@@ -80,12 +91,13 @@ export function useExportData() {
         await writableStream.close();
       }
 
+      const exportedCount = filteredData?.length ?? 0;
       setStatus("success");
-      setMessage("File saved successfully! (Only supports EMData_2.2 format)");
+      setMessage(`Exported ${exportedCount} records`);
       
       return {
         status: "success",
-        message: "File saved successfully! (Only supports EMData_2.2 format)",
+        message: `Exported ${exportedCount} records`,
       };
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "Failed to save the file.";
@@ -104,7 +116,7 @@ export function useExportData() {
         message: errorMessage,
       };
     }
-  }, [hasData, dataBlocks, setDataFileString]);
+  }, [hasData, dataBlocks, setDataFileString, activeTableDatasetId]);
 
   const resetStatus = useCallback(() => {
     setStatus("idle");
@@ -117,5 +129,7 @@ export function useExportData() {
     message,
     hasData,
     resetStatus,
+    activeDatasetName,
+    filteredDataCount,
   };
 }

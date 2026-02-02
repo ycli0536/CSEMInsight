@@ -13,7 +13,7 @@ import { useEffect } from "react";
 
 export default function SpatialLayout() {
   const { toggleWindow, windows } = useWindowStore();
-  const { exportData, status, message, hasData, resetStatus } = useExportData();
+  const { exportData, status, message, hasData, resetStatus, activeDatasetName, filteredDataCount } = useExportData();
 
   const navItems = [
     { id: "settings", icon: Settings, label: "Settings" },
@@ -35,18 +35,34 @@ export default function SpatialLayout() {
       case "exporting":
         return <Loader2 className="h-4 w-4 animate-spin" />;
       case "success":
-        return <Check className="h-4 w-4 text-green-500" />;
+        return <Check className="h-4 w-4" />;
       case "error":
-        return <AlertCircle className="h-4 w-4 text-destructive" />;
+        return <AlertCircle className="h-4 w-4" />;
       default:
         return <Download className="h-4 w-4" />;
     }
   };
 
   const getTooltipContent = () => {
-    if (!hasData) return "No data to export";
-    if (message) return message;
-    return "Export data file";
+    if (!hasData) {
+      return <span className="text-muted-foreground">No data loaded</span>;
+    }
+    if (status === "success" || status === "error") {
+      return <span>{message}</span>;
+    }
+    return (
+      <div className="flex flex-col gap-1">
+        <span className="font-medium">Export Data</span>
+        {activeDatasetName && (
+          <span className="text-xs text-muted-foreground">
+            File: {activeDatasetName}
+          </span>
+        )}
+        <span className="text-xs text-muted-foreground">
+          {filteredDataCount} records (filtered)
+        </span>
+      </div>
+    );
   };
 
   return (
@@ -124,8 +140,8 @@ export default function SpatialLayout() {
                         {getExportIcon()}
                       </Button>
                     </TooltipTrigger>
-                    <TooltipContent side="bottom" sideOffset={8}>
-                      <p>{getTooltipContent()}</p>
+                    <TooltipContent side="bottom" sideOffset={8} className="max-w-xs">
+                      {getTooltipContent()}
                     </TooltipContent>
                   </Tooltip>
                   

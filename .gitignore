@@ -10,6 +10,7 @@
 .sisyphus/
 .agent/
 .gemini/
+.github/
 conductor/
 
 # Python
