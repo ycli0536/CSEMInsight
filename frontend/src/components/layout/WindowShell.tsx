@@ -155,10 +155,11 @@ export const WindowShell = React.forwardRef<HTMLDivElement, WindowShellProps>(
           containerRef.current = node;
         }}
         className={cn(
-          "flex flex-col overflow-hidden rounded-lg border bg-card shadow-xl relative",
-          "border-border/60",
-          isActive ? "ring-1 ring-primary/20 shadow-2xl" : "shadow-lg opacity-95",
-          (isDragging || isResizing) ? "" : "transition-all duration-200",
+          "flex flex-col overflow-hidden rounded-xl border bg-card/95 backdrop-blur-sm relative",
+          "border-border/50 shadow-lg",
+          "transition-all duration-200",
+          isActive && "ring-1 ring-primary/30 shadow-xl glow-sm",
+          (isDragging || isResizing) && "shadow-2xl scale-[1.01]",
           className
         )}
         style={style}
@@ -168,9 +169,9 @@ export const WindowShell = React.forwardRef<HTMLDivElement, WindowShellProps>(
         <div
           ref={headerRef as React.RefObject<HTMLDivElement>}
           className={cn(
-            "group relative flex h-9 shrink-0 items-center justify-between border-b border-border/40 bg-muted/30 px-3 select-none",
-            "hover:bg-muted/50 cursor-grab active:cursor-grabbing",
-            // Disable transition during drag
+            "group relative flex h-10 shrink-0 items-center justify-between border-b border-border/30 px-3 select-none",
+            "bg-muted/20 hover:bg-muted/40",
+            "cursor-grab active:cursor-grabbing",
             isDragging ? "" : "transition-colors duration-200"
           )}
           {...listeners}
@@ -182,7 +183,7 @@ export const WindowShell = React.forwardRef<HTMLDivElement, WindowShellProps>(
 
           <div className="flex items-center gap-2 overflow-hidden z-10">
             <span className={cn(
-              "truncate text-[10px] font-bold tracking-widest uppercase text-muted-foreground/80",
+              "truncate text-xs font-semibold tracking-wide text-muted-foreground/80",
               isActive && "text-foreground"
             )}>
               {title}
@@ -199,7 +200,7 @@ export const WindowShell = React.forwardRef<HTMLDivElement, WindowShellProps>(
                 <TooltipTrigger asChild>
                   <button
                     onClick={onDockToggle}
-                    className="flex h-6 w-6 items-center justify-center rounded-[2px] text-muted-foreground/70 hover:bg-accent hover:text-accent-foreground transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                    className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground/60 hover:bg-muted hover:text-foreground transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                     aria-label={isDocked ? "Undock window" : "Dock window"}
                   >
                     {isDocked ? (
@@ -217,7 +218,7 @@ export const WindowShell = React.forwardRef<HTMLDivElement, WindowShellProps>(
             {onClose && (
               <button
                 onClick={onClose}
-                className="flex h-6 w-6 items-center justify-center rounded-[2px] text-muted-foreground/70 hover:bg-destructive hover:text-destructive-foreground transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground/60 hover:bg-destructive/10 hover:text-destructive transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                 aria-label="Close window"
               >
                 <X className="h-3.5 w-3.5" />
@@ -227,7 +228,7 @@ export const WindowShell = React.forwardRef<HTMLDivElement, WindowShellProps>(
         </div>
 
         <div
-          className="relative flex-1 overflow-auto bg-background/50 backdrop-blur-sm pointer-events-auto"
+          className="relative flex-1 overflow-auto bg-background/50 pointer-events-auto"
         >
           {children}
         </div>
@@ -235,18 +236,17 @@ export const WindowShell = React.forwardRef<HTMLDivElement, WindowShellProps>(
         {canResize && (
           <div
             onPointerDown={(e) => handleResizeStart(e, "se")}
-            className="absolute bottom-0 right-0 h-4 w-4 cursor-nwse-resize z-50 flex items-center justify-center opacity-70 hover:opacity-100 transition-opacity"
+            className="absolute bottom-0 right-0 h-5 w-5 cursor-nwse-resize z-50 flex items-end justify-end p-1 opacity-50 hover:opacity-100 transition-opacity"
             role="presentation"
           >
             <svg
-              width="6"
-              height="6"
-              viewBox="0 0 6 6"
+              width="8"
+              height="8"
+              viewBox="0 0 8 8"
               fill="none"
               xmlns="http://www.w3.org/2000/svg"
-              className="translate-x-[1px] translate-y-[1px]"
             >
-              <path d="M6 6L0 6L6 0L6 6Z" fill="currentColor" className="text-muted-foreground" />
+              <path d="M8 8L0 8L8 0L8 8Z" fill="currentColor" className="text-muted-foreground/50" />
             </svg>
           </div>
         )}
