@@ -1,6 +1,5 @@
 export type WindowId =
   | "settings"
-  | "data-table"
   | "response-plot"
   | "bathymetry"
   | "custom-plot"
