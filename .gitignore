@@ -2,7 +2,14 @@
 .DS_Store
 **/.DS_Store
 
-# IDE
+# AI Agent Instructions (local only)
+AGENTS.md
+GEMINI.md
+CLAUDE.md
+conductor/
+.github/copilot-instructions.md
+
+# IDE & AI Tools
 .cursor/
 .codex/
 .vscode/
@@ -10,8 +17,7 @@
 .sisyphus/
 .agent/
 .gemini/
-.github/
-conductor/
+.github/skills/
 
 # Python
 __pycache__/
