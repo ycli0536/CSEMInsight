@@ -65,6 +65,7 @@ function DatasetItem({
         <Tooltip>
           <TooltipTrigger asChild>
             <button
+              type="button"
               className={`flex min-w-0 flex-1 items-center gap-2 text-left transition-colors ${
                 isVisible ? "cursor-pointer hover:opacity-80" : "cursor-default"
               }`}
@@ -112,6 +113,7 @@ function DatasetItem({
         <Tooltip>
           <TooltipTrigger asChild>
             <button
+              type="button"
               className="shrink-0 text-destructive/60 transition-colors hover:text-destructive"
               onClick={(e) => {
                 e.stopPropagation();
