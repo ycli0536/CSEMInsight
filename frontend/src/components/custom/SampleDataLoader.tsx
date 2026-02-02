@@ -60,7 +60,7 @@ export function SampleDataLoader() {
   const {
     datasets,
     addDataset,
-    setActiveTableDataset,
+    setPrimaryDataset,
     resetAllFilters,
   } = useDataTableStore();
   const { setDataFiles } = useSettingFormStore();
@@ -107,7 +107,7 @@ export function SampleDataLoader() {
         const referenceDataset = parsedDatasets[0];
         if (referenceDataset) {
           // Use the unified switching logic
-          setActiveTableDataset(referenceDataset.id);
+          setPrimaryDataset(referenceDataset.id);
         }
 
         showAlert("Sample data loaded", "Sample datasets loaded successfully.", "success");

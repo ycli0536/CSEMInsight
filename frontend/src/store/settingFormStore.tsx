@@ -98,15 +98,6 @@ type DataTableStore = {
   setPrimaryDataset: (id: string) => void;
   addToCompared: (id: string) => void;
   removeFromCompared: (id: string) => void;
-  setDatasetRole: (id: string, role: DatasetRole) => void;
-  moveDataset: (id: string, targetRole: DatasetRole) => void;
-  
-  /** @deprecated Use setPrimaryDataset instead */
-  toggleDatasetVisibility: (id: string) => void;
-  /** @deprecated Use moveDataset instead */
-  setActiveDatasets: (ids: string[]) => void;
-  /** @deprecated Use setPrimaryDataset instead */
-  setActiveTableDataset: (id: string) => void;
   
   setComparisonMode: (mode: ComparisonMode) => void;
   updateDatasetFilter: (id: string, filteredData: CsemData[], filterSettings: { freqSelected: Selection, txSelected: Selection, rxSelected: Selection }, filterModel?: FilterModel | null) => void;
@@ -567,74 +558,7 @@ export const useDataTableStore = create<DataTableStore>()((set, get) => ({
     };
   }),
   
-  setDatasetRole: (id, role) => {
-    const state = get();
-    if (role === 'primary') {
-      state.setPrimaryDataset(id);
-    } else if (role === 'compared') {
-      state.addToCompared(id);
-    } else {
-      state.removeFromCompared(id);
-    }
-  },
-  
-  moveDataset: (id, targetRole) => {
-    get().setDatasetRole(id, targetRole);
-  },
-  
-  toggleDatasetVisibility: (id) => set((state) => {
-    const dataset = state.datasets.get(id);
-    if (!dataset) return state;
-    
-    if (dataset.role === 'hidden') {
-      const datasets = new Map(state.datasets);
-      datasets.set(id, { ...dataset, role: 'compared', visible: true });
-      const newComparedIds = [...state.comparedDatasetIds, id];
-      const visibleIds = [
-        ...(state.primaryDatasetId ? [state.primaryDatasetId] : []),
-        ...newComparedIds
-      ];
-      return { datasets, comparedDatasetIds: newComparedIds, activeDatasetIds: visibleIds };
-    } else if (dataset.role === 'compared') {
-      const datasets = new Map(state.datasets);
-      datasets.set(id, { ...dataset, role: 'hidden', visible: false });
-      const newComparedIds = state.comparedDatasetIds.filter(cid => cid !== id);
-      const visibleIds = [
-        ...(state.primaryDatasetId ? [state.primaryDatasetId] : []),
-        ...newComparedIds
-      ];
-      return { datasets, comparedDatasetIds: newComparedIds, activeDatasetIds: visibleIds };
-    }
-    return state;
-  }),
-  
-  setActiveDatasets: (ids) => set((state) => {
-    const datasets = new Map(state.datasets);
-    const primaryId = state.primaryDatasetId;
-    const comparedIds = ids.filter(id => id !== primaryId);
-    
-    datasets.forEach((dataset, id) => {
-      if (id === primaryId) {
-        datasets.set(id, { ...dataset, role: 'primary', visible: true });
-      } else if (comparedIds.includes(id)) {
-        datasets.set(id, { ...dataset, role: 'compared', visible: true });
-      } else {
-        datasets.set(id, { ...dataset, role: 'hidden', visible: false });
-      }
-    });
-    
-    return {
-      datasets,
-      comparedDatasetIds: comparedIds,
-      activeDatasetIds: ids,
-    };
-  }),
-  
   setComparisonMode: (mode) => set({ comparisonMode: mode }),
-  
-  setActiveTableDataset: (id) => {
-    get().setPrimaryDataset(id);
-  },
   
   updateDatasetFilter: (id, filteredData, filterSettings, filterModel) => set((state) => {
     const datasets = new Map(state.datasets);

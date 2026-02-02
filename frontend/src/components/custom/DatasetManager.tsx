@@ -1,24 +1,6 @@
-import { useMemo, useState } from "react";
-import {
-  DndContext,
-  DragEndEvent,
-  DragOverlay,
-  DragStartEvent,
-  closestCenter,
-  KeyboardSensor,
-  PointerSensor,
-  useSensor,
-  useSensors,
-} from "@dnd-kit/core";
-import {
-  SortableContext,
-  sortableKeyboardCoordinates,
-  useSortable,
-  verticalListSortingStrategy,
-} from "@dnd-kit/sortable";
-import { CSS } from "@dnd-kit/utilities";
-import { useDroppable } from "@dnd-kit/core";
+import { useMemo } from "react";
 import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Select,
   SelectContent,
@@ -26,10 +8,16 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import type { ComparisonMode, Dataset, DatasetRole } from "@/types";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import type { ComparisonMode, Dataset } from "@/types";
 import { useDataTableStore } from "@/store/settingFormStore";
 import { useComparisonStore } from "@/store/comparisonStore";
-import { GripVertical, X } from "lucide-react";
+import { X } from "lucide-react";
 
 const comparisonOptions: { value: ComparisonMode; label: string }[] = [
   { value: "overlay", label: "Overlay" },
@@ -38,99 +26,75 @@ const comparisonOptions: { value: ComparisonMode; label: string }[] = [
   { value: "statistical", label: "Statistical" },
 ];
 
-interface DroppableZoneProps {
-  id: DatasetRole;
-  label: string;
-  description: string;
-  children: React.ReactNode;
-  isEmpty: boolean;
-}
-
-function DroppableZone({ id, label, description, children, isEmpty }: DroppableZoneProps) {
-  const { isOver, setNodeRef } = useDroppable({ id });
-
-  return (
-    <div
-      ref={setNodeRef}
-      className={`rounded-lg border-2 border-dashed p-3 transition-colors ${
-        isOver
-          ? "border-primary bg-primary/5"
-          : "border-muted-foreground/25 hover:border-muted-foreground/40"
-      }`}
-    >
-      <div className="mb-2 flex items-center justify-between">
-        <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-          {label}
-        </Label>
-      </div>
-      <div className="space-y-2">
-        {children}
-        {isEmpty && (
-          <div className="py-4 text-center text-xs text-muted-foreground">
-            {description}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-interface DraggableDatasetProps {
+interface DatasetItemProps {
   dataset: Dataset;
   isPrimary: boolean;
+  isVisible: boolean;
+  onToggleVisibility: (checked: boolean) => void;
+  onSetPrimary: () => void;
   onRemove: () => void;
   onColorChange: (color: string) => void;
 }
 
-function DraggableDataset({
+function DatasetItem({
   dataset,
   isPrimary,
+  isVisible,
+  onToggleVisibility,
+  onSetPrimary,
   onRemove,
   onColorChange,
-}: DraggableDatasetProps) {
-  const {
-    attributes,
-    listeners,
-    setNodeRef,
-    transform,
-    transition,
-    isDragging,
-  } = useSortable({ id: dataset.id });
-
-  const style: React.CSSProperties = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-    opacity: isDragging ? 0.5 : 1,
-  };
-
+}: DatasetItemProps) {
   return (
     <div
-      ref={setNodeRef}
-      style={style}
-      className={`flex items-center gap-2 rounded-md border bg-card p-2 shadow-sm ${
-        isPrimary ? "border-primary/50 bg-primary/5" : ""
-      } ${isDragging ? "shadow-lg" : ""}`}
+      className={`flex items-center gap-2 rounded-md border p-2 transition-all duration-200 ${
+        !isVisible
+          ? "border-muted bg-muted/30 opacity-50"
+          : isPrimary
+            ? "border-primary/50 bg-primary/5"
+            : "border-border bg-card"
+      }`}
     >
-      <button
-        className="cursor-grab touch-none text-muted-foreground hover:text-foreground"
-        {...attributes}
-        {...listeners}
-      >
-        <GripVertical className="h-4 w-4" />
-      </button>
+      <Checkbox
+        checked={isVisible}
+        onCheckedChange={onToggleVisibility}
+        className="shrink-0"
+      />
 
-      <div className="flex min-w-0 flex-1 items-center gap-2">
-        <input
-          type="color"
-          value={dataset.color}
-          className="h-5 w-5 cursor-pointer rounded border-0 p-0"
-          onChange={(e) => onColorChange(e.target.value)}
-          onClick={(e) => e.stopPropagation()}
-        />
-        <span className="truncate text-sm font-medium" title={dataset.name}>
-          {dataset.name}
-        </span>
-      </div>
+      <TooltipProvider delayDuration={300}>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              className={`flex min-w-0 flex-1 items-center gap-2 text-left transition-colors ${
+                isVisible ? "cursor-pointer hover:opacity-80" : "cursor-default"
+              }`}
+              onClick={() => isVisible && onSetPrimary()}
+              disabled={!isVisible}
+            >
+              <input
+                type="color"
+                value={dataset.color}
+                className="h-5 w-5 shrink-0 cursor-pointer rounded border-0 p-0"
+                onChange={(e) => onColorChange(e.target.value)}
+                onClick={(e) => e.stopPropagation()}
+              />
+              <span
+                className={`truncate text-sm ${isPrimary ? "font-semibold" : "font-medium"}`}
+                title={dataset.name}
+              >
+                {dataset.name}
+              </span>
+            </button>
+          </TooltipTrigger>
+          <TooltipContent side="top">
+            {isPrimary
+              ? "Currently shown in data table"
+              : isVisible
+                ? "Click to show in data table"
+                : "Check to make visible"}
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
 
       {isPrimary && (
         <span className="shrink-0 rounded bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary">
@@ -138,28 +102,28 @@ function DraggableDataset({
         </span>
       )}
 
-      <button
-        className="shrink-0 text-muted-foreground hover:text-destructive"
-        onClick={(e) => {
-          e.stopPropagation();
-          onRemove();
-        }}
-      >
-        <X className="h-4 w-4" />
-      </button>
-    </div>
-  );
-}
+      {isVisible && !isPrimary && (
+        <span className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+          PLOT
+        </span>
+      )}
 
-function DatasetOverlay({ dataset }: { dataset: Dataset }) {
-  return (
-    <div className="flex items-center gap-2 rounded-md border bg-card p-2 shadow-lg">
-      <GripVertical className="h-4 w-4 text-muted-foreground" />
-      <div
-        className="h-5 w-5 rounded"
-        style={{ backgroundColor: dataset.color }}
-      />
-      <span className="text-sm font-medium">{dataset.name}</span>
+      <TooltipProvider delayDuration={300}>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              className="shrink-0 text-destructive/60 transition-colors hover:text-destructive"
+              onClick={(e) => {
+                e.stopPropagation();
+                onRemove();
+              }}
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent side="top">Remove dataset</TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
     </div>
   );
 }
@@ -171,58 +135,42 @@ export function DatasetManager() {
     comparedDatasetIds,
     comparisonMode,
     setPrimaryDataset,
-    moveDataset,
+    addToCompared,
+    removeFromCompared,
     updateDataset,
     removeDataset,
     setComparisonMode,
   } = useDataTableStore();
   const { referenceDatasetId, setReferenceDatasetId } = useComparisonStore();
 
-  const [activeId, setActiveId] = useState<string | null>(null);
-
-  const sensors = useSensors(
-    useSensor(PointerSensor, {
-      activationConstraint: {
-        distance: 8,
-      },
-    }),
-    useSensor(KeyboardSensor, {
-      coordinateGetter: sortableKeyboardCoordinates,
-    })
-  );
-
   const datasetList = useMemo(() => Array.from(datasets.values()), [datasets]);
 
-  const primaryDataset = primaryDatasetId ? datasets.get(primaryDatasetId) : null;
-  const comparedDatasets = comparedDatasetIds
-    .map((id) => datasets.get(id))
-    .filter((d): d is Dataset => Boolean(d));
-  const hiddenDatasets = datasetList.filter(
-    (d) => d.id !== primaryDatasetId && !comparedDatasetIds.includes(d.id)
-  );
+  const isDatasetVisible = (id: string) =>
+    id === primaryDatasetId || comparedDatasetIds.includes(id);
 
-  const activeDataset = activeId ? datasets.get(activeId) : null;
-
-  const handleDragStart = (event: DragStartEvent) => {
-    setActiveId(event.active.id as string);
-  };
-
-  const handleDragEnd = (event: DragEndEvent) => {
-    const { active, over } = event;
-    setActiveId(null);
-
-    if (!over) return;
-
-    const draggedId = active.id as string;
-    const targetZone = over.id as DatasetRole;
-
-    if (targetZone === "primary" || targetZone === "compared" || targetZone === "hidden") {
-      moveDataset(draggedId, targetZone);
+  const handleToggleVisibility = (id: string, checked: boolean) => {
+    if (checked) {
+      if (!primaryDatasetId) {
+        setPrimaryDataset(id);
+      } else {
+        addToCompared(id);
+      }
+    } else {
+      if (id === primaryDatasetId) {
+        const nextPrimary = comparedDatasetIds[0];
+        if (nextPrimary) {
+          setPrimaryDataset(nextPrimary);
+        }
+      } else {
+        removeFromCompared(id);
+      }
     }
   };
 
-  const handleDoubleClick = (id: string) => {
-    setPrimaryDataset(id);
+  const handleSetPrimary = (id: string) => {
+    if (id !== primaryDatasetId) {
+      setPrimaryDataset(id);
+    }
   };
 
   return (
@@ -272,107 +220,32 @@ export function DatasetManager() {
           No datasets loaded yet. Upload a file to get started.
         </div>
       ) : (
-        <DndContext
-          sensors={sensors}
-          collisionDetection={closestCenter}
-          onDragStart={handleDragStart}
-          onDragEnd={handleDragEnd}
-        >
-          <div className="grid gap-3">
-            <DroppableZone
-              id="primary"
-              label="Primary"
-              description="Drag a dataset here to edit in table"
-              isEmpty={!primaryDataset}
-            >
-              {primaryDataset && (
-                <SortableContext
-                  items={[primaryDataset.id]}
-                  strategy={verticalListSortingStrategy}
-                >
-                  <div onDoubleClick={() => handleDoubleClick(primaryDataset.id)}>
-                    <DraggableDataset
-                      dataset={primaryDataset}
-                      isPrimary={true}
-                      onRemove={() => removeDataset(primaryDataset.id)}
-                      onColorChange={(color) =>
-                        updateDataset(primaryDataset.id, { color })
-                      }
-                    />
-                  </div>
-                </SortableContext>
-              )}
-            </DroppableZone>
+        <div className="space-y-2">
+          {datasetList.map((dataset) => {
+            const isVisible = isDatasetVisible(dataset.id);
+            const isPrimary = dataset.id === primaryDatasetId;
 
-            <DroppableZone
-              id="compared"
-              label="Compare"
-              description="Drag datasets here to overlay on plots"
-              isEmpty={comparedDatasets.length === 0}
-            >
-              <SortableContext
-                items={comparedDatasetIds}
-                strategy={verticalListSortingStrategy}
-              >
-                {comparedDatasets.map((dataset) => (
-                  <div
-                    key={dataset.id}
-                    onDoubleClick={() => handleDoubleClick(dataset.id)}
-                  >
-                    <DraggableDataset
-                      dataset={dataset}
-                      isPrimary={false}
-                      onRemove={() => removeDataset(dataset.id)}
-                      onColorChange={(color) =>
-                        updateDataset(dataset.id, { color })
-                      }
-                    />
-                  </div>
-                ))}
-              </SortableContext>
-            </DroppableZone>
-
-            {hiddenDatasets.length > 0 && (
-              <DroppableZone
-                id="hidden"
-                label="Hidden"
-                description="Datasets here are loaded but not visible"
-                isEmpty={hiddenDatasets.length === 0}
-              >
-                <SortableContext
-                  items={hiddenDatasets.map((d) => d.id)}
-                  strategy={verticalListSortingStrategy}
-                >
-                  {hiddenDatasets.map((dataset) => (
-                    <div
-                      key={dataset.id}
-                      onDoubleClick={() => handleDoubleClick(dataset.id)}
-                      className="opacity-60"
-                    >
-                      <DraggableDataset
-                        dataset={dataset}
-                        isPrimary={false}
-                        onRemove={() => removeDataset(dataset.id)}
-                        onColorChange={(color) =>
-                          updateDataset(dataset.id, { color })
-                        }
-                      />
-                    </div>
-                  ))}
-                </SortableContext>
-              </DroppableZone>
-            )}
-          </div>
-
-          <DragOverlay>
-            {activeDataset && <DatasetOverlay dataset={activeDataset} />}
-          </DragOverlay>
-        </DndContext>
+            return (
+              <DatasetItem
+                key={dataset.id}
+                dataset={dataset}
+                isPrimary={isPrimary}
+                isVisible={isVisible}
+                onToggleVisibility={(checked) =>
+                  handleToggleVisibility(dataset.id, checked)
+                }
+                onSetPrimary={() => handleSetPrimary(dataset.id)}
+                onRemove={() => removeDataset(dataset.id)}
+                onColorChange={(color) => updateDataset(dataset.id, { color })}
+              />
+            );
+          })}
+        </div>
       )}
 
       <div className="text-xs text-muted-foreground">
-        <p>• Drag datasets between zones to change their role</p>
-        <p>• Double-click to set as primary</p>
+        <p>• Check/uncheck to show/hide on plots</p>
+        <p>• Click a visible dataset to show in data table</p>
       </div>
     </div>
   );

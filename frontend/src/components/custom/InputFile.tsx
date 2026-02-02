@@ -12,7 +12,7 @@ export function InputFile() {
     const {
         datasets,
         addDataset,
-        setActiveTableDataset,
+        setPrimaryDataset,
         resetAllFilters,
     } = useDataTableStore();
     const { dataFiles, setDataFiles } = useSettingFormStore();
@@ -75,7 +75,7 @@ export function InputFile() {
                 if (referenceDataset) {
                     // Use the unified switching logic
                     // This ensures filters are reset/restored correctly and all store state is synced.
-                    setActiveTableDataset(referenceDataset.id);
+                    setPrimaryDataset(referenceDataset.id);
                 }
 
                 showAlert(
