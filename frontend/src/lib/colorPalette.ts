@@ -129,28 +129,28 @@ export const dataVizPalette = {
     // Each color has distinct hue, saturation, AND luminance
     categorical: {
         light: [
-            "hsl(205, 85%, 45%)",   // Blue (primary)
-            "hsl(25, 95%, 55%)",    // Orange (secondary)
-            "hsl(165, 70%, 35%)",   // Teal
-            "hsl(340, 75%, 50%)",   // Magenta-Pink
-            "hsl(55, 85%, 45%)",    // Gold
-            "hsl(280, 60%, 55%)",   // Purple
-            "hsl(185, 70%, 40%)",   // Cyan
-            "hsl(15, 80%, 45%)",    // Burnt Orange
-            "hsl(145, 55%, 40%)",   // Forest
-            "hsl(320, 65%, 50%)",   // Rose
-            "hsl(95, 50%, 40%)",    // Olive
+            "hsl(217, 91%, 60%)",   // Electric Blue (primary)
+            "hsl(25, 95%, 53%)",    // Vibrant Orange (secondary)
+            "hsl(173, 80%, 40%)",   // Scientific Teal
+            "hsl(291, 64%, 42%)",   // Deep Violet
+            "hsl(47, 96%, 53%)",    // Precision Gold
+            "hsl(349, 89%, 60%)",   // Signal Red
+            "hsl(192, 91%, 36%)",   // Accent Cyan
+            "hsl(15, 80%, 50%)",    // Burnt Orange
+            "hsl(145, 55%, 42%)",   // Forest
+            "hsl(320, 65%, 52%)",   // Rose
+            "hsl(95, 50%, 42%)",    // Olive
             "hsl(260, 50%, 55%)",   // Lavender
         ],
         dark: [
-            "hsl(205, 80%, 60%)",   // Blue (primary)
-            "hsl(25, 90%, 60%)",    // Orange (secondary)
-            "hsl(165, 60%, 50%)",   // Teal
-            "hsl(340, 70%, 60%)",   // Magenta-Pink
-            "hsl(55, 80%, 55%)",    // Gold
-            "hsl(280, 55%, 65%)",   // Purple
-            "hsl(185, 65%, 55%)",   // Cyan
-            "hsl(15, 75%, 55%)",    // Burnt Orange
+            "hsl(217, 91%, 65%)",   // Electric Blue (brighter)
+            "hsl(25, 95%, 60%)",    // Vibrant Orange
+            "hsl(173, 80%, 50%)",   // Scientific Teal
+            "hsl(291, 64%, 55%)",   // Deep Violet
+            "hsl(47, 96%, 58%)",    // Precision Gold
+            "hsl(349, 89%, 65%)",   // Signal Red
+            "hsl(192, 91%, 50%)",   // Accent Cyan
+            "hsl(15, 75%, 58%)",    // Burnt Orange
             "hsl(145, 50%, 55%)",   // Forest
             "hsl(320, 60%, 60%)",   // Rose
             "hsl(95, 45%, 55%)",    // Olive
@@ -217,16 +217,16 @@ export const dataVizPalette = {
 
 export const chartColors = {
     light: {
-        axis: "#1a2235",           // Deep navy
-        grid: "#d4d8de",           // Light gray
-        title: "#1a2235",
-        legend: "#374151",
+        axis: "#1e293b",        // Slate 800
+        grid: "#e2e8f0",        // Slate 200
+        title: "#0f172a",       // Slate 900
+        legend: "#475569",      // Slate 600
     },
     dark: {
-        axis: "#e5e7eb",           // Light gray
-        grid: "#374151",           // Medium gray
-        title: "#f3f4f6",
-        legend: "#d1d5db",
+        axis: "#e2e8f0",        // Slate 200
+        grid: "#334155",        // Slate 700
+        title: "#f8fafc",       // Slate 50
+        legend: "#94a3b8",      // Slate 400
     },
 } as const;
 
