@@ -155,11 +155,11 @@ export const WindowShell = React.forwardRef<HTMLDivElement, WindowShellProps>(
           containerRef.current = node;
         }}
         className={cn(
-          "flex flex-col overflow-hidden rounded-xl border bg-card/95 backdrop-blur-sm relative",
+          "flex flex-col overflow-hidden rounded-xl border bg-card relative",
           "border-border/50 shadow-lg",
-          "transition-all duration-200",
-          isActive && "ring-1 ring-primary/30 shadow-xl glow-sm",
-          (isDragging || isResizing) && "shadow-2xl scale-[1.01]",
+          // CRITICAL: Disable transitions during drag/resize for smooth 60fps
+          (isDragging || isResizing) ? "" : "transition-shadow duration-200",
+          isActive && "ring-1 ring-primary/30 shadow-xl",
           className
         )}
         style={style}
