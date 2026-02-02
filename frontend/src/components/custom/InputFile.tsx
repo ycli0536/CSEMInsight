@@ -2,7 +2,7 @@ import axios from 'axios';
 import { Button, FileTrigger, DropZone } from "react-aria-components";
 import type { FileDropItem } from "react-aria";
 
-import type { CsemData, GeometryData } from "@/types";
+import type { CsemData, DatasetRole, GeometryData } from "@/types";
 import { useDataTableStore, useSettingFormStore } from "@/store/settingFormStore";
 import { useAlertDialog } from '@/hooks/useAlertDialog';
 import { CustomAlertDialog } from '@/components/custom/CustomAlertDialog';
@@ -49,6 +49,8 @@ export function InputFile() {
                 const parsedDatasets = datasetsResponse.map((dataset, index) => {
                     const responseData: CsemData[] = JSON.parse(dataset.data).data;
                     const { TxData, RxData } = getTxRxData(responseData);
+                    const isFirst = datasets.size === 0 && index === 0;
+                    const role: DatasetRole = isFirst ? 'primary' : 'compared';
                     return {
                         id: dataset.id,
                         name: dataset.name,
@@ -59,6 +61,7 @@ export function InputFile() {
                         dataBlocks: dataset.dataBlocks,
                         color: datasetColors[(datasets.size + index) % datasetColors.length],
                         visible: true,
+                        role,
                         uploadTime: new Date(),
                     };
                 });

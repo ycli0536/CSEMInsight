@@ -6,6 +6,7 @@ import type {
   CsemData,
   ComparisonMode,
   Dataset,
+  DatasetRole,
   GeometryData,
   RxData,
   TxData,
@@ -50,7 +51,7 @@ type DataTableStore = {
   data: CsemData[];
   txData: TxData[];
   rxData: RxData[];
-  originalTxData: TxData[]; // Store original Tx data for reverting
+  originalTxData: TxData[];
   tableData: CsemData[];
   filteredData: CsemData[];
   filteredTxData: TxData[];
@@ -62,9 +63,17 @@ type DataTableStore = {
   dataFileString: string;
   geometryInfo: GeometryData;
   filterModel: FilterModel | null,
-  isTxDepthAdjusted: boolean; // Track if Tx depths have been adjusted
+  isTxDepthAdjusted: boolean;
   datasets: Map<string, Dataset>;
+  
+  primaryDatasetId: string | null;
+  comparedDatasetIds: string[];
+  
+  /** @deprecated Use primaryDatasetId instead */
   activeDatasetIds: string[];
+  /** @deprecated Use primaryDatasetId instead */
+  activeTableDatasetId: string | null;
+  
   comparisonMode: ComparisonMode;
   setData: (data: CsemData[]) => void;
   setTxData: (txData: TxData[]) => void;
@@ -85,11 +94,21 @@ type DataTableStore = {
   addDataset: (dataset: Dataset) => void;
   updateDataset: (id: string, updates: Partial<Dataset>) => void;
   removeDataset: (id: string) => void;
+  
+  setPrimaryDataset: (id: string) => void;
+  addToCompared: (id: string) => void;
+  removeFromCompared: (id: string) => void;
+  setDatasetRole: (id: string, role: DatasetRole) => void;
+  moveDataset: (id: string, targetRole: DatasetRole) => void;
+  
+  /** @deprecated Use setPrimaryDataset instead */
   toggleDatasetVisibility: (id: string) => void;
+  /** @deprecated Use moveDataset instead */
   setActiveDatasets: (ids: string[]) => void;
-  setComparisonMode: (mode: ComparisonMode) => void;
+  /** @deprecated Use setPrimaryDataset instead */
   setActiveTableDataset: (id: string) => void;
-  activeTableDatasetId: string | null;
+  
+  setComparisonMode: (mode: ComparisonMode) => void;
   updateDatasetFilter: (id: string, filteredData: CsemData[], filterSettings: { freqSelected: Selection, txSelected: Selection, rxSelected: Selection }, filterModel?: FilterModel | null) => void;
   resetAllFilters: () => void;
 }
@@ -295,7 +314,7 @@ const initialColumns = defaultColDefs
   .map((col) => col.field)
   .filter((field): field is string => field !== undefined && initialVisibleColumns.includes(field)); // Set only default visible columns
 
-export const useDataTableStore = create<DataTableStore>()((set) => ({
+export const useDataTableStore = create<DataTableStore>()((set, get) => ({
   data: [],
   txData: [],
   rxData: [],
@@ -313,8 +332,13 @@ export const useDataTableStore = create<DataTableStore>()((set) => ({
   geometryInfo: { UTM_zone: 0, Hemisphere: "N", North: 0, East: 0, Strike: 0 },
   isTxDepthAdjusted: false,
   datasets: new Map(),
+  
+  primaryDatasetId: null,
+  comparedDatasetIds: [],
+  
   activeDatasetIds: [],
   activeTableDatasetId: null,
+  
   comparisonMode: 'overlay',
   setData: (data) => set({ data: data, filteredData: data }),
   setTxData: (txData) => set({ txData: txData }),
@@ -332,41 +356,58 @@ export const useDataTableStore = create<DataTableStore>()((set) => ({
   setSubDatasets: (newSubDatasets) => set({ subDatasets: newSubDatasets }),
   setGeometryInfo: (newGeometryInfo) => set({ geometryInfo: newGeometryInfo }),
   setIsTxDepthAdjusted: (adjusted) => set({ isTxDepthAdjusted: adjusted }),
+  
   addDataset: (dataset) => set((state) => {
     const datasets = new Map(state.datasets);
-    datasets.set(dataset.id, dataset);
+    const isFirstDataset = state.datasets.size === 0;
+    
+    const datasetWithRole: Dataset = {
+      ...dataset,
+      role: isFirstDataset ? 'primary' : 'compared',
+      visible: true,
+    };
+    datasets.set(dataset.id, datasetWithRole);
+    
+    const newPrimaryId = isFirstDataset ? dataset.id : state.primaryDatasetId;
+    const newComparedIds = isFirstDataset 
+      ? state.comparedDatasetIds 
+      : [...state.comparedDatasetIds, dataset.id];
+    
+    const visibleIds = [
+      ...(newPrimaryId ? [newPrimaryId] : []),
+      ...newComparedIds
+    ];
+    
     return {
       datasets,
-      activeDatasetIds: state.activeDatasetIds.includes(dataset.id)
-        ? state.activeDatasetIds
-        : [...state.activeDatasetIds, dataset.id],
-      activeTableDatasetId: state.datasets.size === 0 ? dataset.id : state.activeTableDatasetId, // Set first dataset as active table if empty
+      primaryDatasetId: newPrimaryId,
+      comparedDatasetIds: newComparedIds,
+      activeDatasetIds: visibleIds,
+      activeTableDatasetId: newPrimaryId,
     };
   }),
+  
   updateDataset: (id, updates) => set((state) => {
-    if (!state.datasets.has(id)) {
-      return state;
-    }
+    if (!state.datasets.has(id)) return state;
     const datasets = new Map(state.datasets);
     const current = datasets.get(id);
-    if (!current) {
-      return state;
-    }
+    if (!current) return state;
     datasets.set(id, { ...current, ...updates });
     return { datasets };
   }),
+  
   removeDataset: (id) => set((state) => {
     const datasets = new Map(state.datasets);
     const deletedDataset = datasets.get(id);
     datasets.delete(id);
-
-    const activeDatasetIds = state.activeDatasetIds.filter((datasetId) => datasetId !== id);
-
-    // If no datasets left, clear everything
+    
     if (datasets.size === 0) {
       return {
         datasets,
+        primaryDatasetId: null,
+        comparedDatasetIds: [],
         activeDatasetIds: [],
+        activeTableDatasetId: null,
         data: [],
         tableData: [],
         filteredData: [],
@@ -378,93 +419,98 @@ export const useDataTableStore = create<DataTableStore>()((set) => ({
         dataBlocks: [],
         geometryInfo: { UTM_zone: 0, Hemisphere: "N", North: 0, East: 0, Strike: 0 },
         isTxDepthAdjusted: false,
-        activeTableDatasetId: null,
       };
     }
-
-    // Check if we need to update dataFiles in SettingFormStore (this is a separate store, so we might need a reaction or just rely on component sync)
-    // The user's request is to Sync Dropzone and DataManager.
-    // The easiest way is for InputFile to derive the displayed file list from the datasets map, OR for this method to trigger a cleanup.
-    // But since stores are separate, let's update InputFile to READ from datasets instead of `dataFiles` string for display if possible,
-    // OR we expose a way to clear it.
-
-    // However, the prompt asks to "unify" the state.
-    // Let's modify the return statement above.
-    // Ideally `dataFiles` should just reflect `datasets`.
-
-    if (deletedDataset && state.data === deletedDataset.data) {
-      const nextDataset = datasets.values().next().value;
-      if (nextDataset) {
-        return {
-          datasets,
-          activeDatasetIds,
-          data: nextDataset.data,
-          tableData: nextDataset.data,
-          filteredData: nextDataset.data,
-          txData: nextDataset.txData,
-          rxData: nextDataset.rxData,
-          dataBlocks: nextDataset.dataBlocks,
-          geometryInfo: nextDataset.geometryInfo,
-          isTxDepthAdjusted: false,
-          originalTxData: [],
-          activeTableDatasetId: nextDataset.id,
-        };
+    
+    let newPrimaryId = state.primaryDatasetId;
+    let newComparedIds = state.comparedDatasetIds.filter(cid => cid !== id);
+    
+    if (state.primaryDatasetId === id) {
+      const nextPrimary = newComparedIds[0] || datasets.keys().next().value;
+      newPrimaryId = nextPrimary ?? null;
+      newComparedIds = newComparedIds.filter(cid => cid !== nextPrimary);
+      
+      if (newPrimaryId) {
+        const promoted = datasets.get(newPrimaryId);
+        if (promoted) {
+          datasets.set(newPrimaryId, { ...promoted, role: 'primary' });
+        }
       }
     }
-
+    
+    const visibleIds = [
+      ...(newPrimaryId ? [newPrimaryId] : []),
+      ...newComparedIds
+    ];
+    
+    const newPrimaryDataset = newPrimaryId ? datasets.get(newPrimaryId) : null;
+    
     return {
       datasets,
-      activeDatasetIds,
-      activeTableDatasetId: deletedDataset && state.data === deletedDataset.data ? null : state.activeTableDatasetId, // Will be updated by next block if cleared
+      primaryDatasetId: newPrimaryId,
+      comparedDatasetIds: newComparedIds,
+      activeDatasetIds: visibleIds,
+      activeTableDatasetId: newPrimaryId,
+      ...(newPrimaryDataset && deletedDataset && state.data === deletedDataset.data ? {
+        data: newPrimaryDataset.data,
+        tableData: newPrimaryDataset.data,
+        filteredData: newPrimaryDataset.filteredData ?? newPrimaryDataset.data,
+        txData: newPrimaryDataset.txData,
+        rxData: newPrimaryDataset.rxData,
+        dataBlocks: newPrimaryDataset.dataBlocks,
+        geometryInfo: newPrimaryDataset.geometryInfo,
+        isTxDepthAdjusted: false,
+        originalTxData: [],
+      } : {}),
     };
   }),
-  toggleDatasetVisibility: (id) => set((state) => {
-    if (!state.datasets.has(id)) {
-      return state;
-    }
-    const datasets = new Map(state.datasets);
-    const current = datasets.get(id);
-    if (!current) {
-      return state;
-    }
-    datasets.set(id, { ...current, visible: !current.visible });
-    return { datasets };
-  }),
-  setActiveDatasets: (ids) => set({ activeDatasetIds: ids }),
-  setComparisonMode: (mode) => set({ comparisonMode: mode }),
-  setActiveTableDataset: (id) => set((state) => {
+  
+  setPrimaryDataset: (id) => set((state) => {
     const dataset = state.datasets.get(id);
     if (!dataset) return state;
-
-
-    // Sync filter settings to UI (SettingFormStore)
+    
+    const datasets = new Map(state.datasets);
+    
+    if (state.primaryDatasetId && state.primaryDatasetId !== id) {
+      const oldPrimary = datasets.get(state.primaryDatasetId);
+      if (oldPrimary) {
+        datasets.set(state.primaryDatasetId, { ...oldPrimary, role: 'compared' });
+      }
+    }
+    
+    datasets.set(id, { ...dataset, role: 'primary', visible: true });
+    
+    const newComparedIds = state.comparedDatasetIds.filter(cid => cid !== id);
+    if (state.primaryDatasetId && state.primaryDatasetId !== id) {
+      newComparedIds.unshift(state.primaryDatasetId);
+    }
+    
     const { setFreqSelected, setTxSelected, setRxSelected } = useSettingFormStore.getState();
     if (dataset.filterSettings) {
       setFreqSelected(dataset.filterSettings.freqSelected);
       setTxSelected(dataset.filterSettings.txSelected);
       setRxSelected(dataset.filterSettings.rxSelected);
     } else {
-      // Reset if no saved settings
       setFreqSelected('all');
       setTxSelected('all');
       setRxSelected('all');
     }
-
-    // If we have saved filtered data, use it to initialize the view to prevent "flash" of full data
-    const initialViewData = (dataset.filteredData && dataset.filteredData.length > 0) ? dataset.filteredData : dataset.data;
-
-    // Unified Logic: tableData is ALWAYS the full dataset.
-    // Filtering is applied by AG Grid based on imported settings (freqSelected etc)
-    // which are synced to UI stores above.
-
-    // However, filteredData should reflect the saved state if available, for the Plot.
-    // But DataPage will update it immediately upon mount/filter application.
-    // So good to initialize it.
-
+    
+    const initialViewData = (dataset.filteredData && dataset.filteredData.length > 0) 
+      ? dataset.filteredData 
+      : dataset.data;
+    
+    const visibleIds = [id, ...newComparedIds];
+    
     return {
+      datasets,
+      primaryDatasetId: id,
+      comparedDatasetIds: newComparedIds,
+      activeDatasetIds: visibleIds,
+      activeTableDatasetId: id,
       data: dataset.data,
-      tableData: dataset.data, // Full data for AG Grid
-      filteredData: initialViewData, // Filtered view for Plot
+      tableData: dataset.data,
+      filteredData: initialViewData,
       txData: dataset.txData,
       rxData: dataset.rxData,
       originalTxData: [],
@@ -473,27 +519,138 @@ export const useDataTableStore = create<DataTableStore>()((set) => ({
       dataBlocks: dataset.dataBlocks,
       geometryInfo: dataset.geometryInfo,
       isTxDepthAdjusted: false,
-      activeTableDatasetId: id,
     };
   }),
+  
+  addToCompared: (id) => set((state) => {
+    if (state.comparedDatasetIds.includes(id) || state.primaryDatasetId === id) {
+      return state;
+    }
+    const dataset = state.datasets.get(id);
+    if (!dataset) return state;
+    
+    const datasets = new Map(state.datasets);
+    datasets.set(id, { ...dataset, role: 'compared', visible: true });
+    
+    const newComparedIds = [...state.comparedDatasetIds, id];
+    const visibleIds = [
+      ...(state.primaryDatasetId ? [state.primaryDatasetId] : []),
+      ...newComparedIds
+    ];
+    
+    return {
+      datasets,
+      comparedDatasetIds: newComparedIds,
+      activeDatasetIds: visibleIds,
+    };
+  }),
+  
+  removeFromCompared: (id) => set((state) => {
+    if (!state.comparedDatasetIds.includes(id)) return state;
+    
+    const dataset = state.datasets.get(id);
+    if (!dataset) return state;
+    
+    const datasets = new Map(state.datasets);
+    datasets.set(id, { ...dataset, role: 'hidden', visible: false });
+    
+    const newComparedIds = state.comparedDatasetIds.filter(cid => cid !== id);
+    const visibleIds = [
+      ...(state.primaryDatasetId ? [state.primaryDatasetId] : []),
+      ...newComparedIds
+    ];
+    
+    return {
+      datasets,
+      comparedDatasetIds: newComparedIds,
+      activeDatasetIds: visibleIds,
+    };
+  }),
+  
+  setDatasetRole: (id, role) => {
+    const state = get();
+    if (role === 'primary') {
+      state.setPrimaryDataset(id);
+    } else if (role === 'compared') {
+      state.addToCompared(id);
+    } else {
+      state.removeFromCompared(id);
+    }
+  },
+  
+  moveDataset: (id, targetRole) => {
+    get().setDatasetRole(id, targetRole);
+  },
+  
+  toggleDatasetVisibility: (id) => set((state) => {
+    const dataset = state.datasets.get(id);
+    if (!dataset) return state;
+    
+    if (dataset.role === 'hidden') {
+      const datasets = new Map(state.datasets);
+      datasets.set(id, { ...dataset, role: 'compared', visible: true });
+      const newComparedIds = [...state.comparedDatasetIds, id];
+      const visibleIds = [
+        ...(state.primaryDatasetId ? [state.primaryDatasetId] : []),
+        ...newComparedIds
+      ];
+      return { datasets, comparedDatasetIds: newComparedIds, activeDatasetIds: visibleIds };
+    } else if (dataset.role === 'compared') {
+      const datasets = new Map(state.datasets);
+      datasets.set(id, { ...dataset, role: 'hidden', visible: false });
+      const newComparedIds = state.comparedDatasetIds.filter(cid => cid !== id);
+      const visibleIds = [
+        ...(state.primaryDatasetId ? [state.primaryDatasetId] : []),
+        ...newComparedIds
+      ];
+      return { datasets, comparedDatasetIds: newComparedIds, activeDatasetIds: visibleIds };
+    }
+    return state;
+  }),
+  
+  setActiveDatasets: (ids) => set((state) => {
+    const datasets = new Map(state.datasets);
+    const primaryId = state.primaryDatasetId;
+    const comparedIds = ids.filter(id => id !== primaryId);
+    
+    datasets.forEach((dataset, id) => {
+      if (id === primaryId) {
+        datasets.set(id, { ...dataset, role: 'primary', visible: true });
+      } else if (comparedIds.includes(id)) {
+        datasets.set(id, { ...dataset, role: 'compared', visible: true });
+      } else {
+        datasets.set(id, { ...dataset, role: 'hidden', visible: false });
+      }
+    });
+    
+    return {
+      datasets,
+      comparedDatasetIds: comparedIds,
+      activeDatasetIds: ids,
+    };
+  }),
+  
+  setComparisonMode: (mode) => set({ comparisonMode: mode }),
+  
+  setActiveTableDataset: (id) => {
+    get().setPrimaryDataset(id);
+  },
+  
   updateDatasetFilter: (id, filteredData, filterSettings, filterModel) => set((state) => {
     const datasets = new Map(state.datasets);
     const dataset = datasets.get(id);
     if (!dataset) return state;
-
-    // Merge new filter model with existing updates
-    // If filterModel is undefined, we don't overwrite it unless explicitly passed as null
+    
     const updates: Partial<Dataset> = { filteredData, filterSettings };
     if (filterModel !== undefined) {
       updates.filterModel = filterModel;
     }
-
+    
     datasets.set(id, { ...dataset, ...updates });
     return { datasets };
   }),
+  
   resetAllFilters: () => set(() => {
-    // Reset the filterModel in the store
-    // Also trigger control panel filter reset via SettingFormStore
     const settingStore = useSettingFormStore.getState();
     settingStore.resetFilters();
     settingStore.setResetColumnFilters(true);
@@ -532,6 +689,7 @@ export type {
   CsemData,
   ComparisonMode,
   Dataset,
+  DatasetRole,
   GeometryData,
   RxData,
   TxData,

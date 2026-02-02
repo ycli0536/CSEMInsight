@@ -107,6 +107,9 @@ export interface GeometryData {
 
 export type ComparisonMode = "overlay" | "sidebyside" | "difference" | "statistical";
 
+/** Dataset visibility/role in the application */
+export type DatasetRole = "primary" | "compared" | "hidden";
+
 export interface Dataset {
   id: string;
   name: string;
@@ -116,7 +119,10 @@ export interface Dataset {
   geometryInfo: GeometryData;
   dataBlocks: [];
   color: string;
+  /** @deprecated Use role instead. Kept for backwards compatibility during migration. */
   visible: boolean;
+  /** The role of this dataset: primary (table+plot), compared (plot only), or hidden */
+  role: DatasetRole;
   uploadTime: Date;
   filteredData?: CsemData[];
   filterSettings?: {

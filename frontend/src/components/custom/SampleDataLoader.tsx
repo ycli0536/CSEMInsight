@@ -1,6 +1,6 @@
 import axios from "axios";
 import { Button } from "@/components/ui/button";
-import type { CsemData, GeometryData } from "@/types";
+import type { CsemData, DatasetRole, GeometryData } from "@/types";
 import { useDataTableStore } from "@/store/settingFormStore";
 import { useSettingFormStore } from "@/store/settingFormStore";
 import { useAlertDialog } from "@/hooks/useAlertDialog";
@@ -81,6 +81,8 @@ export function SampleDataLoader() {
         const parsedDatasets = datasetsResponse.map((dataset, index) => {
           const responseData: CsemData[] = JSON.parse(dataset.data).data;
           const { TxData, RxData } = getTxRxData(responseData);
+          const isFirst = datasets.size === 0 && index === 0;
+          const role: DatasetRole = isFirst ? 'primary' : 'compared';
           return {
             id: dataset.id,
             name: dataset.name,
@@ -91,6 +93,7 @@ export function SampleDataLoader() {
             dataBlocks: dataset.dataBlocks,
             color: datasetColors[(datasets.size + index) % datasetColors.length],
             visible: true,
+            role,
             uploadTime: new Date(),
           };
         });
