@@ -591,15 +591,16 @@ export function ResponsesWithErrorBars() {
       // Model is 3N+1 .. 4N
 
       const bands: uPlot.Band[] = [];
+      const bandFillLightness = isDarkMode ? 25 : 90; // Darker fill for dark mode, lighter for light mode
       // console.log('seriesNum: ', seriesNum);
       for (let idx = 0; idx < seriesNum; idx++) {
         bands.push({
           series: [idx + seriesNum + 1, idx + 1],
-          fill: updateLightness(seriesColors[idx], 90),
+          fill: updateLightness(seriesColors[idx], bandFillLightness),
         });
         bands.push({
           series: [idx + seriesNum * 2 + 1, idx + 1],
-          fill: updateLightness(seriesColors[idx], 90),
+          fill: updateLightness(seriesColors[idx], bandFillLightness),
           dir: 1,
         });
       }
@@ -714,28 +715,26 @@ export function ResponsesWithErrorBars() {
             },
           });
         }
-        // 2. Upper
+        // 2. Upper - must be show:true for bands fill to work, but hide the line
         for (let idx = seriesNum; idx < seriesNum * 2; idx++) {
           seriesWithBands.push({
-            show: false,
-            stroke: seriesColors[idx - seriesNum],
+            show: true, // Required for bands to calculate fill area
+            stroke: "transparent", // Hide the line itself
+            width: 1,
             points: {
-              show: true,
-              size: 3,
-              space: 0,
+              show: false, // Hide points
             },
             label: " ",
           });
         }
-        // 3. Lower
+        // 3. Lower - must be show:true for bands fill to work, but hide the line
         for (let idx = seriesNum * 2; idx < seriesNum * 3; idx++) {
           seriesWithBands.push({
-            show: false,
-            stroke: seriesColors[idx - 2 * seriesNum],
+            show: true, // Required for bands to calculate fill area
+            stroke: "transparent", // Hide the line itself
+            width: 1,
             points: {
-              show: true,
-              size: 3,
-              space: 0,
+              show: false, // Hide points
             },
             label: " ",
           });
