@@ -1,4 +1,4 @@
-import { Activity, Settings, Waves, LineChart, BarChart3, Download, Zap } from "lucide-react";
+import { Activity, Settings, Waves, LineChart, BarChart3, Download, Zap, Loader2, Check, AlertCircle } from "lucide-react";
 import { useWindowStore } from "@/store/windowStore";
 import MapSubstrate from "@/components/layout/MapSubstrate";
 import { WindowManager } from "@/components/layout/WindowManager";
@@ -8,11 +8,13 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { cn } from "@/lib/utils";
 import type { WindowId } from "@/types/window";
 import { ThemeToggle } from "@/components/layout/ThemeToggle";
+import { useExportData } from "@/hooks/useExportData";
+import { useEffect } from "react";
 
 export default function SpatialLayout() {
   const { toggleWindow, windows } = useWindowStore();
+  const { exportData, status, message, hasData, resetStatus } = useExportData();
 
-  // Removed "data-table" from nav items - now in bottom panel
   const navItems = [
     { id: "settings", icon: Settings, label: "Settings" },
     { id: "response-plot", icon: Activity, label: "Response" },
@@ -21,11 +23,35 @@ export default function SpatialLayout() {
     { id: "misfit-stats", icon: BarChart3, label: "Misfit" },
   ] as const;
 
+  useEffect(() => {
+    if (status === "success" || status === "error") {
+      const timer = setTimeout(resetStatus, 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [status, resetStatus]);
+
+  const getExportIcon = () => {
+    switch (status) {
+      case "exporting":
+        return <Loader2 className="h-4 w-4 animate-spin" />;
+      case "success":
+        return <Check className="h-4 w-4 text-green-500" />;
+      case "error":
+        return <AlertCircle className="h-4 w-4 text-destructive" />;
+      default:
+        return <Download className="h-4 w-4" />;
+    }
+  };
+
+  const getTooltipContent = () => {
+    if (!hasData) return "No data to export";
+    if (message) return message;
+    return "Export data file";
+  };
 
   return (
     <div className="relative h-screen w-screen overflow-hidden bg-background">
       <BottomPanel>
-        {/* Map and floating windows container */}
         <div className="relative h-full w-full">
           <div className="absolute inset-0 z-0">
             <MapSubstrate />
@@ -85,14 +111,21 @@ export default function SpatialLayout() {
                       <Button
                         variant="ghost"
                         size="icon"
-                        className="h-9 w-9 text-muted-foreground hover:text-foreground"
+                        className={cn(
+                          "h-9 w-9 text-muted-foreground hover:text-foreground",
+                          !hasData && "opacity-50 cursor-not-allowed",
+                          status === "success" && "text-green-500",
+                          status === "error" && "text-destructive"
+                        )}
                         aria-label="Export data file"
+                        onClick={exportData}
+                        disabled={!hasData || status === "exporting"}
                       >
-                        <Download className="h-4 w-4" />
+                        {getExportIcon()}
                       </Button>
                     </TooltipTrigger>
                     <TooltipContent side="bottom" sideOffset={8}>
-                      <p>Export data file</p>
+                      <p>{getTooltipContent()}</p>
                     </TooltipContent>
                   </Tooltip>
                   
