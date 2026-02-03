@@ -10,6 +10,7 @@ import type {
   RxData,
   TxData,
 } from "@/types";
+import { useComparisonStore } from "@/store/comparisonStore";
 import { ColDef, FilterModel } from "ag-grid-community";
 import { ITextFilterParams, INumberFilterParams } from "ag-grid-community";
 import NumberFloatingFilterComponent from '@/components/custom/numberFloatingFilterComponent';
@@ -369,6 +370,10 @@ export const useDataTableStore = create<DataTableStore>()((set, _get) => ({
       ...newComparedIds
     ];
     
+    if (isFirstDataset) {
+      useComparisonStore.getState().setReferenceDatasetId(newPrimaryId);
+    }
+
     return {
       datasets,
       primaryDatasetId: newPrimaryId,
@@ -393,6 +398,7 @@ export const useDataTableStore = create<DataTableStore>()((set, _get) => ({
     datasets.delete(id);
     
     if (datasets.size === 0) {
+      useComparisonStore.getState().setReferenceDatasetId(null);
       return {
         datasets,
         primaryDatasetId: null,
@@ -427,6 +433,8 @@ export const useDataTableStore = create<DataTableStore>()((set, _get) => ({
           datasets.set(newPrimaryId, { ...promoted, role: 'primary' });
         }
       }
+
+      useComparisonStore.getState().setReferenceDatasetId(newPrimaryId);
     }
     
     const visibleIds = [
@@ -492,6 +500,8 @@ export const useDataTableStore = create<DataTableStore>()((set, _get) => ({
       : dataset.data;
     
     const visibleIds = [id, ...newComparedIds];
+
+    useComparisonStore.getState().setReferenceDatasetId(id);
     
     return {
       datasets,
@@ -585,6 +595,7 @@ export const useDataTableStore = create<DataTableStore>()((set, _get) => ({
     const settingStore = useSettingFormStore.getState();
     settingStore.resetFilters();
     settingStore.setResetColumnFilters(true);
+    useComparisonStore.getState().setReferenceDatasetId(null);
     return {
       datasets: new Map(),
       primaryDatasetId: null,

@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import { useDataTableStore, useSettingFormStore } from './settingFormStore';
+import { useComparisonStore } from './comparisonStore';
 import type { CsemData, Dataset } from '@/types';
 import type { FilterModel } from 'ag-grid-community';
 
@@ -86,6 +87,13 @@ beforeEach(() => {
     activeDatasetIds: [],
     activeTableDatasetId: null,
   });
+
+  useComparisonStore.setState({
+    referenceDatasetId: null,
+    differenceData: [],
+    statisticalResults: {},
+    alignmentMode: 'exact',
+  });
 });
 
 describe('useDataTableStore setPrimaryDataset', () => {
@@ -149,6 +157,35 @@ describe('useDataTableStore setPrimaryDataset', () => {
 
     const state = useDataTableStore.getState();
     expect(state.filteredData).toEqual(dataset.data);
+  });
+
+  it('syncs reference dataset with primary dataset', () => {
+    const datasetA = buildDataset({ id: 'A', role: 'primary' });
+    const datasetB = buildDataset({ id: 'B' });
+
+    useDataTableStore.setState({
+      datasets: new Map([
+        ['A', datasetA],
+        ['B', datasetB],
+      ]),
+      primaryDatasetId: 'A',
+      comparedDatasetIds: ['B'],
+      data: datasetA.data,
+      tableData: datasetA.data,
+      filteredData: datasetA.data,
+    });
+
+    useComparisonStore.setState({
+      referenceDatasetId: 'A',
+      differenceData: [],
+      statisticalResults: {},
+      alignmentMode: 'exact',
+    });
+
+    useDataTableStore.getState().setPrimaryDataset('B');
+
+    const comparisonState = useComparisonStore.getState();
+    expect(comparisonState.referenceDatasetId).toBe('B');
   });
 });
 
