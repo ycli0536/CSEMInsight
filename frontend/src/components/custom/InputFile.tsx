@@ -86,9 +86,10 @@ export function InputFile() {
             })
             .catch(error => {
                 console.error('Error uploading file:', error);
+                const backendError = error.response?.data?.error;
                 showAlert(
                     'Data Upload Error',
-                    `Error uploading file (backend processing): ${error.response.data.error}. Unsupported or wrong file format.`,
+                    backendError || `Error uploading file: ${error.message}`,
                     'error'
                 );
             });

@@ -10,10 +10,13 @@ import type { WindowId } from "@/types/window";
 import { ThemeToggle } from "@/components/layout/ThemeToggle";
 import { useExportData } from "@/hooks/useExportData";
 import { useEffect } from "react";
+import { useAlertDialog } from "@/hooks/useAlertDialog";
+import { CustomAlertDialog } from "@/components/custom/CustomAlertDialog";
 
 export default function SpatialLayout() {
   const { toggleWindow, windows } = useWindowStore();
   const { exportData, status, message, hasData, resetStatus, activeDatasetName, filteredDataCount } = useExportData();
+  const { alertState, showAlert, hideAlert, handleConfirm } = useAlertDialog();
 
   const navItems = [
     { id: "settings", icon: Settings, label: "Settings" },
@@ -24,11 +27,14 @@ export default function SpatialLayout() {
   ] as const;
 
   useEffect(() => {
-    if (status === "success" || status === "error") {
+    if (status === "error" && message) {
+      showAlert("Export Failed", message, "error");
+      resetStatus();
+    } else if (status === "success") {
       const timer = setTimeout(resetStatus, 3000);
       return () => clearTimeout(timer);
     }
-  }, [status, resetStatus]);
+  }, [status, message, resetStatus, showAlert]);
 
   const getExportIcon = () => {
     switch (status) {
@@ -152,6 +158,12 @@ export default function SpatialLayout() {
           </header>
         </div>
       </BottomPanel>
+
+      <CustomAlertDialog 
+        alertState={alertState} 
+        onClose={hideAlert} 
+        onConfirm={handleConfirm} 
+      />
     </div>
   );
 }

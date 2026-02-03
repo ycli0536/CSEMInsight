@@ -100,7 +100,13 @@ export function useExportData() {
         message: `Exported ${exportedCount} records`,
       };
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : "Failed to save the file.";
+      let errorMessage = "Failed to save the file.";
+      
+      if (axios.isAxiosError(error) && error.response?.data?.error) {
+        errorMessage = error.response.data.error;
+      } else if (error instanceof Error) {
+        errorMessage = error.message;
+      }
       
       if (errorMessage.includes("user aborted") || errorMessage.includes("AbortError")) {
         setStatus("idle");
