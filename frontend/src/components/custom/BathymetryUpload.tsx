@@ -1,7 +1,7 @@
 import axios from 'axios';
 import { Button, FileTrigger, DropZone } from "react-aria-components";
 import type { FileDropItem } from "react-aria";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { BathymetryData } from "@/types";
 import { useBathymetryStore, useDataTableStore } from "@/store/settingFormStore";
 import { adjustTxDepthsToBathymetry } from "@/utils/depthAdjustment";
@@ -31,6 +31,61 @@ export function BathymetryUpload() {
     } = useDataTableStore();
 
     const isDemoMode = import.meta.env.VITE_DEMO_MODE === 'true';
+    const demoBathymetryUrl = `${import.meta.env.BASE_URL}demo-data/data/bathy_line5_s2d_20240229.txt`;
+
+    useEffect(() => {
+        if (!isDemoMode || bathymetryData || bathymetryFile) {
+            return;
+        }
+
+        const loadDemoBathymetry = async () => {
+            try {
+                const response = await fetch(demoBathymetryUrl);
+                if (!response.ok) {
+                    throw new Error(`Failed to load demo bathymetry: ${response.status}`);
+                }
+
+                const rawText = await response.text();
+                const lines = rawText.trim().split(/\r?\n/);
+                const parsed = lines
+                    .map((line) => line.trim().split(/[\s,]+/))
+                    .filter((parts) => parts.length >= 2)
+                    .map(([inlineDistance, depth]) => ({
+                        inlineDistance: Number(inlineDistance),
+                        depth: Number(depth),
+                    }))
+                    .filter((point) => Number.isFinite(point.inlineDistance) && Number.isFinite(point.depth));
+
+                if (parsed.length === 0) {
+                    throw new Error("No valid bathymetry data found in demo file.");
+                }
+
+                const inline_distance = parsed.map((point) => point.inlineDistance);
+                const depth = parsed.map((point) => point.depth);
+                const minDistance = Math.min(...inline_distance);
+                const maxDistance = Math.max(...inline_distance);
+                const minDepth = Math.min(...depth);
+                const maxDepth = Math.max(...depth);
+
+                setBathymetryData({
+                    inline_distance,
+                    depth,
+                    num_points: parsed.length,
+                    distance_range: [minDistance, maxDistance],
+                    depth_range: [minDepth, maxDepth],
+                });
+                setBathymetryFile("bathy_line5_s2d_20240229.txt");
+            } catch (error) {
+                showAlert(
+                    "Demo Bathymetry Load Failed",
+                    `Unable to load demo bathymetry file: ${error instanceof Error ? error.message : "Unknown error"}`,
+                    "error"
+                );
+            }
+        };
+
+        loadDemoBathymetry();
+    }, [bathymetryData, bathymetryFile, demoBathymetryUrl, isDemoMode, setBathymetryData, showAlert]);
 
     const handleBathymetryUpload = (files: File[]) => {
         if (files.length === 0) return;
@@ -186,7 +241,11 @@ export function BathymetryUpload() {
             <div className="flex gap-2">
                 <DropZone
                     className="h-[40px] text-base text-center justify-center border-dashed border-2 rounded-lg flex items-center flex-1"
+                    isDisabled={isDemoMode}
                     onDrop={(e) => {
+                        if (isDemoMode) {
+                            return;
+                        }
                         const files = e.items.filter(
                             (file) => file.kind === "file"
                         ) as FileDropItem[];
@@ -196,6 +255,7 @@ export function BathymetryUpload() {
                 >
                     <FileTrigger
                         acceptedFileTypes={[".txt"]}
+                        isDisabled={isDemoMode}
                         onSelect={(e) => {
                             if (e) {
                                 const files = Array.from(e);
@@ -209,7 +269,7 @@ export function BathymetryUpload() {
                                 flex items-center justify-center whitespace-normal rounded-md text-sm font-medium 
                                 ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 
                                 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50"
-                            isDisabled={isUploading}
+                            isDisabled={isUploading || isDemoMode}
                         >
                             {isUploading 
                                 ? "Uploading..." 
