@@ -17,6 +17,7 @@ export default function SpatialLayout() {
   const { toggleWindow, windows } = useWindowStore();
   const { exportData, status, message, hasData, resetStatus, activeDatasetName, filteredDataCount } = useExportData();
   const { alertState, showAlert, hideAlert, handleConfirm } = useAlertDialog();
+  const isDemoMode = import.meta.env.VITE_DEMO_MODE === 'true';
 
   const navItems = [
     { id: "settings", icon: Settings, label: "Settings" },
@@ -50,6 +51,9 @@ export default function SpatialLayout() {
   };
 
   const getTooltipContent = () => {
+    if (isDemoMode) {
+      return <span className="text-muted-foreground">Export is disabled in demo mode</span>;
+    }
     if (!hasData) {
       return <span className="text-muted-foreground">No data loaded</span>;
     }
