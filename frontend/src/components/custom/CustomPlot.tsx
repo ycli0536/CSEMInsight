@@ -79,13 +79,13 @@ export function CustomPlot() {
         // Custom Path Builder (Adapted from PositionPlot.tsx)
         const drawPoints: uPlot.Series.PathBuilder = (u, seriesIdx, _idx0, _idx1) => {
             uPlot.orient(u, seriesIdx, (series, _dataX, _dataY, scaleX, scaleY, valToPosX, valToPosY, xOff, yOff, xDim, yDim, moveTo, _lineTo, _rect, arc) => {
-                const d = u.data[seriesIdx] as unknown as any;
+                const d = u.data[seriesIdx] as unknown as [Float64Array, Float64Array];
                 if (!d) return;
 
                 const xValues = d[0];
                 const yValues = d[1];
 
-                const pointSize = (series.points as any)?.size || 4;
+                const pointSize = (series.points as { size?: number })?.size || 4;
                 const size = pointSize * pxRatio;
                 const strokeWidth = 1; // Fixed stroke width
 
@@ -211,11 +211,11 @@ export function CustomPlot() {
                 seriesConfig.push({
                     show: false,
                     label: `${key} upper`,
-                } as any);
+                } as uPlot.Series);
                 seriesConfig.push({
                     show: false,
                     label: `${key} lower`,
-                } as any);
+                } as uPlot.Series);
 
                 errorBarRanges.push({
                     seriesIdx: currentSeriesDataIdx,
@@ -255,9 +255,10 @@ export function CustomPlot() {
 
                 // In Mode 2, u.data contains the arrays directly
                 // u.data[i] = [xValues, yValues]
-                const seriesData = (u.data as unknown as any[])[seriesIdx];
-                const upperData = (u.data as unknown as any[])[upperSeriesIdx];
-                const lowerData = (u.data as unknown as any[])[lowerSeriesIdx];
+                type UPlotDataSeries = [Float64Array, Float64Array];
+                const seriesData = (u.data as unknown as UPlotDataSeries[])[seriesIdx];
+                const upperData = (u.data as unknown as UPlotDataSeries[])[upperSeriesIdx];
+                const lowerData = (u.data as unknown as UPlotDataSeries[])[lowerSeriesIdx];
 
                 const dataX = seriesData[0]; // X array
                 const dataY = seriesData[1];
@@ -328,7 +329,8 @@ export function CustomPlot() {
         }
 
         // TS Cast for data in Mode 2
-        uPlotRef.current = new uPlot(opts, data as any, plotRef.current);
+        type UPlotDataArray = [Float64Array, Float64Array][];
+        uPlotRef.current = new uPlot(opts, data as UPlotDataArray, plotRef.current);
 
         const resizeObserver = new ResizeObserver(() => {
             if (plotRef.current && uPlotRef.current) {
