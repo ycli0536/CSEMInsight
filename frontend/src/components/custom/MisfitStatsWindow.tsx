@@ -15,6 +15,7 @@ import {
     AlertDialogHeader,
     AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import type { CsemData } from "@/types";
 
 
 type RMSDataPoint = {
@@ -98,7 +99,7 @@ export const MisfitStatsWindow = () => {
         const sortedFreqs = Array.from(freqs).sort((a, b) => a - b);
 
         return sortedFreqs.map(f => {
-            const row: any = { name: f };
+            const row: Record<string, string | number> = { name: f };
             datasetStats.forEach(ds => {
                 const amp = ds.stats.byFreq.amplitude.find(d => d.Freq_id === f)?.RMS ?? 0;
                 const phi = ds.stats.byFreq.phase.find(d => d.Freq_id === f)?.RMS ?? 0;
@@ -120,7 +121,7 @@ export const MisfitStatsWindow = () => {
         const sortedPos = Array.from(positions).sort((a, b) => a - b);
 
         return sortedPos.map(pos => {
-            const row: any = { name: pos.toFixed(2) };
+            const row: Record<string, string | number> = { name: pos.toFixed(2) };
             datasetStats.forEach(ds => {
                 const amp = ds.stats.byTx.amplitude.find(d => d.Y_tx_km === pos)?.RMS ?? 0;
                 const phi = ds.stats.byTx.phase.find(d => d.Y_tx_km === pos)?.RMS ?? 0;
@@ -159,7 +160,7 @@ export const MisfitStatsWindow = () => {
 
         // Single point check
         if (globalMax - globalMin < 1e-6) {
-            const row: any = { name: globalMin.toFixed(2) };
+            const row: Record<string, string | number> = { name: globalMin.toFixed(2) };
             datasetStats.forEach(ds => {
                 // Avg of all
                 let ampSum = 0, ampCount = 0;
@@ -214,7 +215,7 @@ export const MisfitStatsWindow = () => {
 
         // Flatten
         return rows.map(r => {
-            const finalRow: any = { name: r.name };
+            const finalRow: Record<string, string | number> = { name: r.name };
             datasetStats.forEach(ds => {
                 const ampAcc = r.data[`Amp_${ds.id}`];
                 const phiAcc = r.data[`Phi_${ds.id}`];
@@ -232,7 +233,7 @@ export const MisfitStatsWindow = () => {
 
         const fetchMisfitStats = async () => {
             // Check datasets
-            const targets: { id: string; name: string; color: string; data: any[] }[] = [];
+            const targets: { id: string; name: string; color: string; data: CsemData[] }[] = [];
 
             if (activeDatasetIds.length > 0) {
                 // Use active datasets
@@ -264,7 +265,7 @@ export const MisfitStatsWindow = () => {
                 await Promise.all(targets.map(async (target) => {
                     if (signal.aborted) return;
 
-                    const valid = target.data.some((d: any) => d.Residual !== undefined && isFinite(d.Residual));
+                    const valid = target.data.some((d: CsemData) => d.Residual !== undefined && isFinite(d.Residual));
                     if (!valid) return;
 
                     try {
@@ -279,8 +280,8 @@ export const MisfitStatsWindow = () => {
                         if (!signal.aborted) {
                             results.push({ id: target.id, name: target.name, color: target.color, stats });
                         }
-                    } catch (e: any) {
-                        if (e.name !== 'AbortError') {
+                    } catch (e: unknown) {
+                        if (e instanceof Error && e.name !== 'AbortError') {
                             console.error(`Error fetching stats for ${target.name}`, e);
                         }
                     }
@@ -293,15 +294,15 @@ export const MisfitStatsWindow = () => {
                     if (results.length === 0 && targets.length > 0) {
                         // If we had targets but no results, likely missing residuals
                         // Check if any target *invalid* because of missing residuals
-                        const anyMissing = targets.some(t => !t.data.some((d: any) => d.Residual !== undefined));
+                        const anyMissing = targets.some(t => !t.data.some((d: CsemData) => d.Residual !== undefined));
                         if (anyMissing) {
                             setMissingResidual(true);
                             setShowInfoDialog(true);
                         }
                     }
                 }
-            } catch (e: any) {
-                if (!signal.aborted && e.name !== 'AbortError') {
+            } catch (e: unknown) {
+                if (!signal.aborted && e instanceof Error && e.name !== 'AbortError') {
                     setLoading(false);
                 }
             }
@@ -328,7 +329,7 @@ export const MisfitStatsWindow = () => {
 
         if (scatterRef.current) {
             const series: uPlot.Series[] = [{}];
-            const data: any[] = [null]; // aligned x for mode 2 is null
+            const data: uPlot.AlignedData = [null];
 
             datasetStats.forEach(ds => {
                 // Amplitude Series
@@ -397,7 +398,7 @@ export const MisfitStatsWindow = () => {
                 legend: { show: true }
             };
 
-            scatterPlotRef.current = new uPlot(opts, data as any, scatterRef.current);
+            scatterPlotRef.current = new uPlot(opts, data, scatterRef.current);
         }
 
         return () => {
