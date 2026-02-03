@@ -94,7 +94,7 @@ export function DataTableCtrl() {
   return (
     <div className="flex flex-col h-full">
       <div className="flex flex-1 gap-4">
-        <div className="flex-1 flex flex-col space-y-3">
+        <div className="flex-1 flex flex-col space-y-3 min-w-0">
           <Label htmlFor="toggle-col">Toggle Columns</Label>
 
           <div className="flex items-center space-x-2 pt-2">
@@ -125,13 +125,14 @@ export function DataTableCtrl() {
           </MyListBox>
         </div>
 
-        <div className="flex-1 flex flex-col space-y-3">
+        <div className="flex-1 flex flex-col space-y-3 min-w-0">
           <Label htmlFor="filter">Quick Filter Options</Label>
 
           <div className="flex flex-col space-y-3">
             <Label htmlFor="freq">Frequencies (Hz)</Label>
-            <Provider theme={spectrumTheme} colorScheme={resolvedTheme as "light" | "dark"}>
+            <Provider theme={spectrumTheme} colorScheme={resolvedTheme as "light" | "dark"} width="100%">
               <ListBox
+                width="100%"
                 maxHeight="100px"
                 aria-label="Freq"
                 selectionMode="multiple"
@@ -146,8 +147,9 @@ export function DataTableCtrl() {
 
           <div className="flex flex-col space-y-3">
             <Label htmlFor="tx">Tx</Label>
-            <Provider theme={spectrumTheme} colorScheme={resolvedTheme as "light" | "dark"}>
+            <Provider theme={spectrumTheme} colorScheme={resolvedTheme as "light" | "dark"} width="100%">
               <ListBox
+                width="100%"
                 maxHeight="300px"
                 minHeight="100px"
                 aria-label="Tx"
@@ -156,15 +158,22 @@ export function DataTableCtrl() {
                 onSelectionChange={onTxSelectedChange}
                 items={txData}
               >
-                {(tx) => <Item key={tx.Tx_id}>{"ID: " + tx.Tx_id.toString() + ", Site: " + tx.Name_tx}</Item>}
+                {(tx) => (
+                  <Item key={tx.Tx_id} textValue={"ID: " + tx.Tx_id.toString() + ", Site: " + tx.Name_tx}>
+                    <div className="truncate w-full relative">
+                      {"ID: " + tx.Tx_id.toString() + ", Site: " + tx.Name_tx}
+                    </div>
+                  </Item>
+                )}
               </ListBox>
             </Provider>
           </div>
 
           <div className="flex flex-col space-y-3">
             <Label htmlFor="rx">Rx</Label>
-            <Provider theme={spectrumTheme} colorScheme={resolvedTheme as "light" | "dark"}>
+            <Provider theme={spectrumTheme} colorScheme={resolvedTheme as "light" | "dark"} width="100%">
               <ListBox
+                width="100%"
                 maxHeight="300px"
                 minHeight="100px"
                 aria-label="Rx"
@@ -173,7 +182,13 @@ export function DataTableCtrl() {
                 onSelectionChange={onRxSelectedChange}
                 items={rxData}
               >
-                {(rx) => <Item key={rx.Rx_id}>{"ID: " + rx.Rx_id.toString() + ", Site: " + rx.Name_rx}</Item>}
+                {(rx) => (
+                  <Item key={rx.Rx_id} textValue={"ID: " + rx.Rx_id.toString() + ", Site: " + rx.Name_rx}>
+                    <div className="truncate w-full relative">
+                      {"ID: " + rx.Rx_id.toString() + ", Site: " + rx.Name_rx}
+                    </div>
+                  </Item>
+                )}
               </ListBox>
             </Provider>
           </div>

@@ -97,12 +97,22 @@ export function InputFile() {
     const renderFileDisplay = () => {
         if (datasets.size === 0) return "Click to upload or drag and drop data file here";
         const files = Array.from(datasets.values()).map(d => d.name);
-        if (files.length <= 2) return files.join(", ");
+
+        if (files.length <= 2) {
+            return (
+                <div className="w-full px-2 truncate text-center" title={files.join(", ")}>
+                    {files.join(", ")}
+                </div>
+            );
+        }
 
         return (
-            <div className="flex flex-col items-center p-2">
+            <div className="flex flex-col items-center p-2 w-full overflow-hidden">
                 <span className="font-semibold text-primary">{files.length} files selected</span>
-                <span className="text-xs text-muted-foreground mt-1 max-w-[240px] truncate">
+                <span
+                    className="text-xs text-muted-foreground mt-1 w-full truncate text-center"
+                    title={files.slice(0, 2).join(", ") + ` +${files.length - 2} more`}
+                >
                     {files.slice(0, 2).join(", ")} +{files.length - 2} more
                 </span>
             </div>
