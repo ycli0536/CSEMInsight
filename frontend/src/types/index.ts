@@ -1,4 +1,5 @@
-import { FilterModel } from "ag-grid-community"; // Or core if using new packages
+import { FilterModel } from "ag-grid-community";
+import type { Selection } from "react-aria-components";
 
 export type UPlotData = number | string | null | undefined;
 
@@ -126,9 +127,9 @@ export interface Dataset {
   uploadTime: Date;
   filteredData?: CsemData[];
   filterSettings?: {
-    freqSelected: any;
-    txSelected: any;
-    rxSelected: any;
+    freqSelected: Selection;
+    txSelected: Selection;
+    rxSelected: Selection;
   };
   filterModel?: FilterModel | null;
 }

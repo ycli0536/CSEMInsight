@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 
 import { useDataTableStore, useSettingFormStore } from './settingFormStore';
 import type { CsemData, Dataset } from '@/types';
+import type { FilterModel } from 'ag-grid-community';
 
 const baseCsemRow: CsemData = {
   index: 0,
@@ -161,7 +162,7 @@ describe('useDataTableStore resetAllFilters', () => {
     });
 
     useDataTableStore.setState({
-      filterModel: { field: 'Data', filterType: 'number' } as any,
+      filterModel: { field: { filterType: 'number' } } as FilterModel,
     });
 
     useDataTableStore.getState().resetAllFilters();

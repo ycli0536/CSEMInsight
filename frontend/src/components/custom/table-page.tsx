@@ -15,6 +15,7 @@ import {
   type RowSelectionOptions,
   type FilterChangedEvent,
   ExternalFilterModule,
+  type IRowNode,
 } from 'ag-grid-community';
 import { useDataTableStore, useSettingFormStore } from '@/store/settingFormStore';
 import { useTheme } from '@/hooks/useTheme';
@@ -137,7 +138,7 @@ export function DataPage() {
     return hasFreq || hasTx || hasRx;
   }, [freqSelected, txSelected, rxSelected]);
 
-  const doesExternalFilterPass = useCallback((node: any): boolean => {
+  const doesExternalFilterPass = useCallback((node: IRowNode): boolean => {
     if (!node.data) return true;
     const { Freq_id, Tx_id, Rx_id } = node.data;
 
