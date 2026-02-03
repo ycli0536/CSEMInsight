@@ -23,5 +23,6 @@ dist-ssr
 *.sln
 *.sw?
 
-# test
+# test coverage output and scratch files
+coverage/
 test/

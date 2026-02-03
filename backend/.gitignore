@@ -28,7 +28,6 @@ dist/
 build/
 *.spec
 
-# test files
+# test data files (not test source files)
 test_data/
 test_files/
-tests/
