@@ -92,7 +92,7 @@ export function DataTableCtrl() {
   }, [setRxSelected, rxData, rxSelected]);
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col">
       <div className="flex flex-1 gap-4">
         <div className="flex-1 flex flex-col space-y-3 min-w-0">
           <Label htmlFor="toggle-col">Toggle Columns</Label>
