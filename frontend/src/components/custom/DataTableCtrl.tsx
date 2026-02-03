@@ -157,12 +157,11 @@ export function DataTableCtrl() {
                 selectedKeys={txSelected}
                 onSelectionChange={onTxSelectedChange}
                 items={txData}
+                UNSAFE_style={{ width: '100%', maxWidth: '100%' }}
               >
                 {(tx) => (
                   <Item key={tx.Tx_id} textValue={"ID: " + tx.Tx_id.toString() + ", Site: " + tx.Name_tx}>
-                    <div className="truncate w-full relative">
-                      {"ID: " + tx.Tx_id.toString() + ", Site: " + tx.Name_tx}
-                    </div>
+                    {"ID: " + tx.Tx_id.toString() + ", Site: " + tx.Name_tx}
                   </Item>
                 )}
               </ListBox>
@@ -181,12 +180,11 @@ export function DataTableCtrl() {
                 selectedKeys={rxSelected}
                 onSelectionChange={onRxSelectedChange}
                 items={rxData}
+                UNSAFE_style={{ width: '100%', maxWidth: '100%' }}
               >
                 {(rx) => (
                   <Item key={rx.Rx_id} textValue={"ID: " + rx.Rx_id.toString() + ", Site: " + rx.Name_rx}>
-                    <div className="truncate w-full relative">
-                      {"ID: " + rx.Rx_id.toString() + ", Site: " + rx.Name_rx}
-                    </div>
+                    {"ID: " + rx.Rx_id.toString() + ", Site: " + rx.Name_rx}
                   </Item>
                 )}
               </ListBox>
