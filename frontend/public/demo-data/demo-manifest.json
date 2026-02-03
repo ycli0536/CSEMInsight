@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "datasets": [
+    {
+      "id": "shumagin-line5-data",
+      "name": "Shumagin Line 5 (Data)",
+      "type": "data",
+      "file": "demo-data/data/Shumagin_Line5_data.json"
+    },
+    {
+      "id": "shumagin-line5-resp",
+      "name": "Shumagin Line 5 (Resp)",
+      "type": "resp",
+      "file": "demo-data/data/Shumagin_Line5_resp.json"
+    }
+  ]
+}
