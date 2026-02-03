@@ -118,7 +118,7 @@ export interface Dataset {
   txData: TxData[];
   rxData: RxData[];
   geometryInfo: GeometryData;
-  dataBlocks: [];
+  dataBlocks: Record<string, string[]>;
   color: string;
   /** @deprecated Use role instead. Kept for backwards compatibility during migration. */
   visible: boolean;

@@ -57,7 +57,7 @@ type DataTableStore = {
   filteredRxData: RxData[];
   subDatasets: CsemData[][],
   colDefs: ColDef[];
-  dataBlocks: [];
+  dataBlocks: Record<string, string[]>;
   visibleColumns: Selection;
   dataFileString: string;
   geometryInfo: GeometryData;
@@ -79,7 +79,7 @@ type DataTableStore = {
   setRxData: (rxData: RxData[]) => void;
   setOriginalTxData: (txData: TxData[]) => void;
   setColDefs: (newColDefs: ColDef[]) => void;
-  setDataBlocks: (dataBlocks: []) => void;
+  setDataBlocks: (dataBlocks: Record<string, string[]>) => void;
   setVisibleColumns: (visibleColumns: Selection) => void;
   setDataFileString: (dataFileString: string) => void;
   setGeometryInfo: (newGeometryInfo: GeometryData) => void;
@@ -101,6 +101,7 @@ type DataTableStore = {
   setComparisonMode: (mode: ComparisonMode) => void;
   updateDatasetFilter: (id: string, filteredData: CsemData[], filterSettings: { freqSelected: Selection, txSelected: Selection, rxSelected: Selection }, filterModel?: FilterModel | null) => void;
   resetAllFilters: () => void;
+  resetDatasets: () => void;
 }
 
 type BathymetryStore = {
@@ -315,7 +316,7 @@ export const useDataTableStore = create<DataTableStore>()((set, _get) => ({
   filteredData: [],
   subDatasets: [],
   colDefs: defaultColDefs,
-  dataBlocks: [],
+  dataBlocks: {},
   visibleColumns: new Set<string>(initialColumns),
   dataFileString: "",
   filterModel: null,
@@ -406,7 +407,7 @@ export const useDataTableStore = create<DataTableStore>()((set, _get) => ({
         originalTxData: [],
         filteredTxData: [],
         filteredRxData: [],
-        dataBlocks: [],
+        dataBlocks: {},
         geometryInfo: { UTM_zone: 0, Hemisphere: "N", North: 0, East: 0, Strike: 0 },
         isTxDepthAdjusted: false,
       };
@@ -578,6 +579,32 @@ export const useDataTableStore = create<DataTableStore>()((set, _get) => ({
     settingStore.resetFilters();
     settingStore.setResetColumnFilters(true);
     return { filterModel: null };
+  }),
+  
+  resetDatasets: () => set(() => {
+    const settingStore = useSettingFormStore.getState();
+    settingStore.resetFilters();
+    settingStore.setResetColumnFilters(true);
+    return {
+      datasets: new Map(),
+      primaryDatasetId: null,
+      comparedDatasetIds: [],
+      activeDatasetIds: [],
+      activeTableDatasetId: null,
+      data: [],
+      tableData: [],
+      filteredData: [],
+      txData: [],
+      rxData: [],
+      originalTxData: [],
+      filteredTxData: [],
+      filteredRxData: [],
+      subDatasets: [],
+      dataBlocks: {},
+      geometryInfo: { UTM_zone: 0, Hemisphere: "N", North: 0, East: 0, Strike: 0 },
+      isTxDepthAdjusted: false,
+      filterModel: null,
+    };
   }),
 }));
 
