@@ -1,0 +1,4 @@
+# Development and analysis dependencies for CSEMInsight backend
+-r requirements.txt
+-r requirements-base.txt
+pytest==8.3.3

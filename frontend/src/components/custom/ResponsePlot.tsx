@@ -25,6 +25,39 @@ import { useComparisonStore } from '@/store/comparisonStore';
 import { computeDifferenceData } from "@/services/extractComparisonData";
 import { computeStatistics, StatisticalMetrics } from "@/services/statisticalAnalysis";
 
+export function resolveReferenceDataset(
+  datasets: Dataset[],
+  referenceDatasetId: string | null,
+): Dataset | null {
+  if (!datasets.length) {
+    return null;
+  }
+  if (referenceDatasetId) {
+    return datasets.find((dataset) => dataset.id === referenceDatasetId) ?? datasets[0];
+  }
+  return datasets[0];
+}
+
+export function buildOverlayDatasets(
+  comparisonMode: ComparisonMode,
+  activeDatasets: Dataset[],
+  referenceDataset: Dataset | null,
+): Dataset[] {
+  if (comparisonMode === 'difference' && referenceDataset) {
+    return activeDatasets
+      .filter((dataset) => dataset.id !== referenceDataset.id)
+      .map((dataset) => ({
+        ...dataset,
+        name: `Delta: ${referenceDataset.name} - ${dataset.name}`,
+        data: computeDifferenceData(referenceDataset.data, dataset.data),
+      }));
+  }
+  if (comparisonMode === 'statistical' || comparisonMode === 'overlay') {
+    return activeDatasets;
+  }
+  return [];
+}
+
 export function ResponsesWithErrorBars() {
   const ampChartRef = useRef<HTMLDivElement>(null);
   const phiChartRef = useRef<HTMLDivElement>(null);
@@ -184,31 +217,15 @@ export function ResponsesWithErrorBars() {
       .filter((dataset): dataset is Dataset => Boolean(dataset && dataset.visible));
   }, [activeDatasetIds, datasets]);
 
-  const referenceDataset = useMemo(() => {
-    if (!activeDatasets.length) {
-      return null;
-    }
-    if (referenceDatasetId) {
-      return activeDatasets.find((dataset) => dataset.id === referenceDatasetId) ?? activeDatasets[0];
-    }
-    return activeDatasets[0];
-  }, [activeDatasets, referenceDatasetId]);
+  const referenceDataset = useMemo(
+    () => resolveReferenceDataset(activeDatasets, referenceDatasetId),
+    [activeDatasets, referenceDatasetId],
+  );
 
-  const overlayDatasets = useMemo(() => {
-    if (comparisonMode === 'difference' && referenceDataset) {
-      return activeDatasets
-        .filter((dataset) => dataset.id !== referenceDataset.id)
-        .map((dataset) => ({
-          ...dataset,
-          name: `Delta: ${referenceDataset.name} - ${dataset.name}`,
-          data: computeDifferenceData(referenceDataset.data, dataset.data),
-        }));
-    }
-    if (comparisonMode === 'statistical' || comparisonMode === 'overlay') {
-      return activeDatasets;
-    }
-    return [];
-  }, [activeDatasets, comparisonMode, referenceDataset]);
+  const overlayDatasets = useMemo(
+    () => buildOverlayDatasets(comparisonMode, activeDatasets, referenceDataset),
+    [activeDatasets, comparisonMode, referenceDataset],
+  );
 
   const statistics = useMemo<Record<string, StatisticalMetrics>>(() => {
     if (!referenceDataset || comparisonMode !== 'statistical') {

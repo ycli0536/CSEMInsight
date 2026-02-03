@@ -31,3 +31,4 @@ build/
 # test files
 test_data/
 test_files/
+tests/

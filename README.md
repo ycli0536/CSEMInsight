@@ -1,20 +1,40 @@
 
-# EMInsight: Marine CSEM Data Diagnostic & Analysis Assistant toolkit
+# EMInsight: Marine CSEM Data Diagnostic & Analysis Assistant Toolkit
 
 **EMInsight** is a powerful toolkit designed to enhance the visualization, diagnostics, and analysis of marine geophysical controlled-source electromagnetic (CSEM) response data. This web-based application offers improved data visualizations and hopefully some insights for your CSEM data processing.
 
+<!-- TODO: Add screenshot -->
+<!-- ![EMInsight Screenshot](docs/images/screenshot.png) -->
+
 ## Features
 
-- **Advanced Data Visualization**: Interactive charts and plots for better understanding of marine CSEM responses. Currently only support [MARE2DEM  data files](https://mare2dem.bitbucket.io/master/data_file_format.html#sect-data-file).
-- **Scalable Performance**: Optimized for large-scale datasets, ensuring smooth performance even with high-resolution data.
-- **User-Friendly Interface**: Built with React, Vite, and TypeScript for an intuitive and responsive user experience.
+### Data Visualization & Analysis
+- **Advanced Data Visualization**: Interactive charts and plots for better understanding of marine CSEM responses
+- **Multi-Dataset Support**: Load and manage multiple datasets simultaneously with color-coded visualization
+- **Comparison Modes**: Compare datasets using overlay, side-by-side, difference, or statistical analysis views
+- **Data Filtering**: Powerful table-based filtering with real-time plot updates
+
+### Data Format Support
+- **MARE2DEM Data Files**: Support for [MARE2DEM data file format (mainly V2.2)](https://mare2dem.bitbucket.io/master/data_file_format.html#sect-data-file) (`.data`, `.emdata`)
+- **Response Files**: Support for [MARE2DEM response file format](https://mare2dem.bitbucket.io/master/data_file_format.html#sect-response-file) (`.resp`)
+
+### Export & Workflow
+- **Data Export**: Export filtered data back to MARE2DEM-compatible format for further processing
+- **Sample Data**: Built-in sample datasets for quick testing and demonstration
 
 ## Future
 
-- **Extended Data Format Support**: Adding compatibility for more marine EM data and general geophysical data formats.
-- **Expanded Visualizations**: e.g., Navigation dashboard
-- **Data Editing**: Integrating in-app data editing functionality for streamlined workflows. For now, it is **highly recommended to perform any data edits in the original data files** before uploading them into the app for visualization and analysis. This approach ensures the integrity of the data and allows the app to serve as a powerful decision-making tool based on visualized insights.
-- **Export results**: Export results for further analysis or publication.
+- **Extended Data Format Support**: Adding compatibility for more marine EM data (e.g., from MT)
+- **Expanded Visualizations**: e.g., Navigation dashboard, 3D visualization
+- **Enhanced Data Editing**: While basic filtering and export are available, more advanced in-app data editing is planned. For now, it is **recommended to perform complex data edits in the original data files** before uploading
+- **Batch Processing**: Support for processing multiple files in batch operations
+
+## Tech Stack
+
+- **Frontend**: React 18, Vite, TypeScript, Tailwind CSS, Radix UI (Shadcn), Zustand
+- **Backend**: Python 3.12+, Flask, NumPy, Pandas, SciPy
+- **Desktop**: Tauri (optional)
+- **Package Managers**: Bun (recommended), npm, or yarn (frontend); pip (backend)
 
 ## Installation
 
@@ -152,6 +172,15 @@ If you prefer to set up manually or the automated scripts don't work:
   - yarn: `yarn cache clean`
   - bun: `bun install --force`
 
+### Development/Analysis Dependencies (Optional)
+
+If you need Jupyter or other analysis tools used during development, install:
+
+```bash
+cd backend
+pip install -r requirements-dev.txt
+```
+
 ### Port Conflicts
 - Frontend runs on port 5173, backend on port 3354 (Flask default)
 - If ports are in use, kill existing processes or change ports in the configuration files
@@ -176,10 +205,27 @@ yarn build
 
 ## Usage
 
-Once installed, you can upload your CSEM data file directly into the web app to visualize and analyze them. **EMInsight** provides tools to:
+Once installed, you can upload your CSEM data files directly into the web app to visualize and analyze them.
 
-1. Plot CSEM responses and perform interactive data visualization.
-2. Customize visualizations based on user preferences.
+### Quick Start
+
+1. **Start the servers**: Run both frontend and backend servers (see Installation)
+2. **Open the app**: Navigate to `http://localhost:5173` in your browser
+3. **Load data**: Either upload your own MARE2DEM data files or use the built-in sample datasets
+
+### Key Features
+
+- **Upload Data**: Drag and drop or select MARE2DEM `.data`, `.emdata`, or `.resp` files
+- **Multi-Dataset Comparison**: Load multiple files to compare different processing versions or survey lines
+- **Interactive Plots**: Click and drag to zoom, hover for data points, use the legend to toggle series
+- **Data Filtering**: Use the data table to filter by any column, with real-time plot updates
+- **Export Results**: Export your filtered data back to MARE2DEM format
+
+### Dataset Management
+
+- **Primary Dataset**: The main dataset shown in plots and tables (click a dataset name to set as primary)
+- **Compared Datasets**: Additional datasets overlaid for comparison (checkbox controls visibility)
+- **Comparison Modes**: Switch between overlay, side-by-side, difference, or statistical views
 
 <!-- ## Contributing-->
 

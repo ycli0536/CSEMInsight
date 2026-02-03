@@ -44,3 +44,7 @@ export const mapLayers: Record<MapLayerKey, MapLayerConfig> = {
     subdomains: ["a", "b", "c", "d"],
   },
 };
+
+export const getMapLayerProps = (layer: MapLayerKey): MapLayerConfig => {
+  return mapLayers[layer];
+};

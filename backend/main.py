@@ -2,9 +2,11 @@ import traceback
 import os
 import tempfile
 import uuid
+import json
 from typing import List
 from flask import Flask, request, jsonify
 from flask_cors import CORS
+from werkzeug.utils import secure_filename
 from suesi_depth_reader import process_SuesiDepth_mat_file
 from csem_datafile_parser import CSEMDataFileReader
 from csem_datafile_parser import CSEMDataFileManager
@@ -15,6 +17,25 @@ app = Flask(__name__)
 CORS(app)
 # Disable sorting of keys in JSON responses
 app.config['JSON_SORT_KEYS'] = False
+
+AMPLITUDE_TYPE_CODES = {
+    '21', '23', '25', '27', '28', '29', '31', '33', '35', '37', '38', '39',
+}
+PHASE_TYPE_CODES = {'22', '24', '26', '32', '34', '36'}
+
+def _get_debug_flag() -> bool:
+    raw_value = os.getenv('CSEMINSIGHT_DEBUG') or os.getenv('FLASK_DEBUG') or ''
+    return raw_value.strip().lower() in {'1', 'true', 'yes', 'on'}
+
+def _save_uploaded_file(file, temp_dir: str) -> str:
+    safe_name = secure_filename(file.filename or "")
+    if not safe_name:
+        safe_name = "upload"
+    stem, ext = os.path.splitext(safe_name)
+    unique_name = f"{stem}_{uuid.uuid4().hex}{ext}"
+    path = os.path.join(temp_dir, unique_name)
+    file.save(path)
+    return path
 
 def _parse_csem_datafile(path):
     csem_datafile_reader = CSEMDataFileReader(path)
@@ -61,15 +82,14 @@ def upload_xyz_file():
 
         if file and file.filename.endswith('.xyz'):
             temp_dir = tempfile.gettempdir()
-            path = os.path.join(temp_dir, file.filename)
+            path = _save_uploaded_file(file, temp_dir)
             print(path)
-            file.save(path)
             xyz_datafile_reader = XYZDataFileReader(path)
             xyz_datafile_reader.read_file()
             xyz_datafile_reader.add_distance()
             # result_df = xyz_datafile_reader.df_for_echart_heatmap(xyz_datafile_reader.data)
             data_js = xyz_datafile_reader.df_to_json(xyz_datafile_reader.data)
-            return jsonify(data_js)
+            return jsonify(json.loads(data_js))
 
     return 'Invalid file format'
 
@@ -90,12 +110,15 @@ def upload_data_file():
         if file and (file.filename.endswith('.data') or file.filename.endswith('.emdata') or file.filename.endswith('.resp')):
             try:
                 temp_dir = tempfile.gettempdir()
-                path = os.path.join(temp_dir, file.filename)
+                path = _save_uploaded_file(file, temp_dir)
                 # print(path)
-                file.save(path)
                 geometry_info, data_js, csem_data = _parse_csem_datafile(path)
                 # Return geometry info, data, and csem data blocks strings
-                return jsonify(geometry_info, data_js, csem_data)
+                return jsonify({
+                    'geometryInfo': geometry_info,
+                    'data': data_js,
+                    'dataBlocks': csem_data,
+                })
             except Exception:
                 traceback.print_exc()
                 return jsonify({'error': traceback.format_exc()}), 500
@@ -123,8 +146,7 @@ def upload_multiple_data_files():
 
         try:
             temp_dir = tempfile.gettempdir()
-            path = os.path.join(temp_dir, file.filename)
-            file.save(path)
+            path = _save_uploaded_file(file, temp_dir)
             geometry_info, data_js, csem_data = _parse_csem_datafile(path)
             datasets.append({
                 'id': uuid.uuid4().hex,
@@ -218,9 +240,8 @@ def upload_mat_file():
 
         if file and file.filename.endswith('.mat'):
             temp_dir = tempfile.gettempdir()
-            path = os.path.join(temp_dir, file.filename)
+            path = _save_uploaded_file(file, temp_dir)
             print(path)
-            file.save(path)
             return process_SuesiDepth_mat_file(path)
 
     return 'Invalid file format'
@@ -242,9 +263,8 @@ def upload_bathymetry_file():
         if file and file.filename.endswith('.txt'):
             try:
                 temp_dir = tempfile.gettempdir()
-                path = os.path.join(temp_dir, file.filename)
+                path = _save_uploaded_file(file, temp_dir)
                 print(path)
-                file.save(path)
                 
                 bathymetry_parser = BathymetryParser()
                 result = bathymetry_parser.parse_file(path)
@@ -283,6 +303,9 @@ def calculate_misfit_stats():
         missing_cols = [col for col in required_cols if col not in df.columns]
         if missing_cols:
             return jsonify({'error': f'Missing required columns: {missing_cols}'}), 400
+
+        # Normalize Type codes to strings for consistent filtering
+        df['Type'] = df['Type'].astype(str)
         
         # Calculate Y_range (signed difference between Y_rx and Y_tx)
         df['Y_range'] = df['Y_rx'] - df['Y_tx']
@@ -317,20 +340,20 @@ def calculate_misfit_stats():
         # Type 28 = Log10 Amplitude, Type 24 = Phase
         result = {
             'byRx': {
-                'amplitude': rms_by_rx[rms_by_rx['Type'] == '28'][['Y_rx_km', 'RMS']].to_dict('records'),
-                'phase': rms_by_rx[rms_by_rx['Type'] == '24'][['Y_rx_km', 'RMS']].to_dict('records'),
+                'amplitude': rms_by_rx[rms_by_rx['Type'].isin(AMPLITUDE_TYPE_CODES)][['Y_rx_km', 'RMS']].to_dict('records'),
+                'phase': rms_by_rx[rms_by_rx['Type'].isin(PHASE_TYPE_CODES)][['Y_rx_km', 'RMS']].to_dict('records'),
             },
             'byTx': {
-                'amplitude': rms_by_tx[rms_by_tx['Type'] == '28'][['Y_tx_km', 'RMS']].to_dict('records'),
-                'phase': rms_by_tx[rms_by_tx['Type'] == '24'][['Y_tx_km', 'RMS']].to_dict('records'),
+                'amplitude': rms_by_tx[rms_by_tx['Type'].isin(AMPLITUDE_TYPE_CODES)][['Y_tx_km', 'RMS']].to_dict('records'),
+                'phase': rms_by_tx[rms_by_tx['Type'].isin(PHASE_TYPE_CODES)][['Y_tx_km', 'RMS']].to_dict('records'),
             },
             'byRange': {
-                'amplitude': rms_by_range[rms_by_range['Type'] == '28'][['Y_range_km', 'RMS']].to_dict('records'),
-                'phase': rms_by_range[rms_by_range['Type'] == '24'][['Y_range_km', 'RMS']].to_dict('records'),
+                'amplitude': rms_by_range[rms_by_range['Type'].isin(AMPLITUDE_TYPE_CODES)][['Y_range_km', 'RMS']].to_dict('records'),
+                'phase': rms_by_range[rms_by_range['Type'].isin(PHASE_TYPE_CODES)][['Y_range_km', 'RMS']].to_dict('records'),
             },
             'byFreq': {
-                'amplitude': rms_by_freq[rms_by_freq['Type'] == '28'][['Freq_id', 'RMS']].to_dict('records'),
-                'phase': rms_by_freq[rms_by_freq['Type'] == '24'][['Freq_id', 'RMS']].to_dict('records'),
+                'amplitude': rms_by_freq[rms_by_freq['Type'].isin(AMPLITUDE_TYPE_CODES)][['Freq_id', 'RMS']].to_dict('records'),
+                'phase': rms_by_freq[rms_by_freq['Type'].isin(PHASE_TYPE_CODES)][['Freq_id', 'RMS']].to_dict('records'),
             }
         }
         
@@ -341,4 +364,4 @@ def calculate_misfit_stats():
         return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
-    app.run(debug=True, port=3354)
+    app.run(debug=_get_debug_flag(), port=3354)

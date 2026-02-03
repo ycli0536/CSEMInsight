@@ -2,7 +2,7 @@ import React, { Fragment, useEffect, useMemo } from "react";
 import { CircleMarker, MapContainer, Popup, TileLayer, useMap, AttributionControl } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
 import { getTxRxData } from "@/services/extractTxRxPlotData";
-import { mapLayers } from "@/lib/mapLayers";
+import { getMapLayerProps } from "@/lib/mapLayers";
 import type { Dataset } from "@/types";
 import { useDataTableStore, useSettingFormStore } from "@/store/settingFormStore";
 import { MapLayerControl } from "../custom/MapLayerControl";
@@ -79,11 +79,7 @@ const MapSubstrate = React.memo(() => {
       >
         <AttributionControl position="bottomleft" />
         <TileLayer
-          url={mapLayers[mapLayer].url}
-          attribution={mapLayers[mapLayer].attribution}
-          {...(mapLayers[mapLayer].subdomains
-            ? { subdomains: mapLayers[mapLayer].subdomains }
-            : {})}
+          {...getMapLayerProps(mapLayer)}
         />
         <MapUpdater position={txPosition} />
         {useOverlay ? (

@@ -8,6 +8,22 @@ import { getChartColors } from "@/lib/colorPalette";
 import { CsemData } from '@/types';
 import { wheelZoomPlugin } from '@/components/custom/uplot-wheel-zoom-plugin';
 
+export function getPlotLabelParts(
+    xAxisColumn: string,
+    yAxisColumn: string,
+    splitByColumn: string,
+) {
+    const xKey = xAxisColumn || 'Lon_tx';
+    const yKey = yAxisColumn || 'Lat_rx';
+    const splitLabel = splitByColumn ? splitByColumn : 'Freq';
+
+    return {
+        xLabel: xKey,
+        yLabel: yKey,
+        splitLabel,
+    };
+}
+
 export function CustomPlot() {
     const plotRef = useRef<HTMLDivElement>(null);
     const uPlotRef = useRef<uPlot | null>(null);
@@ -22,8 +38,8 @@ export function CustomPlot() {
     useEffect(() => {
         if (!plotRef.current || filteredData.length === 0) return;
 
-        const xKey = xAxisColumn || 'Y_rx';
-        const yKey = yAxisColumn || 'Data';
+        const xKey = xAxisColumn || 'Lon_tx';
+        const yKey = yAxisColumn || 'Lat_rx';
         // Show errors only if Y is 'Data'
         const showErrors = yKey === 'Data';
 
@@ -331,6 +347,21 @@ export function CustomPlot() {
 
     }, [filteredData, xAxisColumn, yAxisColumn, splitByColumn, isDarkMode]);
 
-    return <div ref={plotRef} className="w-full h-full" />;
-}
+    const { xLabel, yLabel, splitLabel } = getPlotLabelParts(
+        xAxisColumn,
+        yAxisColumn,
+        splitByColumn,
+    );
 
+    return (
+        <div className="relative w-full h-full">
+            <div
+                className="absolute left-3 top-3 z-10 rounded-md bg-background/80 px-2 py-1 text-xs text-foreground shadow-sm backdrop-blur"
+                aria-label={`Plot settings: X ${xLabel}, Y ${yLabel}, Split ${splitLabel}`}
+            >
+                {`X: ${xLabel} · Y: ${yLabel} · Split: ${splitLabel}`}
+            </div>
+            <div ref={plotRef} className="w-full h-full" />
+        </div>
+    );
+}
