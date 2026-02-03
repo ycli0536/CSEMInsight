@@ -36,12 +36,20 @@ export function useExportData() {
   const { dataBlocks, setDataFileString, data, datasets, activeTableDatasetId } = useDataTableStore();
 
   const hasData = data.length > 0;
+  const isDemoMode = import.meta.env.VITE_DEMO_MODE === 'true';
   
   const activeDataset = activeTableDatasetId ? datasets.get(activeTableDatasetId) : null;
   const activeDatasetName = activeDataset?.name ?? null;
   const filteredDataCount = useDataTableStore.getState().filteredData?.length ?? 0;
 
   const exportData = useCallback(async (): Promise<ExportResult> => {
+    if (isDemoMode) {
+      return {
+        status: "error",
+        message: "Export is disabled in demo mode. Please use the full application to export data.",
+      };
+    }
+
     if (!hasData) {
       return {
         status: "error",
@@ -148,7 +156,7 @@ export function useExportData() {
         message: errorMessage,
       };
     }
-  }, [hasData, dataBlocks, setDataFileString, activeTableDatasetId]);
+  }, [hasData, dataBlocks, setDataFileString, activeTableDatasetId, isDemoMode]);
 
   const resetStatus = useCallback(() => {
     setStatus("idle");

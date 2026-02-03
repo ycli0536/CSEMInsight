@@ -69,6 +69,8 @@ export const MisfitStatsWindow = () => {
     const resolvedTheme = theme === "system" ? systemTheme : theme;
     const isDarkMode = resolvedTheme === "dark";
 
+    const isDemoMode = import.meta.env.VITE_DEMO_MODE === 'true';
+
     // --- SERIES CONFIGURATION ---
     const freqSeries = useMemo(() => {
         const series: BarSeries[] = [];
@@ -256,6 +258,16 @@ export const MisfitStatsWindow = () => {
             if (!signal.aborted) {
                 setLoading(true);
                 setMissingResidual(false);
+            }
+
+            // Block backend calls in demo mode
+            if (isDemoMode) {
+                if (!signal.aborted) {
+                    setMissingResidual(true);
+                    setShowInfoDialog(true);
+                    setLoading(false);
+                }
+                return;
             }
 
             const results: DatasetStat[] = [];

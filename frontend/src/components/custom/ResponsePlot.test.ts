@@ -47,7 +47,7 @@ const makeDataset = (id: string, dataValue: number): Dataset => ({
   txData: [],
   rxData: [],
   geometryInfo: { UTM_zone: 0, Hemisphere: 'N', North: 0, East: 0, Strike: 0 },
-  dataBlocks: [],
+  dataBlocks: {},
   color: '#000',
   visible: true,
   role: 'compared',
