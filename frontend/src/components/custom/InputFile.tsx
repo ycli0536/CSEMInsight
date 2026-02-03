@@ -21,6 +21,10 @@ export function InputFile() {
 
     const isDemoMode = import.meta.env.VITE_DEMO_MODE === 'true';
 
+    if (isDemoMode) {
+        return null;
+    }
+
     const readData = (files: File[]) => {
         if (isDemoMode) {
             showAlert(

@@ -58,6 +58,10 @@ export function SampleDataLoader() {
 
   const isDemoMode = import.meta.env.VITE_DEMO_MODE === 'true';
 
+  if (isDemoMode) {
+    return null;
+  }
+
   const loadSamples = (files: string[]) => {
     if (isDemoMode) {
       showAlert(
