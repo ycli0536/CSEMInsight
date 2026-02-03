@@ -653,7 +653,10 @@ export function TxRxPosPlot() {
         originalTxData,
         activeDatasets,
         comparisonMode,
-        isDark, // Add triggering dependency
+        isDark,
+        axisStroke,
+        gridStroke,
+        txRxColors,
     ]);
 
     return (

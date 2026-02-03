@@ -1279,7 +1279,12 @@ export function ResponsesWithErrorBars() {
     freqSelected,
     txSelected,
     rxSelected,
-    isDarkMode, // Add theme dependency to trigger re-render on theme change
+    isDarkMode,
+    activeTableDatasetId,
+    rawData,
+    showData,
+    showModel,
+    showResidual,
   ]);
 
   const handleToggleDrag = () => {
