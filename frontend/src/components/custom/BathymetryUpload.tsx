@@ -30,8 +30,19 @@ export function BathymetryUpload() {
         setFilteredData
     } = useDataTableStore();
 
+    const isDemoMode = import.meta.env.VITE_DEMO_MODE === 'true';
+
     const handleBathymetryUpload = (files: File[]) => {
         if (files.length === 0) return;
+        
+        if (isDemoMode) {
+            showAlert(
+                'Upload Disabled',
+                'Bathymetry upload is disabled in demo mode. This feature requires backend processing.',
+                'error'
+            );
+            return;
+        }
         
         setIsUploading(true);
         const formData = new FormData();

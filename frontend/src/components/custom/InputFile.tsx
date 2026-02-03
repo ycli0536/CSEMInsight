@@ -7,6 +7,7 @@ import { useDataTableStore, useSettingFormStore } from "@/store/settingFormStore
 import { useAlertDialog } from '@/hooks/useAlertDialog';
 import { CustomAlertDialog } from '@/components/custom/CustomAlertDialog';
 import { getTxRxData } from "@/services/extractTxRxPlotData";
+import { datasetColors } from "@/lib/datasetColors";
 
 export function InputFile() {
     const {
@@ -18,18 +19,18 @@ export function InputFile() {
     const { setDataFiles } = useSettingFormStore();
     const { alertState, showAlert, hideAlert, handleConfirm } = useAlertDialog();
 
-    const datasetColors = [
-        '#2563eb',
-        '#dc2626',
-        '#16a34a',
-        '#9333ea',
-        '#d97706',
-        '#0891b2',
-        '#7c3aed',
-        '#0f766e',
-    ];
+    const isDemoMode = import.meta.env.VITE_DEMO_MODE === 'true';
 
     const readData = (files: File[]) => {
+        if (isDemoMode) {
+            showAlert(
+                'Upload Disabled',
+                'File upload is disabled in demo mode. The demo uses pre-loaded sample datasets.',
+                'error'
+            );
+            return;
+        }
+
         const formData = new FormData();
         files.forEach((file) => {
             formData.append('files', file);
@@ -43,7 +44,7 @@ export function InputFile() {
                     name: string;
                     geometryInfo: GeometryData;
                     data: string;
-                    dataBlocks: [];
+                    dataBlocks: Record<string, string[]>;
                 }[];
 
                 const parsedDatasets = datasetsResponse.map((dataset, index) => {

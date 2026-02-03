@@ -6,17 +6,7 @@ import { useSettingFormStore } from "@/store/settingFormStore";
 import { useAlertDialog } from "@/hooks/useAlertDialog";
 import { CustomAlertDialog } from "@/components/custom/CustomAlertDialog";
 import { getTxRxData } from "@/services/extractTxRxPlotData";
-
-const datasetColors = [
-  "#2563eb",
-  "#dc2626",
-  "#16a34a",
-  "#9333ea",
-  "#d97706",
-  "#0891b2",
-  "#7c3aed",
-  "#0f766e",
-];
+import { datasetColors } from "@/lib/datasetColors";
 
 const SAMPLE_DATASETS = [
   {
@@ -66,7 +56,18 @@ export function SampleDataLoader() {
   const { setDataFiles } = useSettingFormStore();
   const { alertState, showAlert, hideAlert, handleConfirm } = useAlertDialog();
 
+  const isDemoMode = import.meta.env.VITE_DEMO_MODE === 'true';
+
   const loadSamples = (files: string[]) => {
+    if (isDemoMode) {
+      showAlert(
+        'Sample Data Disabled',
+        'Sample data loading is disabled in demo mode. The demo uses pre-loaded datasets from the manifest.',
+        'error'
+      );
+      return;
+    }
+
     axios
       .post("http://127.0.0.1:3354/api/load-sample-data", { files })
       .then((response) => {
@@ -75,7 +76,7 @@ export function SampleDataLoader() {
           name: string;
           geometryInfo: GeometryData;
           data: string;
-          dataBlocks: [];
+          dataBlocks: Record<string, string[]>;
         }[];
 
         const parsedDatasets = datasetsResponse.map((dataset, index) => {
