@@ -1,5 +1,5 @@
 // src/components/UplotChartWithErrorBars.tsx
-import { useCallback, useEffect, useMemo, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import uPlot from 'uplot';
 import 'uplot/dist/uPlot.min.css';
 import { Switch } from "@/components/ui/switch";
@@ -12,6 +12,7 @@ import { useUPlotStore } from '@/store/plotCanvasStore';
 import { useTheme } from "@/hooks/useTheme";
 import { wheelZoomPlugin } from '@/components/custom/uplot-wheel-zoom-plugin';
 import { dataVizPalette, getChartColors } from "@/lib/colorPalette";
+import { cn } from "@/lib/utils";
 import {
   Select,
   SelectContent,
@@ -30,12 +31,14 @@ import {
 } from './responsePlot.utils';
 
 export function ResponsesWithErrorBars() {
+  const containerRef = useRef<HTMLDivElement>(null);
   const ampChartRef = useRef<HTMLDivElement>(null);
   const phiChartRef = useRef<HTMLDivElement>(null);
   const ampResidualRef = useRef<HTMLDivElement>(null); // New ref for Amp Residual
   const phiResidualRef = useRef<HTMLDivElement>(null); // New ref for Phi Residual
   const sideBySideAmpRefs = useRef<(HTMLDivElement | null)[]>([]);
   const sideBySidePhiRefs = useRef<(HTMLDivElement | null)[]>([]);
+  const [isNarrowLayout, setIsNarrowLayout] = useState(false);
   const {
     filteredData,
     data: rawData, // Destructure raw data
@@ -201,6 +204,23 @@ export function ResponsesWithErrorBars() {
     () => buildOverlayDatasets(comparisonMode, activeDatasets, referenceDataset),
     [activeDatasets, comparisonMode, referenceDataset],
   );
+
+  useEffect(() => {
+    if (!containerRef.current) {
+      return;
+    }
+
+    const handleResize = () => {
+      const width = containerRef.current?.offsetWidth ?? 0;
+      setIsNarrowLayout(width > 0 && width < 900);
+    };
+
+    handleResize();
+    const observer = new ResizeObserver(handleResize);
+    observer.observe(containerRef.current);
+
+    return () => observer.disconnect();
+  }, []);
 
   const hasModelData = useMemo(
     () => hasModelResponseData(activeDatasets),
@@ -1303,7 +1323,7 @@ export function ResponsesWithErrorBars() {
   }
 
   return (
-    <div className="grid">
+    <div ref={containerRef} className="grid">
       <div className="flex flex-col gap-4 pb-2">
         <div className="flex flex-wrap items-center gap-x-8 gap-y-4">
           {/* Popular Options */}
@@ -1435,7 +1455,12 @@ export function ResponsesWithErrorBars() {
             Select an option (Model, Residual, or Data) to view plots
           </div>
           :
-          <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+          <div
+            className={cn(
+              "grid gap-4",
+              isNarrowLayout ? "grid-cols-1" : "grid-cols-1 xl:grid-cols-2",
+            )}
+          >
             <div className="flex flex-col gap-2">
               <div id="amp-chart" className="overflow-auto" ref={ampChartRef} ></div>
               {showResidual && <div id="amp-residual-chart" className="h-[200px] overflow-auto" ref={ampResidualRef} ></div>}

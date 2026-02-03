@@ -87,18 +87,23 @@ export default function SpatialLayout() {
 
           <header className="fixed top-0 left-0 right-0 z-50">
             <div className="absolute inset-0 bg-background/70 backdrop-blur-xl supports-[backdrop-filter]:bg-background/50" />
-            
+
             <div className="absolute bottom-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-primary/30 to-transparent" />
-            
+
             <div className="relative flex h-14 items-center justify-between px-4">
               <div className="flex items-center gap-3">
                 <div className="flex items-center gap-2">
                   <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10">
                     <Zap className="h-4 w-4 text-primary" />
                   </div>
-                  <div className="flex flex-col">
-                    <span className="text-sm font-bold tracking-tight">CSEMInsight</span>
-                    <span className="text-[10px] text-muted-foreground tracking-wide">Geophysical Visualization</span>
+                  <div className="flex flex-col leading-tight">
+                    <span className="text-sm font-bold tracking-tight sm:text-[13px]">
+                      <span className="sm:hidden">M2D-Viz</span>
+                      <span className="hidden sm:inline">MARE2DEM-Viz</span>
+                    </span>
+                    <span className="hidden text-[9px] text-muted-foreground tracking-wide sm:text-[10px] sm:inline">
+                      Marine EM Visualization
+                    </span>
                   </div>
                 </div>
               </div>
@@ -154,7 +159,7 @@ export default function SpatialLayout() {
                       {getTooltipContent()}
                     </TooltipContent>
                   </Tooltip>
-                  
+
                   <ThemeToggle />
                 </div>
               </nav>
@@ -163,10 +168,10 @@ export default function SpatialLayout() {
         </div>
       </BottomPanel>
 
-      <CustomAlertDialog 
-        alertState={alertState} 
-        onClose={hideAlert} 
-        onConfirm={handleConfirm} 
+      <CustomAlertDialog
+        alertState={alertState}
+        onClose={hideAlert}
+        onConfirm={handleConfirm}
       />
     </div>
   );

@@ -9,7 +9,7 @@ export function SurveyGeometryInfo() {
 
     return (
         <div
-            className="absolute bottom-8 left-4 z-[1000]"
+            className="absolute top-16 right-4 z-[1000]"
             onMouseDown={(e) => e.stopPropagation()}
             onDoubleClick={(e) => e.stopPropagation()}
             onScroll={(e) => e.stopPropagation()}

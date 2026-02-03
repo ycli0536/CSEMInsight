@@ -3,8 +3,9 @@
 
 **EMInsight** is a powerful toolkit designed to enhance the visualization, diagnostics, and analysis of marine geophysical controlled-source electromagnetic (CSEM) response data. This web-based application offers improved data visualizations and hopefully some insights for your CSEM data processing.
 
-<!-- TODO: Add screenshot -->
-<!-- ![EMInsight Screenshot](docs/images/screenshot.png) -->
+![EMInsight Screenshot](frontend/public/screenshot_app.webp)
+
+Take a look at the [demo](https://ycli0536.github.io/CSEMInsight/) for real data visualization!
 
 ## Features
 
