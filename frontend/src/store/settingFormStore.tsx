@@ -6,7 +6,6 @@ import type {
   CsemData,
   ComparisonMode,
   Dataset,
-  DatasetRole,
   GeometryData,
   RxData,
   TxData,
@@ -305,7 +304,7 @@ const initialColumns = defaultColDefs
   .map((col) => col.field)
   .filter((field): field is string => field !== undefined && initialVisibleColumns.includes(field)); // Set only default visible columns
 
-export const useDataTableStore = create<DataTableStore>()((set, get) => ({
+export const useDataTableStore = create<DataTableStore>()((set, _get) => ({
   data: [],
   txData: [],
   rxData: [],

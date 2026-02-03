@@ -15,7 +15,7 @@ export function InputFile() {
         setPrimaryDataset,
         resetAllFilters,
     } = useDataTableStore();
-    const { dataFiles, setDataFiles } = useSettingFormStore();
+    const { setDataFiles } = useSettingFormStore();
     const { alertState, showAlert, hideAlert, handleConfirm } = useAlertDialog();
 
     const datasetColors = [

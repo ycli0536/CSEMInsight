@@ -77,7 +77,7 @@ export function CustomPlot() {
         const pxRatio = window.devicePixelRatio;
 
         // Custom Path Builder (Adapted from PositionPlot.tsx)
-        const drawPoints: uPlot.Series.PathBuilder = (u, seriesIdx, idx0, idx1) => {
+        const drawPoints: uPlot.Series.PathBuilder = (u, seriesIdx, _idx0, _idx1) => {
             uPlot.orient(u, seriesIdx, (series, _dataX, _dataY, scaleX, scaleY, valToPosX, valToPosY, xOff, yOff, xDim, yDim, moveTo, _lineTo, _rect, arc) => {
                 const d = u.data[seriesIdx] as unknown as any;
                 if (!d) return;

@@ -243,8 +243,6 @@ export function ResponsesWithErrorBars() {
 
   useEffect(() => {
     const data = filteredData;
-    // Check if useOverlay is effectively true
-    const overlayEffective = (comparisonMode === 'overlay' || comparisonMode === 'difference' || comparisonMode === 'statistical') && overlayDatasets.length > 0;
 
 
     const buildSeriesData = (

@@ -52,7 +52,7 @@ export function WindowManager() {
     }
   }, [windows, setDraggingWindow]);
 
-  const handleDragMove = useCallback((event: DragMoveEvent) => {
+  const handleDragMove = useCallback((_event: DragMoveEvent) => {
     // Don't update position during drag - let transform handle visual movement
     // This prevents double movement and ensures smooth GPU-accelerated dragging
   }, []);
