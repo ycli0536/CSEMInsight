@@ -34,95 +34,97 @@ export function SettingForm() {
     }));
 
   return (
-    <form className="sticky w-full items-start gap-6 overflow-auto p-4 pt-0">
-      <fieldset className="grid gap-6">
-        <InputFile />
-      </fieldset>
-      <fieldset className="grid gap-6 rounded-lg border p-4">
-        <legend className="-ml-1 px-1 text-base font-medium">
-          Datasets
-        </legend>
-        <DatasetManager />
-        <SampleDataLoader />
-      </fieldset>
+    <div className="w-full overflow-x-auto">
+      <form className="sticky flex w-full min-w-[450px] flex-col gap-6 p-4 pt-0">
+        <fieldset className="grid w-full min-w-0 gap-6">
+          <InputFile />
+        </fieldset>
+        <fieldset className="grid w-full min-w-0 gap-6 overflow-hidden rounded-lg border p-4">
+          <legend className="-ml-1 px-1 text-base font-medium">
+            Datasets
+          </legend>
+          <DatasetManager />
+          <SampleDataLoader />
+        </fieldset>
 
-      <fieldset className="grid gap-6 rounded-lg border p-4">
-        <legend className="-ml-1 px-1 text-base font-medium">
-          Data table
-        </legend>
-        <DataTableCtrl />
-      </fieldset>
-      <fieldset className="grid gap-6 rounded-lg border p-4">
-        <legend className="-ml-1 px-1 text-base font-medium">
-          Popular options
-        </legend>
+        <fieldset className="grid w-full min-w-0 gap-6 rounded-lg border p-4">
+          <legend className="-ml-1 px-1 text-base font-medium">
+            Data table
+          </legend>
+          <DataTableCtrl />
+        </fieldset>
+        <fieldset className="grid w-full min-w-0 gap-6 rounded-lg border p-4">
+          <legend className="-ml-1 px-1 text-base font-medium">
+            Popular options
+          </legend>
 
-        <div className="grid gap-3">
-          <Label htmlFor="plot">Plot</Label>
-          <Select defaultValue="response">
-            <SelectTrigger>
-              <SelectValue placeholder="Select a plot" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="response">Response Lines</SelectItem>
-              <SelectItem value="uncertainty">Uncertainty</SelectItem>
-              <SelectItem value="placeholder">placeholder</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-        <div className="grid gap-3">
-          <Label htmlFor="position">Position</Label>
-          <Select defaultValue="y-position">
-            <SelectTrigger>
-              <SelectValue placeholder="select the x-axis" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="y-position">Y Position</SelectItem>
-              <SelectItem value="in-tow-out-tow">In-tow & Out-tow</SelectItem>
-              <SelectItem value="placeholder1">placeholder1</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-      </fieldset>
-      <fieldset className="grid gap-6 rounded-lg border p-4">
-        <legend className="-ml-1 px-1 text-base font-medium">
-          Customizations
-        </legend>
-        <div className="grid gap-3">
-          <Label htmlFor="x-axis">X Axis</Label>
-          <Combobox
-            options={columnOptions}
-            value={xAxisColumn}
-            onSelect={setXAxisColumn}
-            placeholder="Select a column..."
-          />
-        </div>
-        <div className="grid gap-3">
-          <Label htmlFor="y-axis">Y Axis</Label>
-          <Combobox
-            options={columnOptions}
-            value={yAxisColumn}
-            onSelect={setYAxisColumn}
-            placeholder="Select a column..."
-          />
-        </div>
-        <div className="grid gap-3">
-          <Label htmlFor="split-by">Split By</Label>
-          <Combobox
-            options={columnOptions}
-            value={splitByColumn}
-            onSelect={setSplitByColumn}
-            placeholder="Select a column..."
-          />
-        </div>
-        <Button
-          type="button"
-          variant="secondary"
-          onClick={() => toggleWindow('custom-plot')}
-        >
-          Toggle Custom Plot Window
-        </Button>
-      </fieldset>
-    </form>
+          <div className="grid gap-3">
+            <Label htmlFor="plot">Plot</Label>
+            <Select defaultValue="response">
+              <SelectTrigger>
+                <SelectValue placeholder="Select a plot" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="response">Response Lines</SelectItem>
+                <SelectItem value="uncertainty">Uncertainty</SelectItem>
+                <SelectItem value="placeholder">placeholder</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="grid gap-3">
+            <Label htmlFor="position">Position</Label>
+            <Select defaultValue="y-position">
+              <SelectTrigger>
+                <SelectValue placeholder="select the x-axis" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="y-position">Y Position</SelectItem>
+                <SelectItem value="in-tow-out-tow">In-tow & Out-tow</SelectItem>
+                <SelectItem value="placeholder1">placeholder1</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </fieldset>
+        <fieldset className="grid w-full min-w-0 gap-6 rounded-lg border p-4">
+          <legend className="-ml-1 px-1 text-base font-medium">
+            Customizations
+          </legend>
+          <div className="grid gap-3">
+            <Label htmlFor="x-axis">X Axis</Label>
+            <Combobox
+              options={columnOptions}
+              value={xAxisColumn}
+              onSelect={setXAxisColumn}
+              placeholder="Select a column..."
+            />
+          </div>
+          <div className="grid gap-3">
+            <Label htmlFor="y-axis">Y Axis</Label>
+            <Combobox
+              options={columnOptions}
+              value={yAxisColumn}
+              onSelect={setYAxisColumn}
+              placeholder="Select a column..."
+            />
+          </div>
+          <div className="grid gap-3">
+            <Label htmlFor="split-by">Split By</Label>
+            <Combobox
+              options={columnOptions}
+              value={splitByColumn}
+              onSelect={setSplitByColumn}
+              placeholder="Select a column..."
+            />
+          </div>
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={() => toggleWindow('custom-plot')}
+          >
+            Toggle Custom Plot Window
+          </Button>
+        </fieldset>
+      </form>
+    </div>
   )
 }

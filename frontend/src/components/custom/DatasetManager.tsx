@@ -47,7 +47,7 @@ function DatasetItem({
 }: DatasetItemProps) {
   return (
     <div
-      className={`flex items-center gap-2 rounded-md border p-2 transition-all duration-200 ${
+      className={`flex min-w-0 items-center gap-2 rounded-md border p-2 transition-all duration-200 ${
         !isVisible
           ? "border-muted bg-muted/30 opacity-50"
           : isPrimary
@@ -176,7 +176,7 @@ export function DatasetManager() {
   };
 
   return (
-    <div className="grid gap-4">
+    <div className="grid min-w-0 gap-4 overflow-hidden">
       <div className="grid gap-2">
         <Label>Comparison Mode</Label>
         <Select
@@ -222,7 +222,7 @@ export function DatasetManager() {
           No datasets loaded yet. Upload a file to get started.
         </div>
       ) : (
-        <div className="space-y-2">
+        <div className="min-w-0 space-y-2 overflow-hidden">
           {datasetList.map((dataset) => {
             const isVisible = isDatasetVisible(dataset.id);
             const isPrimary = dataset.id === primaryDatasetId;
