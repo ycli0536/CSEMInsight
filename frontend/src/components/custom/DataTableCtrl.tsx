@@ -1,7 +1,7 @@
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { ListBoxItem, ListBox as MyListBox } from "@/components/custom/ListBox";
-import { Item, ListBox, Provider, lightTheme, darkTheme } from "@adobe/react-spectrum";
+import { Item, ListBox, Provider, lightTheme, darkTheme, Text } from "@adobe/react-spectrum";
 import { useCallback, useMemo } from "react";
 import type { Selection } from 'react-aria-components';
 
@@ -161,7 +161,7 @@ export function DataTableCtrl() {
               >
                 {(tx) => (
                   <Item key={tx.Tx_id} textValue={"ID: " + tx.Tx_id.toString() + ", Site: " + tx.Name_tx}>
-                    {"ID: " + tx.Tx_id.toString() + ", Site: " + tx.Name_tx}
+                    <Text>{"ID: " + tx.Tx_id.toString() + ", Site: " + tx.Name_tx}</Text>
                   </Item>
                 )}
               </ListBox>
@@ -184,7 +184,7 @@ export function DataTableCtrl() {
               >
                 {(rx) => (
                   <Item key={rx.Rx_id} textValue={"ID: " + rx.Rx_id.toString() + ", Site: " + rx.Name_rx}>
-                    {"ID: " + rx.Rx_id.toString() + ", Site: " + rx.Name_rx}
+                    <Text>{"ID: " + rx.Rx_id.toString() + ", Site: " + rx.Name_rx}</Text>
                   </Item>
                 )}
               </ListBox>
