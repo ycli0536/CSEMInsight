@@ -159,6 +159,7 @@ export function DatasetManager() {
         const nextPrimary = comparedDatasetIds[0];
         if (nextPrimary) {
           setPrimaryDataset(nextPrimary);
+          removeFromCompared(id);
         }
       } else {
         removeFromCompared(id);

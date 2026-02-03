@@ -42,8 +42,8 @@ export const initialWindows: Record<WindowId, WindowState> = {
     container: "main",
     isOpen: true,
     zIndex: 10,
-    position: { x: 600, y: 50 },
-    size: { width: 500, height: 600 },
+    position: { x: 60, y: 60 },
+    size: { width: 800, height: 650 },
   },
   "custom-plot": {
     id: "custom-plot",

@@ -1,4 +1,4 @@
-import { useState, useRef, lazy, Suspense } from "react";
+import { useEffect, useState, useRef, lazy, Suspense } from "react";
 import { ChevronUp, ChevronDown, Table, Loader2 } from "lucide-react";
 import {
     ResizablePanelGroup,
@@ -32,7 +32,27 @@ const HEADER_HEIGHT = 36;
 export function BottomPanel({ children }: BottomPanelProps) {
     const [isCollapsed, setIsCollapsed] = useState(true);
     const [expandedSize, setExpandedSize] = useState(35);
+    const [isRaised, setIsRaised] = useState(false);
     const bottomPanelRef = useRef<ImperativePanelHandle>(null);
+    const panelContentRef = useRef<HTMLDivElement>(null);
+    const headerRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        const handlePointerDown = (event: PointerEvent) => {
+            const target = event.target as Node;
+            if (panelContentRef.current?.contains(target) || headerRef.current?.contains(target)) {
+                return;
+            }
+            setIsRaised(false);
+        };
+
+        window.addEventListener("pointerdown", handlePointerDown);
+        return () => window.removeEventListener("pointerdown", handlePointerDown);
+    }, []);
+
+    const raisePanel = () => {
+        setIsRaised(true);
+    };
 
     const handlePanelResize = (sizes: number[]) => {
         if (sizes.length >= 2) {
@@ -78,7 +98,14 @@ export function BottomPanel({ children }: BottomPanelProps) {
                     <ResizableHandle
                         withHandle
                         onDoubleClick={toggleCollapse}
-                        className="cursor-row-resize"
+                        onPointerDown={(event) => {
+                            event?.stopPropagation();
+                            raisePanel();
+                        }}
+                        className={cn(
+                            "cursor-row-resize relative",
+                            isRaised ? "z-20" : "z-0",
+                        )}
                     />
 
                     {/* Bottom panel for data table content (no header here) */}
@@ -92,7 +119,15 @@ export function BottomPanel({ children }: BottomPanelProps) {
                         onCollapse={() => setIsCollapsed(true)}
                         onExpand={() => setIsCollapsed(false)}
                     >
-                        <div className="h-full w-full bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 overflow-hidden border-t border-border/50">
+                        <div
+                            ref={panelContentRef}
+                            className={cn(
+                                "h-full w-full bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 overflow-hidden border-t border-border/50",
+                                "relative",
+                                isRaised ? "z-20" : "z-0",
+                            )}
+                            onPointerDown={raisePanel}
+                        >
                             <Suspense fallback={<LoadingFallback />}>
                                 <DataPage />
                             </Suspense>
@@ -103,14 +138,18 @@ export function BottomPanel({ children }: BottomPanelProps) {
 
             {/* Fixed header bar - always visible at the bottom */}
             <div
+                ref={headerRef}
                 className={cn(
                     "flex items-center justify-between px-4 border-t cursor-pointer select-none shrink-0 transition-all duration-200",
                     "bg-background/80 backdrop-blur-sm hover:bg-muted/50",
-                    !isCollapsed && "bg-muted/30"
+                    !isCollapsed && "bg-muted/30",
+                    "relative",
+                    isRaised ? "z-20" : "z-0",
                 )}
                 style={{ height: HEADER_HEIGHT }}
                 onClick={toggleCollapse}
                 onDoubleClick={toggleCollapse}
+                onPointerDown={raisePanel}
             >
                 <div className="flex items-center gap-3">
                     <div className={cn(
