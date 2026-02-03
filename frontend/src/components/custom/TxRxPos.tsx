@@ -42,13 +42,13 @@ export function TxRxPosPlot() {
 
             if (!isTxDepthAdjusted) {
                 setTxData(freshTxData);
-                console.log('Updated TxData with fresh data:', freshTxData);
+                // console.log('Updated TxData with fresh data:', freshTxData);
             }
 
             setRxData(freshRxData);
 
             if (originalTxData.length === 0 && freshTxData.length > 0) {
-                console.log('Storing original Tx data from CSEM file:', freshTxData);
+                // console.log('Storing original Tx data from CSEM file:', freshTxData);
                 setOriginalTxData([...freshTxData]);
             }
         }
@@ -121,11 +121,24 @@ export function TxRxPosPlot() {
                 }
             });
 
+            if (bathymetryData) {
+                yzSeriesData.push([
+                    new Float64Array(bathymetryData.inline_distance),
+                    new Float64Array(bathymetryData.depth),
+                ]);
+                yzSeries.push({
+                    label: "Bathymetry",
+                    stroke: isDark ? dataVizPalette.bathymetry.dark : dataVizPalette.bathymetry.light,
+                    width: 2,
+                    points: { show: false },
+                });
+            }
+
             const options_xy: uPlot.Options = {
                 mode: 1,
                 width: 900,
                 height: 300,
-                title: 'Tx and Rx positions (overlay)',
+                title: 'Tx and Rx positions',
                 series: xySeries,
                 scales: {
                     x: { time: false },
@@ -170,7 +183,7 @@ export function TxRxPosPlot() {
                 mode: 1,
                 width: 900,
                 height: 400,
-                title: 'Depth profile (overlay)',
+                title: 'Depth profile',
                 series: yzSeries,
                 scales: {
                     x: { time: false },
@@ -213,8 +226,8 @@ export function TxRxPosPlot() {
                 },
             };
 
-            const plotTxRx1Instance = new uPlot(options_xy, uPlot.join(xySeriesData), XYChartRef.current!);
             const plotTxRx2Instance = new uPlot(options_yz, uPlot.join(yzSeriesData), XYChartRef.current!);
+            const plotTxRx1Instance = new uPlot(options_xy, uPlot.join(xySeriesData), XYChartRef.current!);
 
             return () => {
                 plotTxRx1Instance.destroy();
@@ -316,8 +329,8 @@ export function TxRxPosPlot() {
             if (bathymetryData) {
                 // Create bathymetry dataset
                 const bathyData: uPlot.AlignedData = [
-                    bathymetryData.inline_distance, // x-axis for bathymetry
-                    bathymetryData.depth,           // bathymetry depths
+                    new Float64Array(bathymetryData.inline_distance), // x-axis for bathymetry
+                    new Float64Array(bathymetryData.depth),           // bathymetry depths
                 ];
 
                 // Join the Tx/Rx data with bathymetry data using uPlot.join

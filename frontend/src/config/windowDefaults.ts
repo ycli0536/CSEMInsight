@@ -38,7 +38,7 @@ export const initialWindows: Record<WindowId, WindowState> = {
   bathymetry: {
     id: "bathymetry",
     type: "bathymetry",
-    title: "Bathymetry & Positions",
+    title: "Bathymetry & Survey Geometry",
     container: "main",
     isOpen: true,
     zIndex: 10,

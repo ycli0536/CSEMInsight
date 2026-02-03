@@ -3,7 +3,7 @@ import type { CsemData, RxData, TxData } from "@/types";
 export function extractTxPlotData(inputData: CsemData[], columns: string[]) {
   // Get unique Tx_id values but keep its original index and specified columns
   const getTx = (data: CsemData[], columns: string[]) => {
-    const uniqueTxIds = new Map<number, { index: number; [key: string]: unknown }>();
+    const uniqueTxIds = new Map<number, { index: number;[key: string]: unknown }>();
 
     data.forEach((item, index) => {
       if (!uniqueTxIds.has(item.Tx_id)) {
@@ -16,7 +16,7 @@ export function extractTxPlotData(inputData: CsemData[], columns: string[]) {
       }
     });
 
-    console.log("uniqueTxIds:", uniqueTxIds);
+    // console.log("uniqueTxIds:", uniqueTxIds);
 
     // Convert the Map to an array of objects if needed
     return Array.from(uniqueTxIds.values());
@@ -30,7 +30,7 @@ export function extractTxPlotData(inputData: CsemData[], columns: string[]) {
 export function extractRxPlotData(inputData: CsemData[], columns: string[]) {
   // Get unique Rx_id values but keep its original index and specified columns
   const getRx = (data: CsemData[], columns: string[]) => {
-    const uniqueRxIds = new Map<number, { index: number; [key: string]: unknown }>();
+    const uniqueRxIds = new Map<number, { index: number;[key: string]: unknown }>();
 
     data.forEach((item, index) => {
       if (!uniqueRxIds.has(item.Rx_id)) {
@@ -43,7 +43,7 @@ export function extractRxPlotData(inputData: CsemData[], columns: string[]) {
       }
     });
 
-    console.log("uniqueRxIds:", uniqueRxIds);
+    // console.log("uniqueRxIds:", uniqueRxIds);
 
     // Convert the Map to an array of objects if needed
     return Array.from(uniqueRxIds.values());
