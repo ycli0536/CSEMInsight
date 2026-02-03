@@ -7,22 +7,7 @@ import { useTheme } from "@/hooks/useTheme";
 import { getChartColors } from "@/lib/colorPalette";
 import { CsemData } from '@/types';
 import { wheelZoomPlugin } from '@/components/custom/uplot-wheel-zoom-plugin';
-
-export function getPlotLabelParts(
-    xAxisColumn: string,
-    yAxisColumn: string,
-    splitByColumn: string,
-) {
-    const xKey = xAxisColumn || 'Lon_tx';
-    const yKey = yAxisColumn || 'Lat_rx';
-    const splitLabel = splitByColumn ? splitByColumn : 'Freq';
-
-    return {
-        xLabel: xKey,
-        yLabel: yKey,
-        splitLabel,
-    };
-}
+import { getPlotLabelParts } from './customPlot.utils';
 
 export function CustomPlot() {
     const plotRef = useRef<HTMLDivElement>(null);

@@ -5,7 +5,7 @@ import { computeDifferenceData } from '@/services/extractComparisonData';
 import {
   buildOverlayDatasets,
   resolveReferenceDataset,
-} from './ResponsePlot';
+} from './responsePlot.utils';
 
 const baseRow: CsemData = {
   index: 0,

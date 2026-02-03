@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { getPlotLabelParts } from './CustomPlot';
+import { getPlotLabelParts } from './customPlot.utils';
 
 describe('getPlotLabelParts', () => {
   it('uses defaults when no columns selected', () => {
