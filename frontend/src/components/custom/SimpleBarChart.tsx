@@ -11,8 +11,13 @@ export interface BarSeries {
     stackId?: string;
 }
 
+export interface BarChartDataPoint {
+    name: string;
+    [key: string]: string | number;
+}
+
 interface SimpleBarChartProps {
-    data: Array<any>;
+    data: BarChartDataPoint[];
     xLabel?: string;
     yLabel?: string;
     series?: BarSeries[];
@@ -56,7 +61,7 @@ export const SimpleBarChart: React.FC<SimpleBarChartProps> = ({ data, xLabel, yL
                         label={{ value: yLabel, angle: -90, position: 'insideLeft', fill: textColor }}
                     />
                     <Tooltip
-                        formatter={(value: any) => typeof value === 'number' ? value.toFixed(2) : value}
+                        formatter={(value: string | number) => typeof value === 'number' ? value.toFixed(2) : value}
                         contentStyle={{
                             backgroundColor: isDarkMode ? '#1f2937' : '#fff',
                             borderColor: gridColor,
