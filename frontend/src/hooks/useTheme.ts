@@ -14,10 +14,10 @@ const getSystemTheme = () => {
 
 const getStoredTheme = (): ThemePreference => {
   if (typeof window === "undefined") {
-    return "system";
+    return "dark";
   }
   const stored = window.localStorage.getItem(storageKey) as ThemePreference | null;
-  return stored ?? "system";
+  return stored ?? "dark";
 };
 
 interface ThemeState {

@@ -5,7 +5,7 @@
 import { describe, expect, it, beforeEach, vi, afterEach } from 'vitest';
 import axios from 'axios';
 import { useDataTableStore, useSettingFormStore } from '@/store/settingFormStore';
-import { createMockDataset, createMockApiResponse, createMockGeometryInfo } from '@/test/mocks';
+import { createMockDataset, createMockApiResponse } from '@/test/mocks';
 
 // Mock axios
 vi.mock('axios');
@@ -304,7 +304,7 @@ describe('Dataset Loading Integration', () => {
 describe('API Integration Mocks', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    
+
     useDataTableStore.setState({
       datasets: new Map(),
       primaryDatasetId: null,
