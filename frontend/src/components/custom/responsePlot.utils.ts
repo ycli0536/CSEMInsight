@@ -28,7 +28,7 @@ export function buildOverlayDatasets(
         data: computeDifferenceData(referenceDataset.data, dataset.data),
       }));
   }
-  if (comparisonMode === 'statistical' || comparisonMode === 'overlay') {
+  if (comparisonMode === 'overlay') {
     return activeDatasets;
   }
   return [];

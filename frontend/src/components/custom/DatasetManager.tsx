@@ -23,7 +23,6 @@ const comparisonOptions: { value: ComparisonMode; label: string }[] = [
   { value: "overlay", label: "Overlay" },
   { value: "sidebyside", label: "Side-by-Side" },
   { value: "difference", label: "Difference" },
-  { value: "statistical", label: "Statistical" },
 ];
 
 interface DatasetItemProps {
@@ -47,13 +46,12 @@ function DatasetItem({
 }: DatasetItemProps) {
   return (
     <div
-      className={`flex min-w-0 items-center gap-2 rounded-md border p-2 transition-all duration-200 ${
-        !isVisible
-          ? "border-muted bg-muted/30 opacity-50"
-          : isPrimary
-            ? "border-primary/50 bg-primary/5"
-            : "border-border bg-card"
-      }`}
+      className={`flex min-w-0 items-center gap-2 rounded-md border p-2 transition-all duration-200 ${!isVisible
+        ? "border-muted bg-muted/30 opacity-50"
+        : isPrimary
+          ? "border-primary/50 bg-primary/5"
+          : "border-border bg-card"
+        }`}
     >
       <Checkbox
         checked={isVisible}
@@ -66,9 +64,8 @@ function DatasetItem({
           <TooltipTrigger asChild>
             <button
               type="button"
-              className={`flex min-w-0 flex-1 items-center gap-2 text-left transition-colors ${
-                isVisible ? "cursor-pointer hover:opacity-80" : "cursor-default"
-              }`}
+              className={`flex min-w-0 flex-1 items-center gap-2 text-left transition-colors ${isVisible ? "cursor-pointer hover:opacity-80" : "cursor-default"
+                }`}
               onClick={() => isVisible && onSetPrimary()}
               disabled={!isVisible}
             >
@@ -196,7 +193,7 @@ export function DatasetManager() {
         </Select>
       </div>
 
-      {(comparisonMode === "difference" || comparisonMode === "statistical") && (
+      {(comparisonMode === "difference") && (
         <div className="grid gap-2">
           <Label>Reference Dataset</Label>
           <Select

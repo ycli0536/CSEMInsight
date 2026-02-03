@@ -22,7 +22,6 @@ import {
 import { useRadioGroupStore } from '@/store/plotCanvasStore';
 import { debounce } from 'lodash';
 import { useComparisonStore } from '@/store/comparisonStore';
-import { computeStatistics, StatisticalMetrics } from "@/services/statisticalAnalysis";
 import { resolveReferenceDataset, buildOverlayDatasets } from './responsePlot.utils';
 
 export function ResponsesWithErrorBars() {
@@ -193,20 +192,6 @@ export function ResponsesWithErrorBars() {
     () => buildOverlayDatasets(comparisonMode, activeDatasets, referenceDataset),
     [activeDatasets, comparisonMode, referenceDataset],
   );
-
-  const statistics = useMemo<Record<string, StatisticalMetrics>>(() => {
-    if (!referenceDataset || comparisonMode !== 'statistical') {
-      return {};
-    }
-    const results: Record<string, StatisticalMetrics> = {};
-    activeDatasets.forEach((dataset) => {
-      if (dataset.id === referenceDataset.id) {
-        return;
-      }
-      results[dataset.id] = computeStatistics(referenceDataset.data, dataset.data);
-    });
-    return results;
-  }, [activeDatasets, comparisonMode, referenceDataset]);
 
   useEffect(() => {
     const data = filteredData;
@@ -487,8 +472,7 @@ export function ResponsesWithErrorBars() {
 
     const useOverlay =
       (comparisonMode === 'overlay' ||
-        comparisonMode === 'difference' ||
-        comparisonMode === 'statistical') &&
+        comparisonMode === 'difference') &&
       overlayDatasets.length > 0;
 
     const initialPlotOptions = (seriesNum: number, type: string, legendInfo: LegendInfo[]): uPlot.Options => {
@@ -1347,31 +1331,6 @@ export function ResponsesWithErrorBars() {
           </div>
         </div>
       </div>
-
-      <Separator className="mb-4" />
-      {comparisonMode === 'statistical' && referenceDataset && (
-        <div className="grid gap-2 rounded-lg border p-3 text-sm">
-          <div className="font-medium">
-            Statistical summary (reference: {referenceDataset.name})
-          </div>
-          {Object.entries(statistics).length === 0 ? (
-            <div className="text-muted-foreground">No comparison datasets selected.</div>
-          ) : (
-            Object.entries(statistics).map(([datasetId, metrics]) => {
-              const datasetName = activeDatasets.find((dataset) => dataset.id === datasetId)?.name ?? datasetId;
-              return (
-                <div key={datasetId} className="flex flex-wrap gap-3">
-                  <span className="font-medium">{datasetName}</span>
-                  <span>Pairs: {metrics.count}</span>
-                  <span>RMSE: {metrics.rmse?.toFixed(4) ?? 'N/A'}</span>
-                  <span>MAE: {metrics.mae?.toFixed(4) ?? 'N/A'}</span>
-                  <span>Corr: {metrics.correlation?.toFixed(3) ?? 'N/A'}</span>
-                </div>
-              );
-            })
-          )}
-        </div>
-      )}
       {comparisonMode === 'sidebyside' ? (
         <div className="grid gap-6">
           {activeDatasets.length === 0 ? (

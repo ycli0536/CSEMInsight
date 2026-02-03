@@ -11,7 +11,7 @@
 ### Data Visualization & Analysis
 - **Advanced Data Visualization**: Interactive charts and plots for better understanding of marine CSEM responses
 - **Multi-Dataset Support**: Load and manage multiple datasets simultaneously with color-coded visualization
-- **Comparison Modes**: Compare datasets using overlay, side-by-side, difference, or statistical analysis views
+- **Comparison Modes**: Compare datasets using overlay, side-by-side, or difference analysis views
 - **Data Filtering**: Powerful table-based filtering with real-time plot updates
 
 ### Data Format Support
@@ -225,7 +225,7 @@ Once installed, you can upload your CSEM data files directly into the web app to
 
 - **Primary Dataset**: The main dataset shown in plots and tables (click a dataset name to set as primary)
 - **Compared Datasets**: Additional datasets overlaid for comparison (checkbox controls visibility)
-- **Comparison Modes**: Switch between overlay, side-by-side, difference, or statistical views
+- **Comparison Modes**: Switch between overlay, side-by-side, or difference views
 
 <!-- ## Contributing-->
 

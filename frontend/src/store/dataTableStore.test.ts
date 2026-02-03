@@ -91,7 +91,6 @@ beforeEach(() => {
   useComparisonStore.setState({
     referenceDatasetId: null,
     differenceData: [],
-    statisticalResults: {},
     alignmentMode: 'exact',
   });
 });
@@ -178,7 +177,6 @@ describe('useDataTableStore setPrimaryDataset', () => {
     useComparisonStore.setState({
       referenceDatasetId: 'A',
       differenceData: [],
-      statisticalResults: {},
       alignmentMode: 'exact',
     });
 

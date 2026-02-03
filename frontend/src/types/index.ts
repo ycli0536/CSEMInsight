@@ -106,7 +106,7 @@ export interface GeometryData {
   Strike: number;
 }
 
-export type ComparisonMode = "overlay" | "sidebyside" | "difference" | "statistical";
+export type ComparisonMode = "overlay" | "sidebyside" | "difference";
 
 /** Dataset visibility/role in the application */
 export type DatasetRole = "primary" | "compared" | "hidden";
