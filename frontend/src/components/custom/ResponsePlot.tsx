@@ -22,7 +22,12 @@ import {
 import { useRadioGroupStore } from '@/store/plotCanvasStore';
 import { debounce } from 'lodash';
 import { useComparisonStore } from '@/store/comparisonStore';
-import { resolveReferenceDataset, buildOverlayDatasets } from './responsePlot.utils';
+import {
+  resolveReferenceDataset,
+  buildOverlayDatasets,
+  hasModelResponseData,
+  hasResidualResponseData,
+} from './responsePlot.utils';
 
 export function ResponsesWithErrorBars() {
   const ampChartRef = useRef<HTMLDivElement>(null);
@@ -59,6 +64,8 @@ export function ResponsesWithErrorBars() {
     datasetId?: string;
     datasetName?: string;
     datasetColor?: string;
+    hasResponse?: boolean;
+    hasResidual?: boolean;
   };
 
   const normalizePhase = useCallback(
@@ -108,6 +115,8 @@ export function ResponsesWithErrorBars() {
           let rawDataSeries: number[] | undefined; // For errors in phi
           let modelSeries: number[] = [];
           let residualSeries: number[] = [];
+          const hasResponse = filteredData.some((item) => Number.isFinite(item.Response));
+          const hasResidual = filteredData.some((item) => Number.isFinite(item.Residual));
 
           if (type === 'phi') {
             rawDataSeries = filteredData.map((item) => item.Data);
@@ -134,7 +143,7 @@ export function ResponsesWithErrorBars() {
             }
           }
 
-          comb_info.push({ freqId, RxId, type });
+          comb_info.push({ freqId, RxId, type, hasResponse, hasResidual });
 
           const result: Float64Array[][] = [
             [
@@ -193,6 +202,29 @@ export function ResponsesWithErrorBars() {
     [activeDatasets, comparisonMode, referenceDataset],
   );
 
+  const hasModelData = useMemo(
+    () => hasModelResponseData(activeDatasets),
+    [activeDatasets],
+  );
+
+  const hasResidualData = useMemo(
+    () => hasResidualResponseData(activeDatasets),
+    [activeDatasets],
+  );
+
+  const disableModel = comparisonMode === 'difference' || !hasModelData;
+  const disableResidual =
+    comparisonMode === 'difference' || comparisonMode === 'sidebyside' || !hasResidualData;
+
+  useEffect(() => {
+    if (disableModel && showModel) {
+      setShowModel(false);
+    }
+    if (disableResidual && showResidual) {
+      setShowResidual(false);
+    }
+  }, [disableModel, disableResidual, setShowModel, setShowResidual, showModel, showResidual]);
+
   useEffect(() => {
     const data = filteredData;
 
@@ -238,14 +270,25 @@ export function ResponsesWithErrorBars() {
             flattenedModelSeries.push(rxData[nextIdx]);
             nextIdx++;
           } else if (showModel) {
-            // Should not happen if consistent, but push empty/dummy?
-            // uPlot.join might fail if lengths inconsistent?
-            // Better to push a dummy empty series with shared X?
-            // Or just allow misalignment. uPlot.join handles it.
+            const dataX = rxData[0]?.[0];
+            if (dataX) {
+              flattenedModelSeries.push([
+                dataX,
+                new Float64Array(dataX.length).fill(Number.NaN),
+              ]);
+            }
           }
 
           if (showResidual && rxData.length > nextIdx) {
             flattenedResidualSeries.push(rxData[nextIdx]);
+          } else if (showResidual) {
+            const dataX = rxData[0]?.[0];
+            if (dataX) {
+              flattenedResidualSeries.push([
+                dataX,
+                new Float64Array(dataX.length).fill(Number.NaN),
+              ]);
+            }
           }
         });
       });
@@ -592,7 +635,7 @@ export function ResponsesWithErrorBars() {
       if (showModel) {
         for (let idx = 0; idx < seriesNum; idx++) {
           series.push({
-            show: true,
+            show: Boolean(legendInfo[idx]?.hasResponse),
             label: `Model`,
             stroke: seriesColors[idx],
             width: 2, // Line
@@ -709,7 +752,7 @@ export function ResponsesWithErrorBars() {
         if (showModel) {
           for (let idx = 0; idx < seriesNum; idx++) {
             seriesWithBands.push({
-              show: true,
+              show: Boolean(legendInfo[idx]?.hasResponse),
               label: `Model`,
               stroke: seriesColors[idx],
               width: 2,
@@ -1104,7 +1147,7 @@ export function ResponsesWithErrorBars() {
           : "";
         const strokeColor = seriesColors[idx];
         series.push({
-          show: true,
+          show: Boolean(legendInfo[idx]?.hasResidual),
           label: `${datasetLabel}Residual`,
           stroke: strokeColor,
           width: 0,
@@ -1266,12 +1309,32 @@ export function ResponsesWithErrorBars() {
           {/* Popular Options */}
           <div className="flex items-center gap-4">
             <div className="flex items-center space-x-2">
-              <Checkbox id="show-model" checked={showModel} onCheckedChange={(val) => setShowModel(val as boolean)} />
-              <Label htmlFor="show-model" className="text-sm">Model</Label>
+              <Checkbox
+                id="show-model"
+                checked={showModel}
+                onCheckedChange={(val) => setShowModel(val as boolean)}
+                disabled={disableModel}
+              />
+              <Label
+                htmlFor="show-model"
+                className={`text-sm ${disableModel ? 'text-muted-foreground' : ''}`}
+              >
+                Model
+              </Label>
             </div>
             <div className="flex items-center space-x-2">
-              <Checkbox id="show-residual" checked={showResidual} onCheckedChange={(val) => setShowResidual(val as boolean)} />
-              <Label htmlFor="show-residual" className="text-sm">Residual</Label>
+              <Checkbox
+                id="show-residual"
+                checked={showResidual}
+                onCheckedChange={(val) => setShowResidual(val as boolean)}
+                disabled={disableResidual}
+              />
+              <Label
+                htmlFor="show-residual"
+                className={`text-sm ${disableResidual ? 'text-muted-foreground' : ''}`}
+              >
+                Residual
+              </Label>
             </div>
             <div className="flex items-center space-x-2">
               <Checkbox id="show-data" checked={showData} onCheckedChange={(val) => setShowData(val as boolean)} />

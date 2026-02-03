@@ -33,3 +33,15 @@ export function buildOverlayDatasets(
   }
   return [];
 }
+
+export function hasModelResponseData(datasets: Dataset[]): boolean {
+  return datasets.some((dataset) =>
+    dataset.data.some((row) => Number.isFinite(row.Response))
+  );
+}
+
+export function hasResidualResponseData(datasets: Dataset[]): boolean {
+  return datasets.some((dataset) =>
+    dataset.data.some((row) => Number.isFinite(row.Residual))
+  );
+}

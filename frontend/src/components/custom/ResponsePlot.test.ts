@@ -4,6 +4,8 @@ import type { CsemData, Dataset } from '@/types';
 import { computeDifferenceData } from '@/services/extractComparisonData';
 import {
   buildOverlayDatasets,
+  hasModelResponseData,
+  hasResidualResponseData,
   resolveReferenceDataset,
 } from './responsePlot.utils';
 
@@ -90,5 +92,29 @@ describe('buildOverlayDatasets', () => {
     expect(result).toHaveLength(1);
     expect(result[0].name).toBe('Delta: A - B');
     expect(result[0].data).toEqual(computeDifferenceData(reference.data, target.data));
+  });
+});
+
+describe('response plot data availability', () => {
+  it('detects model response data', () => {
+    const base = makeDataset('A', 10);
+    const withResponse = {
+      ...base,
+      data: [{ ...base.data[0], Response: 12 }],
+    };
+
+    expect(hasModelResponseData([base])).toBe(false);
+    expect(hasModelResponseData([withResponse])).toBe(true);
+  });
+
+  it('detects residual data', () => {
+    const base = makeDataset('A', 10);
+    const withResidual = {
+      ...base,
+      data: [{ ...base.data[0], Residual: 0.5 }],
+    };
+
+    expect(hasResidualResponseData([base])).toBe(false);
+    expect(hasResidualResponseData([withResidual])).toBe(true);
   });
 });
