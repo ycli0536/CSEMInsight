@@ -7,6 +7,7 @@ import { wheelZoomPlugin } from '@/components/custom/uplot-wheel-zoom-plugin';
 import { getTxRxData } from "@/services/extractTxRxPlotData";
 import { useTheme } from "@/hooks/useTheme";
 import { getTxRxColors, getChartColors, dataVizPalette } from "@/lib/colorPalette";
+import { orderIdsByPrimaryLast } from '@/lib/datasetOrdering';
 
 declare module "uplot" {
     interface Series {
@@ -29,11 +30,16 @@ export function TxRxPosPlot() {
     const axisStroke = chartColors.axis;
     const gridStroke = chartColors.grid;
 
+    const orderedDatasetIds = useMemo(
+        () => orderIdsByPrimaryLast(activeDatasetIds, primaryDatasetId),
+        [activeDatasetIds, primaryDatasetId],
+    );
+
     const activeDatasets = useMemo(() => {
-        return activeDatasetIds
+        return orderedDatasetIds
             .map((id) => datasets.get(id))
             .filter((dataset): dataset is Dataset => Boolean(dataset && dataset.visible));
-    }, [activeDatasetIds, datasets]);
+    }, [orderedDatasetIds, datasets]);
 
     // Data Synchronization Effect
     useEffect(() => {

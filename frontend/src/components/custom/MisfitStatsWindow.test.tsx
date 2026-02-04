@@ -6,6 +6,7 @@ import { useDataTableStore } from '@/store/settingFormStore';
 import { useWindowStore } from '@/store/windowStore';
 import { useTheme } from '@/hooks/useTheme';
 import type { CsemData, Dataset } from '@/types';
+import uPlot from 'uplot';
 
 // Mock the store
 vi.mock('@/store/settingFormStore', () => ({
@@ -183,6 +184,35 @@ describe('MisfitStatsWindow', () => {
     await waitFor(() => {
       expect(console.error).not.toHaveBeenCalled();
     });
+  });
+
+  it('orders scatter series with primary dataset first', async () => {
+    const mockDataset1 = createMockDataset('dataset1', true);
+    const mockDataset2 = createMockDataset('dataset2', true);
+    const mockDatasets = new Map<string, Dataset>([
+      ['dataset1', mockDataset1],
+      ['dataset2', mockDataset2],
+    ]);
+
+    (useDataTableStore as ReturnType<typeof vi.fn>).mockReturnValue({
+      filteredData: mockDataset1.data,
+      datasets: mockDatasets,
+      activeDatasetIds: ['dataset1', 'dataset2'],
+      primaryDatasetId: 'dataset2',
+    });
+
+    render(<MisfitStatsWindow />);
+
+    await waitFor(() => {
+      expect(uPlot).toHaveBeenCalled();
+    });
+
+    const mockCalls = (uPlot as unknown as { mock: { calls: unknown[][] } }).mock.calls;
+    const lastCall = mockCalls[mockCalls.length - 1];
+    const options = lastCall?.[0] as { series?: { label?: string }[] } | undefined;
+    const firstSeriesLabel = options?.series?.[1]?.label;
+
+    expect(firstSeriesLabel).toBe('Dataset dataset1 Amp');
   });
 
   it('should show missing residual message when data lacks residuals', async () => {

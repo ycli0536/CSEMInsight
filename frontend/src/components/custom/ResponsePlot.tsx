@@ -28,6 +28,7 @@ import {
   hasModelResponseData,
   hasResidualResponseData,
 } from './responsePlot.utils';
+import { orderIdsByPrimaryLast } from '@/lib/datasetOrdering';
 
 export function ResponsesWithErrorBars() {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -44,7 +45,8 @@ export function ResponsesWithErrorBars() {
     datasets,
     activeDatasetIds,
     activeTableDatasetId, // Need this to check which dataset should use the 'live' filteredData
-    comparisonMode
+    comparisonMode,
+    primaryDatasetId,
   } = useDataTableStore();
   const { showLegend, dragEnabled, scrollEnabled, legendLiveEnabled, wrapPhase,
     setShowLegend, setDragEnabled, setScrollEnabled, setlegendLiveEnabled, setWrapPhase,
@@ -190,11 +192,16 @@ export function ResponsesWithErrorBars() {
     [normalizePhase, showModel, showResidual]
   );
 
+  const orderedDatasetIds = useMemo(
+    () => orderIdsByPrimaryLast(activeDatasetIds, primaryDatasetId),
+    [activeDatasetIds, primaryDatasetId],
+  );
+
   const activeDatasets = useMemo(() => {
-    return activeDatasetIds
+    return orderedDatasetIds
       .map((id) => datasets.get(id))
       .filter((dataset): dataset is Dataset => Boolean(dataset && dataset.visible));
-  }, [activeDatasetIds, datasets]);
+  }, [orderedDatasetIds, datasets]);
 
   const referenceDataset = useMemo(
     () => resolveReferenceDataset(activeDatasets, referenceDatasetId),

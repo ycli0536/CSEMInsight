@@ -10,6 +10,7 @@ import { wheelZoomPlugin } from "@/components/custom/uplot-wheel-zoom-plugin";
 import { generateMisfitStatsMockData } from "@/mocks/misfitStatsMock";
 import { Loader2, Info } from "lucide-react";
 import type { CsemData } from "@/types";
+import { orderIdsByPrimaryLast } from '@/lib/datasetOrdering';
 
 
 type RMSDataPoint = {
@@ -53,7 +54,7 @@ export const MisfitStatsWindow = () => {
     // uPlot instance refs
     const scatterPlotRef = useRef<uPlot | null>(null);
 
-    const { filteredData, datasets, activeDatasetIds } = useDataTableStore();
+    const { filteredData, datasets, activeDatasetIds, primaryDatasetId } = useDataTableStore();
     const draggingWindowId = useWindowStore((state) => state.draggingWindowId);
     const [datasetStats, setDatasetStats] = useState<DatasetStat[]>([]);
     const [loading, setLoading] = useState(false);
@@ -64,6 +65,10 @@ export const MisfitStatsWindow = () => {
     const isDarkMode = resolvedTheme === "dark";
     const isDemoMode = import.meta.env.VITE_DEMO_MODE === "true";
     const isDraggingMisfit = draggingWindowId === "misfit-stats";
+    const orderedDatasetIds = useMemo(
+        () => orderIdsByPrimaryLast(activeDatasetIds, primaryDatasetId),
+        [activeDatasetIds, primaryDatasetId],
+    );
 
     // --- SERIES CONFIGURATION ---
     const freqSeries = useMemo(() => {
@@ -231,9 +236,9 @@ export const MisfitStatsWindow = () => {
             // Check datasets
             const targets: { id: string; name: string; color: string; data: CsemData[] }[] = [];
 
-            if (activeDatasetIds.length > 0) {
+            if (orderedDatasetIds.length > 0) {
                 // Use active datasets
-                activeDatasetIds.forEach(id => {
+                orderedDatasetIds.forEach(id => {
                     const ds = datasets.get(id);
                     if (ds && ds.visible) {
                         targets.push({ id: ds.id, name: ds.name, color: ds.color, data: ds.data });
@@ -286,6 +291,7 @@ export const MisfitStatsWindow = () => {
             const validTargets = targets.filter(target =>
                 target.data.some((d: CsemData) => d.Residual !== undefined && isFinite(d.Residual))
             );
+            const validTargetIds = validTargets.map(target => target.id);
 
             if (validTargets.length === 0) {
                 if (!signal.aborted) {
@@ -314,7 +320,11 @@ export const MisfitStatsWindow = () => {
 
             if (uncachedTargets.length === 0) {
                 if (!signal.aborted) {
-                    setDatasetStats(cachedResults);
+                    const cachedMap = new Map(cachedResults.map(result => [result.id, result]));
+                    const orderedResults = validTargetIds
+                        .map(id => cachedMap.get(id))
+                        .filter((result): result is DatasetStat => Boolean(result));
+                    setDatasetStats(orderedResults);
                     setLoading(false);
                 }
                 return;
@@ -342,7 +352,13 @@ export const MisfitStatsWindow = () => {
                     setCachedMisfitStats(cacheKey, stats);
                     return [{ id: target.id, name: target.name, color: target.color, stats }];
                 });
-                const results = [...cachedResults, ...fetchedResults];
+                const orderedResultsMap = new Map<string, DatasetStat>();
+                [...cachedResults, ...fetchedResults].forEach(result => {
+                    orderedResultsMap.set(result.id, result);
+                });
+                const results = validTargetIds
+                    .map(id => orderedResultsMap.get(id))
+                    .filter((result): result is DatasetStat => Boolean(result));
 
                 if (!signal.aborted) {
                     setDatasetStats(results);
@@ -367,7 +383,7 @@ export const MisfitStatsWindow = () => {
         return () => {
             controller.abort();
         };
-    }, [filteredData, activeDatasetIds, datasets]);
+    }, [filteredData, orderedDatasetIds, datasets]);
 
     // Initialize and update plots
     // Initialize and update plots (Scatter only, as others are Recharts)
