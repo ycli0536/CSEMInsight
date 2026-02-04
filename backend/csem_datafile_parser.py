@@ -4,6 +4,81 @@ import pandas as pd
 import numpy as np
 import utm
 from io import StringIO
+
+# Constants for data type codes
+AMPLITUDE_TYPE_CODES = {'21', '23', '25', '27', '28', '29', '31', '33', '35', '37', '38', '39'}
+PHASE_TYPE_CODES = {'22', '24', '26', '32', '34', '36'}
+
+def calculate_misfit_statistics(data_array: list) -> dict:
+    """Calculate RMS statistics from CSEM data residuals.
+
+    Groups by Type, Y_rx, Y_tx, Y_range, and Frequency.
+
+    Args:
+        data_array: List of dictionaries containing CSEM data with required columns:
+                   Type, Y_rx, Y_tx, Freq_id, Residual
+
+    Returns:
+        Dictionary with keys byRx, byTx, byRange, byFreq, each containing
+        amplitude and phase arrays with RMS values and position/frequency fields.
+
+    Raises:
+        ValueError: If required columns are missing from data_array.
+    """
+    if not data_array:
+        raise ValueError("No data provided")
+
+    df = pd.DataFrame(data_array)
+
+    required_cols = ["Type", "Y_rx", "Y_tx", "Freq_id", "Residual"]
+    missing_cols = [col for col in required_cols if col not in df.columns]
+    if missing_cols:
+        raise ValueError(f"Missing required columns: {missing_cols}")
+
+    df["Type"] = df["Type"].astype(str)
+    df["Y_range"] = df["Y_rx"] - df["Y_tx"]
+
+    def calc_rms(residuals):
+        if len(residuals) == 0:
+            return np.nan
+        return np.sqrt((residuals**2).sum() / len(residuals))
+
+    rms_by_rx = df.groupby(["Type", "Y_rx"], as_index=False)["Residual"].apply(calc_rms)
+    rms_by_rx.columns = ["Type", "Y_rx", "RMS"]
+    rms_by_rx["Y_rx_km"] = rms_by_rx["Y_rx"] / 1000
+
+    rms_by_tx = df.groupby(["Type", "Y_tx"], as_index=False)["Residual"].apply(calc_rms)
+    rms_by_tx.columns = ["Type", "Y_tx", "RMS"]
+    rms_by_tx["Y_tx_km"] = rms_by_tx["Y_tx"] / 1000
+
+    rms_by_range = df.groupby(["Type", "Y_range"], as_index=False)["Residual"].apply(calc_rms)
+    rms_by_range.columns = ["Type", "Y_range", "RMS"]
+    rms_by_range["Y_range_km"] = rms_by_range["Y_range"] / 1000
+
+    rms_by_freq = df.groupby(["Type", "Freq_id"], as_index=False)["Residual"].apply(calc_rms)
+    rms_by_freq.columns = ["Type", "Freq_id", "RMS"]
+
+    result = {
+        "byRx": {
+            "amplitude": rms_by_rx[rms_by_rx["Type"].isin(AMPLITUDE_TYPE_CODES)][["Y_rx_km", "RMS"]].to_dict("records"),
+            "phase": rms_by_rx[rms_by_rx["Type"].isin(PHASE_TYPE_CODES)][["Y_rx_km", "RMS"]].to_dict("records"),
+        },
+        "byTx": {
+            "amplitude": rms_by_tx[rms_by_tx["Type"].isin(AMPLITUDE_TYPE_CODES)][["Y_tx_km", "RMS"]].to_dict("records"),
+            "phase": rms_by_tx[rms_by_tx["Type"].isin(PHASE_TYPE_CODES)][["Y_tx_km", "RMS"]].to_dict("records"),
+        },
+        "byRange": {
+            "amplitude": rms_by_range[rms_by_range["Type"].isin(AMPLITUDE_TYPE_CODES)][["Y_range_km", "RMS"]].to_dict("records"),
+            "phase": rms_by_range[rms_by_range["Type"].isin(PHASE_TYPE_CODES)][["Y_range_km", "RMS"]].to_dict("records"),
+        },
+        "byFreq": {
+            "amplitude": rms_by_freq[rms_by_freq["Type"].isin(AMPLITUDE_TYPE_CODES)][["Freq_id", "RMS"]].to_dict("records"),
+            "phase": rms_by_freq[rms_by_freq["Type"].isin(PHASE_TYPE_CODES)][["Freq_id", "RMS"]].to_dict("records"),
+        },
+    }
+
+    return result
+
 class CSEMDataFileReader():
     """_summary_
     """

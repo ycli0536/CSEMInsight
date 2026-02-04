@@ -10,6 +10,7 @@ from werkzeug.utils import secure_filename
 from suesi_depth_reader import process_SuesiDepth_mat_file
 from csem_datafile_parser import CSEMDataFileReader
 from csem_datafile_parser import CSEMDataFileManager
+from csem_datafile_parser import calculate_misfit_statistics
 from xyz_datafile_parser import XYZDataFileReader
 from bathymetry_parser import BathymetryParser
 
@@ -17,22 +18,6 @@ app = Flask(__name__)
 CORS(app)
 # Disable sorting of keys in JSON responses
 app.config["JSON_SORT_KEYS"] = False
-
-AMPLITUDE_TYPE_CODES = {
-    "21",
-    "23",
-    "25",
-    "27",
-    "28",
-    "29",
-    "31",
-    "33",
-    "35",
-    "37",
-    "38",
-    "39",
-}
-PHASE_TYPE_CODES = {"22", "24", "26", "32", "34", "36"}
 
 
 def _get_debug_flag() -> bool:
@@ -336,103 +321,17 @@ def calculate_misfit_stats():
     Groups by Type, Y_rx, Y_tx, Y_range, and Frequency.
     """
     try:
-        import pandas as pd
-        import numpy as np
-
         payload = request.get_json(silent=True) or {}
         data_array = payload.get("data", [])
 
         if not data_array:
             return jsonify({"error": "No data provided"}), 400
 
-        # Convert to DataFrame
-        df = pd.DataFrame(data_array)
-
-        # Ensure required columns exist
-        required_cols = ["Type", "Y_rx", "Y_tx", "Freq_id", "Residual"]
-        missing_cols = [col for col in required_cols if col not in df.columns]
-        if missing_cols:
-            return jsonify({"error": f"Missing required columns: {missing_cols}"}), 400
-
-        # Normalize Type codes to strings for consistent filtering
-        df["Type"] = df["Type"].astype(str)
-
-        # Calculate Y_range (signed difference between Y_rx and Y_tx)
-        df["Y_range"] = df["Y_rx"] - df["Y_tx"]
-
-        # Function to calculate RMS
-        def calc_rms(residuals):
-            if len(residuals) == 0:
-                return np.nan
-            return np.sqrt((residuals**2).sum() / len(residuals))
-
-        # Group and calculate RMS for each grouping
-        # 1. By Type and Y_rx
-        rms_by_rx = df.groupby(["Type", "Y_rx"], as_index=False)["Residual"].apply(
-            calc_rms
-        )
-        rms_by_rx.columns = ["Type", "Y_rx", "RMS"]
-        rms_by_rx["Y_rx_km"] = rms_by_rx["Y_rx"] / 1000  # Convert to km
-
-        # 2. By Type and Y_tx
-        rms_by_tx = df.groupby(["Type", "Y_tx"], as_index=False)["Residual"].apply(
-            calc_rms
-        )
-        rms_by_tx.columns = ["Type", "Y_tx", "RMS"]
-        rms_by_tx["Y_tx_km"] = rms_by_tx["Y_tx"] / 1000  # Convert to km
-
-        # 3. By Type and Y_range
-        rms_by_range = df.groupby(["Type", "Y_range"], as_index=False)[
-            "Residual"
-        ].apply(calc_rms)
-        rms_by_range.columns = ["Type", "Y_range", "RMS"]
-        rms_by_range["Y_range_km"] = rms_by_range["Y_range"] / 1000  # Convert to km
-
-        # 4. By Type and Freq_id
-        rms_by_freq = df.groupby(["Type", "Freq_id"], as_index=False)["Residual"].apply(
-            calc_rms
-        )
-        rms_by_freq.columns = ["Type", "Freq_id", "RMS"]
-
-        # Separate by Type (28 = amplitude, 24 = phase for Ey)
-        # Type 28 = Log10 Amplitude, Type 24 = Phase
-        result = {
-            "byRx": {
-                "amplitude": rms_by_rx[rms_by_rx["Type"].isin(AMPLITUDE_TYPE_CODES)][
-                    ["Y_rx_km", "RMS"]
-                ].to_dict("records"),
-                "phase": rms_by_rx[rms_by_rx["Type"].isin(PHASE_TYPE_CODES)][
-                    ["Y_rx_km", "RMS"]
-                ].to_dict("records"),
-            },
-            "byTx": {
-                "amplitude": rms_by_tx[rms_by_tx["Type"].isin(AMPLITUDE_TYPE_CODES)][
-                    ["Y_tx_km", "RMS"]
-                ].to_dict("records"),
-                "phase": rms_by_tx[rms_by_tx["Type"].isin(PHASE_TYPE_CODES)][
-                    ["Y_tx_km", "RMS"]
-                ].to_dict("records"),
-            },
-            "byRange": {
-                "amplitude": rms_by_range[
-                    rms_by_range["Type"].isin(AMPLITUDE_TYPE_CODES)
-                ][["Y_range_km", "RMS"]].to_dict("records"),
-                "phase": rms_by_range[rms_by_range["Type"].isin(PHASE_TYPE_CODES)][
-                    ["Y_range_km", "RMS"]
-                ].to_dict("records"),
-            },
-            "byFreq": {
-                "amplitude": rms_by_freq[
-                    rms_by_freq["Type"].isin(AMPLITUDE_TYPE_CODES)
-                ][["Freq_id", "RMS"]].to_dict("records"),
-                "phase": rms_by_freq[rms_by_freq["Type"].isin(PHASE_TYPE_CODES)][
-                    ["Freq_id", "RMS"]
-                ].to_dict("records"),
-            },
-        }
-
+        result = calculate_misfit_statistics(data_array)
         return jsonify(result)
 
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
     except Exception as e:
         traceback.print_exc()
         return jsonify({"error": str(e)}), 500
