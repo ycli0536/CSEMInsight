@@ -5,6 +5,7 @@ import "uplot/dist/uPlot.min.css";
 import { useDataTableStore } from "@/store/settingFormStore";
 import { useTheme } from "@/hooks/useTheme";
 import { wheelZoomPlugin } from "@/components/custom/uplot-wheel-zoom-plugin";
+import { generateMisfitStatsMockData } from "@/mocks/misfitStatsMock";
 import { Loader2, Info } from "lucide-react";
 import {
     AlertDialog,
@@ -68,6 +69,7 @@ export const MisfitStatsWindow = () => {
     const { theme, systemTheme } = useTheme();
     const resolvedTheme = theme === "system" ? systemTheme : theme;
     const isDarkMode = resolvedTheme === "dark";
+    const isDemoMode = import.meta.env.VITE_DEMO_MODE === "true";
 
     // --- SERIES CONFIGURATION ---
     const freqSeries = useMemo(() => {
@@ -256,6 +258,22 @@ export const MisfitStatsWindow = () => {
             if (!signal.aborted) {
                 setLoading(true);
                 setMissingResidual(false);
+            }
+
+            if (isDemoMode) {
+                const demoStats = generateMisfitStatsMockData();
+                if (!signal.aborted) {
+                    setDatasetStats(
+                        targets.map(target => ({
+                            id: target.id,
+                            name: target.name,
+                            color: target.color,
+                            stats: demoStats,
+                        }))
+                    );
+                    setLoading(false);
+                }
+                return;
             }
 
             const results: DatasetStat[] = [];
