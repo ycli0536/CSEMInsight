@@ -19,7 +19,7 @@
       overflow: hidden;
     }
     
-    #csem-app {
+    #root {
       width: 100%;
       height: 100%;
     }
@@ -78,39 +78,12 @@
   </style>
 </head>
 <body>
-  <div id="csem-app">
+  <div id="root">
     <div class="loading-screen">
       <div class="loading-spinner"></div>
       <p>Loading CSEMInsight Demo...</p>
     </div>
   </div>
-  
-  <script type="module">
-    import './src/embed/index.ts';
-    
-    document.addEventListener('DOMContentLoaded', async () => {
-      const appContainer = document.getElementById('csem-app');
-      
-      try {
-        await window.CSEMInsightEmbed.init({
-          mountEl: appContainer,
-          manifestUrl: '/CSEMInsight/demo-data/demo-manifest.json',
-          baseUrl: '/CSEMInsight/',
-          datasetIds: ['shumagin-line5-data', 'shumagin-line5-resp']
-        });
-        console.log('[Demo] CSEMInsight loaded successfully');
-      } catch (error) {
-        console.error('[Demo] Failed to load CSEMInsight:', error);
-        
-        appContainer.innerHTML = `
-          <div class="error-screen">
-            <h1>Failed to Load Demo</h1>
-            <p>An error occurred while loading the CSEMInsight demo. Please check the browser console for details.</p>
-            <p style="margin-top: 10px; font-size: 12px; color: #718096;">${error.message}</p>
-          </div>
-        `;
-      }
-    });
-  </script>
+  <script type="module" src="/src/main.tsx"></script>
 </body>
 </html>
