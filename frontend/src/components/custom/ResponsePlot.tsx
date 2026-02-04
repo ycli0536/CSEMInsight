@@ -1,4 +1,3 @@
-// src/components/UplotChartWithErrorBars.tsx
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import uPlot from 'uplot';
 import 'uplot/dist/uPlot.min.css';
@@ -70,6 +69,8 @@ export function ResponsesWithErrorBars() {
     hasResponse?: boolean;
     hasResidual?: boolean;
   };
+
+  type LegendHideSeries = uPlot.Series & { _hide?: boolean };
 
   const normalizePhase = useCallback(
     (value: number) => {
@@ -574,7 +575,7 @@ export function ResponsesWithErrorBars() {
       const gridColor = chartColors.grid;
 
       // Dynamic series configuration
-      const series: uPlot.Series[] = [
+      const series: LegendHideSeries[] = [
         { label: 'Distance (km)' },  // X-axis label
       ];
       // 1. Data Series
@@ -640,14 +641,16 @@ export function ResponsesWithErrorBars() {
       for (let idx = 0; idx < seriesNum; idx++) {
         series.push({
           show: false,
-          label: `Upper Bound`,
+          label: '',
+          _hide: true,
         });
       }
       // Lower Series
       for (let idx = 0; idx < seriesNum; idx++) {
         series.push({
           show: false,
-          label: `Lower Bound`,
+          label: '',
+          _hide: true,
         });
       }
 
@@ -688,6 +691,25 @@ export function ResponsesWithErrorBars() {
           }
         },
       };
+      const applyLegendVisibility = (u: uPlot) => {
+        const legendTable = u.root.querySelector('.u-legend') as HTMLElement | null;
+        if (!legendTable) {
+          return;
+        }
+
+        const legendRows = legendTable.querySelectorAll('.u-series');
+        legendRows.forEach((row, idx) => {
+          const seriesEntry = u.series[idx] as LegendHideSeries | undefined;
+          const labelEl = (row as HTMLElement).querySelector('.u-label');
+          const labelText = labelEl?.textContent?.trim();
+          const shouldHideValueLabel = !legendLiveEnabled && labelText === 'Value';
+          if (seriesEntry?._hide || shouldHideValueLabel) {
+            (row as HTMLElement).style.display = 'none';
+          }
+        });
+
+      };
+
       const optsShared: uPlot.Options = {
         mode: 1,
         width: 950,
@@ -702,11 +724,30 @@ export function ResponsesWithErrorBars() {
         ],
         series: [],
         legend: { show: false },
+        hooks: {
+          init: [
+            (u) => {
+              applyLegendVisibility(u);
+            },
+          ],
+          ready: [
+            (u) => {
+              applyLegendVisibility(u);
+            },
+          ],
+          setLegend: [
+            (u) => {
+              if (!legendLiveEnabled) {
+                applyLegendVisibility(u);
+              }
+            },
+          ],
+        },
       }
 
       if (selectedValue === 'High-Low Bands') {
         optsShared.bands = bands;
-        const seriesWithBands: uPlot.Series[] = [
+        const seriesWithBands: LegendHideSeries[] = [
           { label: 'Distance (km)' },  // X-axis label
         ];
         // 1. Data
@@ -753,7 +794,8 @@ export function ResponsesWithErrorBars() {
             points: {
               show: false, // Hide points
             },
-            label: " ",
+            label: '',
+            _hide: true,
           });
         }
         // 3. Lower - must be show:true for bands fill to work, but hide the line
@@ -765,7 +807,8 @@ export function ResponsesWithErrorBars() {
             points: {
               show: false, // Hide points
             },
-            label: " ",
+            label: '',
+            _hide: true,
           });
         }
         // 4. Model
