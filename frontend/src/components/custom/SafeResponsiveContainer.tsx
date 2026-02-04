@@ -17,21 +17,31 @@ export const SafeResponsiveContainer: React.FC<SafeResponsiveContainerProps> = (
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
+  const lastDimensionsRef = useRef({ width: 0, height: 0 });
 
   useEffect(() => {
     if (!containerRef.current) return;
 
+    const updateDimensions = (width: number, height: number) => {
+      const last = lastDimensionsRef.current;
+      if (last.width === width && last.height === height) {
+        return;
+      }
+      lastDimensionsRef.current = { width, height };
+      setDimensions({ width, height });
+    };
+
     const observer = new ResizeObserver((entries) => {
       if (entries[0]) {
         const { width, height } = entries[0].contentRect;
-        setDimensions({ width, height });
+        updateDimensions(width, height);
       }
     });
 
     observer.observe(containerRef.current);
 
     const { offsetWidth, offsetHeight } = containerRef.current;
-    setDimensions({ width: offsetWidth, height: offsetHeight });
+    updateDimensions(offsetWidth, offsetHeight);
 
     return () => observer.disconnect();
   }, []);

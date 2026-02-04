@@ -4,6 +4,7 @@ import { getCachedMisfitStats, getMisfitCacheKey, setCachedMisfitStats } from '.
 import uPlot from "uplot";
 import "uplot/dist/uPlot.min.css";
 import { useDataTableStore } from "@/store/settingFormStore";
+import { useWindowStore } from "@/store/windowStore";
 import { useTheme } from "@/hooks/useTheme";
 import { wheelZoomPlugin } from "@/components/custom/uplot-wheel-zoom-plugin";
 import { generateMisfitStatsMockData } from "@/mocks/misfitStatsMock";
@@ -53,6 +54,7 @@ export const MisfitStatsWindow = () => {
     const scatterPlotRef = useRef<uPlot | null>(null);
 
     const { filteredData, datasets, activeDatasetIds } = useDataTableStore();
+    const draggingWindowId = useWindowStore((state) => state.draggingWindowId);
     const [datasetStats, setDatasetStats] = useState<DatasetStat[]>([]);
     const [loading, setLoading] = useState(false);
     const [missingResidual, setMissingResidual] = useState(false);
@@ -61,6 +63,7 @@ export const MisfitStatsWindow = () => {
     const resolvedTheme = theme === "system" ? systemTheme : theme;
     const isDarkMode = resolvedTheme === "dark";
     const isDemoMode = import.meta.env.VITE_DEMO_MODE === "true";
+    const isDraggingMisfit = draggingWindowId === "misfit-stats";
 
     // --- SERIES CONFIGURATION ---
     const freqSeries = useMemo(() => {
@@ -369,7 +372,7 @@ export const MisfitStatsWindow = () => {
     // Initialize and update plots
     // Initialize and update plots (Scatter only, as others are Recharts)
     useEffect(() => {
-        if (datasetStats.length === 0 || loading || missingResidual) return;
+        if (datasetStats.length === 0 || loading || missingResidual || isDraggingMisfit) return;
 
         // Destroy existing plots
         scatterPlotRef.current?.destroy();
@@ -468,7 +471,7 @@ export const MisfitStatsWindow = () => {
 
     // Handle window resize with debounce
     useEffect(() => {
-        if (datasetStats.length === 0 || loading || missingResidual) return;
+        if (datasetStats.length === 0 || loading || missingResidual || isDraggingMisfit) return;
 
         const handleResize = () => {
             if (!scatterRef.current?.isConnected) return;
@@ -505,7 +508,7 @@ export const MisfitStatsWindow = () => {
             clearTimeout(timeoutId);
             observer.disconnect();
         };
-    }, [datasetStats, loading, missingResidual]);
+    }, [datasetStats, loading, missingResidual, isDraggingMisfit]);
 
     if (loading) {
         return (
@@ -560,18 +563,30 @@ export const MisfitStatsWindow = () => {
                 {/* Middle: Combined bar chart for RMS vs Tx Y Position */}
                 <div className="border rounded-lg p-4">
                     <h3 className="text-sm font-semibold mb-2">RMS vs Transmitter Y Position</h3>
-                    <SimpleBarChart data={rechartsTxData} xLabel="Tx Y Position (km)" yLabel="RMS" series={txSeries} />
+                    {isDraggingMisfit ? (
+                        <div className="h-[300px] w-full" aria-hidden="true" />
+                    ) : (
+                        <SimpleBarChart data={rechartsTxData} xLabel="Tx Y Position (km)" yLabel="RMS" series={txSeries} />
+                    )}
                 </div>
 
                 {/* Bottom: Two bar charts side-by-side */}
                 <div className="grid grid-cols-2 gap-4">
                     <div className="border rounded-lg p-4">
                         <h3 className="text-sm font-semibold mb-2">RMS vs Tx-Rx Offset (20 Bins)</h3>
-                        <SimpleBarChart data={rechartsRangeData} xLabel="Tx-Rx Offset (km)" yLabel="Avg RMS" series={rangeSeries} />
+                        {isDraggingMisfit ? (
+                            <div className="h-[300px] w-full" aria-hidden="true" />
+                        ) : (
+                            <SimpleBarChart data={rechartsRangeData} xLabel="Tx-Rx Offset (km)" yLabel="Avg RMS" series={rangeSeries} />
+                        )}
                     </div>
                     <div className="border rounded-lg p-4">
                         <h3 className="text-sm font-semibold mb-2">RMS vs Frequency</h3>
-                        <SimpleBarChart data={d3FreqData} xLabel="Frequency ID" yLabel="RMS" series={freqSeries} />
+                        {isDraggingMisfit ? (
+                            <div className="h-[300px] w-full" aria-hidden="true" />
+                        ) : (
+                            <SimpleBarChart data={d3FreqData} xLabel="Frequency ID" yLabel="RMS" series={freqSeries} />
+                        )}
                     </div>
                 </div>
             </div>

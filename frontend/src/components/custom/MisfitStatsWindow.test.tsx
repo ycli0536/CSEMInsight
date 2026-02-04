@@ -3,12 +3,17 @@ import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { render, waitFor } from '@testing-library/react';
 import { MisfitStatsWindow } from './MisfitStatsWindow';
 import { useDataTableStore } from '@/store/settingFormStore';
+import { useWindowStore } from '@/store/windowStore';
 import { useTheme } from '@/hooks/useTheme';
 import type { CsemData, Dataset } from '@/types';
 
 // Mock the store
 vi.mock('@/store/settingFormStore', () => ({
   useDataTableStore: vi.fn(),
+}));
+
+vi.mock('@/store/windowStore', () => ({
+  useWindowStore: vi.fn(),
 }));
 
 // Mock useTheme hook
@@ -108,6 +113,10 @@ describe('MisfitStatsWindow', () => {
 
     // Set VITE_DEMO_MODE to enable demo mode
     vi.stubEnv('VITE_DEMO_MODE', 'true');
+
+    (useWindowStore as ReturnType<typeof vi.fn>).mockImplementation((selector) =>
+      selector({ draggingWindowId: null })
+    );
   });
 
   it('should render chart section headers', async () => {
@@ -209,5 +218,28 @@ describe('MisfitStatsWindow', () => {
 
     // Assert
     expect(container.textContent).toContain('No misfit statistics available');
+  });
+
+  it('does not render Recharts charts while misfit window is dragging', async () => {
+    const mockDataset = createMockDataset('dataset1', true);
+    const mockDatasets = new Map<string, Dataset>([['dataset1', mockDataset]]);
+
+    (useDataTableStore as ReturnType<typeof vi.fn>).mockReturnValue({
+      filteredData: mockDataset.data,
+      datasets: mockDatasets,
+      activeDatasetIds: ['dataset1'],
+    });
+
+    (useWindowStore as ReturnType<typeof vi.fn>).mockImplementation((selector) =>
+      selector({ draggingWindowId: 'misfit-stats' })
+    );
+
+    const { container } = render(<MisfitStatsWindow />);
+
+    await waitFor(() => {
+      expect(container.textContent).toContain('RMS vs Receiver Y Position');
+    });
+
+    expect(container.querySelector('.recharts-responsive-container')).not.toBeInTheDocument();
   });
 });

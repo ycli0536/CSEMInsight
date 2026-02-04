@@ -49,7 +49,7 @@ export const SimpleBarChart: React.FC<SimpleBarChartProps> = ({ data, xLabel, yL
                     height="100%"
                     minWidth={0}
                     minHeight={0}
-                    debounce={150}
+                    debounce={300}
                     initialDimension={{ width: 50, height: 50 }}
                 >
                     <BarChart
