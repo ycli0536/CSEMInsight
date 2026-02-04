@@ -290,8 +290,33 @@ export function CustomPlot() {
             height: plotRef.current.clientHeight || 400,
             mode: 2, // High Performance (XY)
             scales: {
-                x: { time: false, auto: true },
-                y: { auto: true },
+                x: {
+                    time: false,
+                    auto: true,
+                    range: (_u, min, max) => {
+                        if (!Number.isFinite(min) || !Number.isFinite(max)) {
+                            return [0, 1];
+                        }
+                        if (min === max) {
+                            const pad = min === 0 ? 1 : Math.abs(min) * 0.01;
+                            return [min - pad, max + pad];
+                        }
+                        return [min, max];
+                    },
+                },
+                y: {
+                    auto: true,
+                    range: (_u, min, max) => {
+                        if (!Number.isFinite(min) || !Number.isFinite(max)) {
+                            return [0, 1];
+                        }
+                        if (min === max) {
+                            const pad = min === 0 ? 1 : Math.abs(min) * 0.01;
+                            return [min - pad, max + pad];
+                        }
+                        return [min, max];
+                    },
+                },
             },
             axes: [
                 { stroke: chartColors.axis, grid: { stroke: chartColors.grid }, label: xKey },
