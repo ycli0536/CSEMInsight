@@ -7,15 +7,6 @@ import { useTheme } from "@/hooks/useTheme";
 import { wheelZoomPlugin } from "@/components/custom/uplot-wheel-zoom-plugin";
 import { generateMisfitStatsMockData } from "@/mocks/misfitStatsMock";
 import { Loader2, Info } from "lucide-react";
-import {
-    AlertDialog,
-    AlertDialogAction,
-    AlertDialogContent,
-    AlertDialogDescription,
-    AlertDialogFooter,
-    AlertDialogHeader,
-    AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
 import type { CsemData } from "@/types";
 
 
@@ -64,7 +55,6 @@ export const MisfitStatsWindow = () => {
     const [datasetStats, setDatasetStats] = useState<DatasetStat[]>([]);
     const [loading, setLoading] = useState(false);
     const [missingResidual, setMissingResidual] = useState(false);
-    const [showInfoDialog, setShowInfoDialog] = useState(false);
 
     const { theme, systemTheme } = useTheme();
     const resolvedTheme = theme === "system" ? systemTheme : theme;
@@ -261,10 +251,23 @@ export const MisfitStatsWindow = () => {
             }
 
             if (isDemoMode) {
-                const demoStats = generateMisfitStatsMockData();
+                const validTargets = targets.filter(target =>
+                    target.data.some((d: CsemData) =>
+                        d.Residual !== undefined && isFinite(d.Residual)
+                    )
+                );
+
                 if (!signal.aborted) {
+                    if (validTargets.length === 0) {
+                        setDatasetStats([]);
+                        setMissingResidual(true);
+                        setLoading(false);
+                        return;
+                    }
+
+                    const demoStats = generateMisfitStatsMockData();
                     setDatasetStats(
-                        targets.map(target => ({
+                        validTargets.map(target => ({
                             id: target.id,
                             name: target.name,
                             color: target.color,
@@ -315,7 +318,6 @@ export const MisfitStatsWindow = () => {
                         const anyMissing = targets.some(t => !t.data.some((d: CsemData) => d.Residual !== undefined));
                         if (anyMissing) {
                             setMissingResidual(true);
-                            setShowInfoDialog(true);
                         }
                     }
                 }
@@ -473,56 +475,23 @@ export const MisfitStatsWindow = () => {
 
     if (missingResidual) {
         return (
-            <>
-                <div className="flex h-full items-center justify-center p-8">
-                    <div className="text-center max-w-md">
-                        <Info className="mx-auto h-12 w-12 text-blue-500 mb-4" />
-                        <h3 className="text-lg font-semibold mb-2">Residual Data Required</h3>
-                        <p className="text-sm text-muted-foreground">
-                            This feature requires residual data to calculate misfit statistics.
-                        </p>
+            <div className="flex h-full items-center justify-center p-8">
+                <div className="text-center max-w-md">
+                    <Info className="mx-auto h-12 w-12 text-blue-500 mb-4" />
+                    <h3 className="text-lg font-semibold mb-2">Residual Data Required</h3>
+                    <p className="text-sm text-muted-foreground">
+                        The currently loaded data does not include residual values, which are required
+                        to calculate misfit statistics.
+                    </p>
+                    <div className="mt-4 text-left">
+                        <div className="text-sm font-medium mb-2">To view misfit statistics:</div>
+                        <ul className="list-disc list-inside text-sm space-y-1 text-muted-foreground">
+                            <li>Load a response file that includes both Residual and Response columns</li>
+                            <li>Ensure your data comes from an inversion process</li>
+                        </ul>
                     </div>
                 </div>
-
-                <AlertDialog open={showInfoDialog} onOpenChange={setShowInfoDialog}>
-                    <AlertDialogContent>
-                        <AlertDialogHeader>
-                            <AlertDialogTitle className="flex items-center gap-2">
-                                <Info className="h-5 w-5 text-blue-500" />
-                                Misfit Statistics Not Available
-                            </AlertDialogTitle>
-                            <AlertDialogDescription className="space-y-3">
-                                <div className="text-sm">
-                                    The currently loaded data does not include <strong>residual values</strong>,
-                                    which are required to calculate misfit statistics.
-                                </div>
-                                <div className="mt-4 rounded-md bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-900 p-3">
-                                    <div className="text-sm font-medium text-blue-900 dark:text-blue-100 mb-2">
-                                        💡 What are residuals?
-                                    </div>
-                                    <div className="text-xs text-blue-800 dark:text-blue-200">
-                                        Residuals are the differences between observed data and model predictions.
-                                        They are typically calculated during the inversion process.
-                                    </div>
-                                </div>
-                                <div className="mt-4">
-                                    <div className="text-sm font-medium mb-2">To view misfit statistics:</div>
-                                    <ul className="list-disc list-inside text-sm space-y-1 text-muted-foreground">
-                                        <li>Load a data file that includes both Data and Response columns</li>
-                                        <li>Ensure your data comes from an inversion process</li>
-                                        <li>The Residual column will be automatically calculated as (Data - Response)</li>
-                                    </ul>
-                                </div>
-                            </AlertDialogDescription>
-                        </AlertDialogHeader>
-                        <AlertDialogFooter>
-                            <AlertDialogAction onClick={() => setShowInfoDialog(false)}>
-                                Got it
-                            </AlertDialogAction>
-                        </AlertDialogFooter>
-                    </AlertDialogContent>
-                </AlertDialog>
-            </>
+            </div>
         );
     }
 
