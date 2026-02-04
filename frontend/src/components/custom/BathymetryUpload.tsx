@@ -27,7 +27,10 @@ export function BathymetryUpload() {
         setOriginalTxData, 
         setIsTxDepthAdjusted,
         setTableData,
-        setFilteredData
+        setFilteredData,
+        datasets,
+        primaryDatasetId,
+        updateDataset
     } = useDataTableStore();
 
     const isDemoMode = import.meta.env.VITE_DEMO_MODE === 'true';
@@ -149,6 +152,20 @@ export function BathymetryUpload() {
             setData(revertedCsemData);
             setTableData(revertedCsemData);
             setFilteredData(revertedCsemData);
+
+            if (primaryDatasetId) {
+                const primaryDataset = datasets.get(primaryDatasetId);
+                if (primaryDataset) {
+                    const revertedFilteredData = primaryDataset.filteredData
+                        ? revertCsemDataToOriginalTx(primaryDataset.filteredData, originalTxData)
+                        : undefined;
+                    updateDataset(primaryDatasetId, {
+                        data: revertedCsemData,
+                        txData: originalTxData,
+                        ...(revertedFilteredData ? { filteredData: revertedFilteredData } : {}),
+                    });
+                }
+            }
             
             setIsTxDepthAdjusted(false);
         }
@@ -195,6 +212,20 @@ export function BathymetryUpload() {
         setData(updatedCsemData);
         setTableData(updatedCsemData);
         setFilteredData(updatedCsemData);
+
+        if (primaryDatasetId) {
+            const primaryDataset = datasets.get(primaryDatasetId);
+            if (primaryDataset) {
+                const updatedFilteredData = primaryDataset.filteredData
+                    ? updateCsemDataWithAdjustedTx(primaryDataset.filteredData, adjustedTx)
+                    : undefined;
+                updateDataset(primaryDatasetId, {
+                    data: updatedCsemData,
+                    txData: adjustedTx,
+                    ...(updatedFilteredData ? { filteredData: updatedFilteredData } : {}),
+                });
+            }
+        }
         
         setIsTxDepthAdjusted(true);
         
@@ -224,6 +255,20 @@ export function BathymetryUpload() {
             setData(revertedCsemData);
             setTableData(revertedCsemData);
             setFilteredData(revertedCsemData);
+
+            if (primaryDatasetId) {
+                const primaryDataset = datasets.get(primaryDatasetId);
+                if (primaryDataset) {
+                    const revertedFilteredData = primaryDataset.filteredData
+                        ? revertCsemDataToOriginalTx(primaryDataset.filteredData, originalTxData)
+                        : undefined;
+                    updateDataset(primaryDatasetId, {
+                        data: revertedCsemData,
+                        txData: originalTxData,
+                        ...(revertedFilteredData ? { filteredData: revertedFilteredData } : {}),
+                    });
+                }
+            }
             
             setIsTxDepthAdjusted(false);
         }

@@ -16,7 +16,7 @@ declare module "uplot" {
 
 export function TxRxPosPlot() {
     const XYChartRef = useRef<HTMLDivElement>(null);
-    const { data, txData, rxData, originalTxData, isTxDepthAdjusted, datasets, activeDatasetIds, comparisonMode } = useDataTableStore();
+    const { data, txData, rxData, originalTxData, isTxDepthAdjusted, datasets, activeDatasetIds, comparisonMode, primaryDatasetId } = useDataTableStore();
     const { setTxData, setRxData, setOriginalTxData } = useDataTableStore();
     const { bathymetryData } = useBathymetryStore();
     const { theme, systemTheme } = useTheme();
@@ -73,6 +73,7 @@ export function TxRxPosPlot() {
                     : getTxRxData(dataset.data);
                 const txColor = useDefaultColors ? txRxColors.tx : dataset.color;
                 const rxColor = useDefaultColors ? txRxColors.rx : dataset.color;
+                const isPrimary = dataset.id === primaryDatasetId;
 
                 if (TxData.length > 0) {
                     xySeriesData.push([
@@ -80,7 +81,7 @@ export function TxRxPosPlot() {
                         new Float64Array(TxData.map((item) => item.X_tx)),
                     ]);
                     xySeries.push({
-                        label: `${dataset.name} Tx`,
+                        label: isPrimary && isTxDepthAdjusted ? `${dataset.name} Tx (adjusted)` : `${dataset.name} Tx`,
                         stroke: txColor,
                         paths: () => null,
                         points: { show: true, size: 8, width: 2, space: 0 },
@@ -91,10 +92,23 @@ export function TxRxPosPlot() {
                         new Float64Array(TxData.map((item) => item.Z_tx)),
                     ]);
                     yzSeries.push({
-                        label: `${dataset.name} Tx`,
+                        label: isPrimary && isTxDepthAdjusted ? `${dataset.name} Tx (adjusted)` : `${dataset.name} Tx`,
                         stroke: txColor,
                         paths: () => null,
                         points: { show: true, size: 8, width: 2, space: 0 },
+                    });
+                }
+
+                if (isPrimary && isTxDepthAdjusted && originalTxData.length > 0) {
+                    yzSeriesData.push([
+                        new Float64Array(originalTxData.map((item) => item.Y_tx)),
+                        new Float64Array(originalTxData.map((item) => item.Z_tx)),
+                    ]);
+                    yzSeries.push({
+                        label: `${dataset.name} Tx (original)`,
+                        stroke: txRxColors.txOriginal,
+                        paths: () => null,
+                        points: { show: true, size: 6, width: 1, space: 0 },
                     });
                 }
 
