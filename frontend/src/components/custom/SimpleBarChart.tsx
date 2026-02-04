@@ -1,6 +1,7 @@
 import React from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
-import { useTheme } from "@/hooks/useTheme";
+import { useTheme } from '@/hooks/useTheme';
+import { SafeResponsiveContainer } from './SafeResponsiveContainer';
 
 // ... imports ...
 
@@ -42,48 +43,62 @@ export const SimpleBarChart: React.FC<SimpleBarChartProps> = ({ data, xLabel, yL
 
     return (
         <div style={{ width: '100%', height: 300 }}>
-            <ResponsiveContainer width="100%" height="100%">
-                <BarChart
-                    data={data}
-                    margin={{ top: 20, right: 30, left: 20, bottom: 20 }}
-                    barGap={0}
+            <SafeResponsiveContainer minWidth={50} minHeight={50}>
+                <ResponsiveContainer
+                    width="100%"
+                    height="100%"
+                    minWidth={0}
+                    minHeight={0}
+                    debounce={150}
+                    initialDimension={{ width: 50, height: 50 }}
                 >
-                    <CartesianGrid strokeDasharray="3 3" stroke={gridColor} vertical={false} />
-                    <XAxis
-                        dataKey="name"
-                        stroke={textColor}
-                        tickLine={false}
-                        label={{ value: xLabel, position: 'insideBottom', offset: -10, fill: textColor }}
-                    />
-                    <YAxis
-                        stroke={textColor}
-                        tickLine={false}
-                        label={{ value: yLabel, angle: -90, position: 'insideLeft', fill: textColor }}
-                    />
-                    <Tooltip
-                        formatter={(value: string | number) => typeof value === 'number' ? value.toFixed(2) : value}
-                        contentStyle={{
-                            backgroundColor: isDarkMode ? '#1f2937' : '#fff',
-                            borderColor: gridColor,
-                            color: textColor
-                        }}
-                        itemStyle={{ color: textColor }}
-                        cursor={{ fill: isDarkMode ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)' }}
-                    />
-                    <Legend wrapperStyle={{ paddingTop: '10px' }} />
-                    {activeSeries.map(s => (
-                        <Bar
-                            key={s.key}
-                            dataKey={s.key}
-                            name={s.label}
-                            fill={s.color}
-                            stroke={borderColor}
-                            strokeWidth={1}
-                            stackId={s.stackId}
+                    <BarChart
+                        data={data}
+                        margin={{ top: 12, right: 20, left: 12, bottom: 36 }}
+                        barGap={0}
+                    >
+                        <CartesianGrid strokeDasharray="3 3" stroke={gridColor} vertical={false} />
+                        <XAxis
+                            dataKey="name"
+                            stroke={textColor}
+                            tickLine={false}
+                            label={{ value: xLabel, position: 'insideBottom', offset: -10, fill: textColor }}
                         />
-                    ))}
-                </BarChart>
-            </ResponsiveContainer>
+                        <YAxis
+                            stroke={textColor}
+                            tickLine={false}
+                            label={{ value: yLabel, angle: -90, position: 'insideLeft', fill: textColor }}
+                        />
+                        <Tooltip
+                            formatter={(value: string | number) => typeof value === 'number' ? value.toFixed(2) : value}
+                            contentStyle={{
+                                backgroundColor: isDarkMode ? '#1f2937' : '#fff',
+                                borderColor: gridColor,
+                                color: textColor
+                            }}
+                            itemStyle={{ color: textColor }}
+                            cursor={{ fill: isDarkMode ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)' }}
+                        />
+                        <Legend
+                            align="center"
+                            verticalAlign="bottom"
+                            height={28}
+                            wrapperStyle={{ paddingBottom: '4px', lineHeight: '20px' }}
+                        />
+                        {activeSeries.map(s => (
+                            <Bar
+                                key={s.key}
+                                dataKey={s.key}
+                                name={s.label}
+                                fill={s.color}
+                                stroke={borderColor}
+                                strokeWidth={1}
+                                stackId={s.stackId}
+                            />
+                        ))}
+                    </BarChart>
+                </ResponsiveContainer>
+            </SafeResponsiveContainer>
         </div>
     );
 };

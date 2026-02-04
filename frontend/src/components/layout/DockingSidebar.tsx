@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type PointerEvent as ReactPointerEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { useDroppable } from "@dnd-kit/core";
 import { ChevronLeft } from "lucide-react";
@@ -14,6 +14,7 @@ export function DockingSidebar() {
   const sidebarOrder = useWindowStore((state) => state.sidebarOrder);
   const windows = useWindowStore((state) => state.windows);
   const { setNodeRef } = useDroppable({ id: "sidebar-container" });
+  const asideRef = useRef<HTMLElement | null>(null);
   const visibleSidebarOrder = useMemo(
     () => sidebarOrder.filter((id) => windows[id]?.isOpen),
     [sidebarOrder, windows]
@@ -22,6 +23,16 @@ export function DockingSidebar() {
   const [expandedWidth, setExpandedWidth] = useState(SIDEBAR_DEFAULT_WIDTH);
   const [isCollapsed, setIsCollapsed] = useState(false);
   const COLLAPSED_WIDTH = 12;
+  const contentRef = useRef<HTMLDivElement | null>(null);
+  const expandButtonRef = useRef<HTMLButtonElement | null>(null);
+
+  const setAsideNodeRef = useCallback(
+    (node: HTMLElement | null) => {
+      asideRef.current = node;
+      setNodeRef(node);
+    },
+    [setNodeRef]
+  );
 
   const handleResizeStart = (event: ReactPointerEvent<HTMLDivElement>) => {
     event.preventDefault();
@@ -62,6 +73,41 @@ export function DockingSidebar() {
   };
 
   useEffect(() => {
+    // When collapsed, ensure content cannot retain focus.
+    // `inert` prevents focus + interaction and avoids aria-hidden focus warnings.
+    if (contentRef.current) {
+      contentRef.current.toggleAttribute("inert", isCollapsed);
+    }
+    if (isCollapsed) {
+      // Move focus to the visible expand control.
+      requestAnimationFrame(() => {
+        expandButtonRef.current?.focus();
+      });
+    }
+  }, [isCollapsed]);
+
+  useEffect(() => {
+    // If some other layer (e.g. Radix modal) applies `aria-hidden` to the sidebar
+    // while focus is inside it, the browser will warn. Blur to allow focus traps
+    // (or other focus management) to take over.
+    if (!asideRef.current) {
+      return;
+    }
+
+    const node = asideRef.current;
+    const observer = new MutationObserver(() => {
+      const isAriaHidden = node.getAttribute("aria-hidden") === "true";
+      const active = document.activeElement;
+      if (isAriaHidden && active instanceof HTMLElement && node.contains(active)) {
+        active.blur();
+      }
+    });
+
+    observer.observe(node, { attributes: true, attributeFilter: ["aria-hidden"] });
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
     document.documentElement.style.setProperty("--sidebar-width", `${sidebarWidth}px`);
     return () => {
       document.documentElement.style.setProperty("--sidebar-width", "0px");
@@ -70,7 +116,7 @@ export function DockingSidebar() {
 
   return (
     <aside
-      ref={setNodeRef}
+      ref={setAsideNodeRef}
       className="pointer-events-auto fixed right-0 top-0 z-[5] h-full border-l border-border/30 bg-background/98 backdrop-blur-xl flex flex-col"
       style={{ width: sidebarWidth }}
       aria-expanded={!isCollapsed}
@@ -83,6 +129,7 @@ export function DockingSidebar() {
       />
       {isCollapsed && (
         <button
+          ref={expandButtonRef}
           type="button"
           onClick={toggleCollapse}
           className="absolute left-0 top-1/2 -translate-y-1/2 z-50 flex h-16 w-6 items-center justify-center rounded-r-md border border-border/40 bg-background/95 shadow-sm hover:bg-muted/60"
@@ -92,8 +139,10 @@ export function DockingSidebar() {
         </button>
       )}
       <div
+        ref={contentRef}
         className="flex-1 w-full overflow-y-auto pt-16 transition-opacity"
         style={{ opacity: isCollapsed ? 0 : 1, pointerEvents: isCollapsed ? "none" : "auto" }}
+        aria-hidden={isCollapsed}
       >
         <div className="p-3">
           <SortableContext items={visibleSidebarOrder} strategy={verticalListSortingStrategy}>

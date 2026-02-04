@@ -283,11 +283,23 @@ export function CustomPlot() {
         }] : [];
 
         const chartColors = getChartColors(isDarkMode);
+        
+        const containerWidth = plotRef.current.clientWidth;
+        const containerHeight = plotRef.current.clientHeight || 400;
+        
+        // Guard: Don't initialize with non-positive dimensions
+        if (containerWidth <= 0 || containerHeight <= 0) {
+            if (uPlotRef.current) {
+                uPlotRef.current.destroy();
+                uPlotRef.current = null;
+            }
+            return;
+        }
 
         const opts: uPlot.Options = {
             title: splitByColumn ? `${yKey} vs ${xKey} by ${splitByColumn}` : `${yKey} vs ${xKey}`,
-            width: plotRef.current.clientWidth,
-            height: plotRef.current.clientHeight || 400,
+            width: containerWidth,
+            height: containerHeight,
             mode: 2, // High Performance (XY)
             scales: {
                 x: {
@@ -344,10 +356,16 @@ export function CustomPlot() {
 
         const resizeObserver = new ResizeObserver(() => {
             if (plotRef.current && uPlotRef.current) {
-                uPlotRef.current.setSize({
-                    width: plotRef.current.clientWidth,
-                    height: plotRef.current.clientHeight,
-                });
+                const newWidth = plotRef.current.clientWidth;
+                const newHeight = plotRef.current.clientHeight;
+                
+                // Guard: Don't resize to non-positive dimensions
+                if (newWidth > 0 && newHeight > 0) {
+                    uPlotRef.current.setSize({
+                        width: newWidth,
+                        height: newHeight,
+                    });
+                }
             }
         });
         resizeObserver.observe(plotRef.current);

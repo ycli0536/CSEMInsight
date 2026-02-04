@@ -361,6 +361,49 @@ class TestMisfitStats:
         # Y_rx of 1000m should become 1.0 km
         assert data["byRx"]["amplitude"][0]["Y_rx_km"] == 1.0
 
+    def test_misfit_stats_batch_returns_results_map(self, app_client):
+        """Test batch misfit stats returns results keyed by dataset id."""
+        payload = {
+            "datasets": [
+                {
+                    "id": "ds1",
+                    "data": [
+                        {
+                            "Type": "28",
+                            "Y_rx": 0,
+                            "Y_tx": 0,
+                            "Freq_id": 1,
+                            "Residual": 2.0,
+                        },
+                    ],
+                },
+                {
+                    "id": "ds2",
+                    "data": [
+                        {
+                            "Type": "24",
+                            "Y_rx": 1000,
+                            "Y_tx": 0,
+                            "Freq_id": 2,
+                            "Residual": 1.0,
+                        },
+                    ],
+                },
+            ]
+        }
+
+        response = app_client.post(
+            "/api/misfit_stats",
+            data=json.dumps(payload),
+            content_type="application/json",
+        )
+
+        assert response.status_code == 200
+        data = response.get_json()
+        assert "results" in data
+        assert "ds1" in data["results"]
+        assert "ds2" in data["results"]
+
 
 class TestWriteDataFile:
     """Tests for the /api/write-data-file endpoint."""

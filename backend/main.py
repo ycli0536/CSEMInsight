@@ -7,6 +7,7 @@ from typing import List
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from werkzeug.utils import secure_filename
+from werkzeug.exceptions import ClientDisconnected
 from suesi_depth_reader import process_SuesiDepth_mat_file
 from csem_datafile_parser import CSEMDataFileReader
 from csem_datafile_parser import CSEMDataFileManager
@@ -321,9 +322,38 @@ def calculate_misfit_stats():
     Groups by Type, Y_rx, Y_tx, Y_range, and Frequency.
     """
     try:
-        payload = request.get_json(silent=True) or {}
-        data_array = payload.get("data", [])
+        try:
+            payload = request.get_json(silent=True) or {}
+        except ClientDisconnected:
+            app.logger.info("Client disconnected during /api/misfit_stats")
+            return ("", 204)
 
+        if "datasets" in payload:
+            datasets = payload.get("datasets", [])
+            if not datasets:
+                return jsonify({"error": "No data provided"}), 400
+
+            results = {}
+            errors = {}
+            for index, entry in enumerate(datasets):
+                dataset_id = entry.get("id")
+                dataset_key = dataset_id or f"index_{index}"
+                data_array = entry.get("data", [])
+                if not data_array:
+                    errors[dataset_key] = "No data provided"
+                    continue
+
+                try:
+                    results[dataset_key] = calculate_misfit_statistics(data_array)
+                except ValueError as e:
+                    errors[dataset_key] = str(e)
+
+            response = {"results": results}
+            if errors:
+                response["errors"] = errors
+            return jsonify(response)
+
+        data_array = payload.get("data", [])
         if not data_array:
             return jsonify({"error": "No data provided"}), 400
 

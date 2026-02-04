@@ -228,7 +228,7 @@ export const WindowShell = React.forwardRef<HTMLDivElement, WindowShellProps>(
         </div>
 
         <div
-          className="relative flex-1 overflow-auto bg-background/50 pointer-events-auto"
+          className="relative flex-1 min-h-0 overflow-auto bg-background/50 pointer-events-auto"
         >
           {children}
         </div>

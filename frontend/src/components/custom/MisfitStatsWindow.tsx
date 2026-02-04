@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, useMemo } from "react";
 import { SimpleBarChart, BarSeries } from "./SimpleBarChart";
+import { getCachedMisfitStats, getMisfitCacheKey, setCachedMisfitStats } from './misfitStatsCache';
 import uPlot from "uplot";
 import "uplot/dist/uPlot.min.css";
 import { useDataTableStore } from "@/store/settingFormStore";
@@ -279,42 +280,72 @@ export const MisfitStatsWindow = () => {
                 return;
             }
 
-            const results: DatasetStat[] = [];
+            const validTargets = targets.filter(target =>
+                target.data.some((d: CsemData) => d.Residual !== undefined && isFinite(d.Residual))
+            );
+
+            if (validTargets.length === 0) {
+                if (!signal.aborted) {
+                    setDatasetStats([]);
+                    setMissingResidual(true);
+                    setLoading(false);
+                }
+                return;
+            }
+
+            const cachedResults: DatasetStat[] = [];
+            const uncachedTargets = validTargets.filter(target => {
+                const cacheKey = getMisfitCacheKey(target.id, target.data);
+                const cachedStats = getCachedMisfitStats<MisfitStatsData>(cacheKey);
+                if (cachedStats) {
+                    cachedResults.push({
+                        id: target.id,
+                        name: target.name,
+                        color: target.color,
+                        stats: cachedStats,
+                    });
+                    return false;
+                }
+                return true;
+            });
+
+            if (uncachedTargets.length === 0) {
+                if (!signal.aborted) {
+                    setDatasetStats(cachedResults);
+                    setLoading(false);
+                }
+                return;
+            }
 
             try {
-                // Fetch sequentially or parallel? Parallel is better.
-                await Promise.all(targets.map(async (target) => {
-                    if (signal.aborted) return;
-
-                    const valid = target.data.some((d: CsemData) => d.Residual !== undefined && isFinite(d.Residual));
-                    if (!valid) return;
-
-                    try {
-                        const response = await fetch("http://localhost:3354/api/misfit_stats", {
-                            method: "POST",
-                            headers: { "Content-Type": "application/json" },
-                            body: JSON.stringify({ data: target.data }),
-                            signal
-                        });
-                        if (!response.ok) return;
-                        const stats: MisfitStatsData = await response.json();
-                        if (!signal.aborted) {
-                            results.push({ id: target.id, name: target.name, color: target.color, stats });
-                        }
-                    } catch (e: unknown) {
-                        if (e instanceof Error && e.name !== 'AbortError') {
-                            console.error(`Error fetching stats for ${target.name}`, e);
-                        }
-                    }
-                }));
+                const response = await fetch("http://localhost:3354/api/misfit_stats", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        datasets: uncachedTargets.map(target => ({
+                            id: target.id,
+                            data: target.data,
+                        }))
+                    }),
+                    signal
+                });
+                if (!response.ok) return;
+                const payload = await response.json() as { results?: Record<string, MisfitStatsData> };
+                const resultsMap = payload.results ?? {};
+                const fetchedResults = uncachedTargets.flatMap(target => {
+                    const stats = resultsMap[target.id];
+                    if (!stats) return [];
+                    const cacheKey = getMisfitCacheKey(target.id, target.data);
+                    setCachedMisfitStats(cacheKey, stats);
+                    return [{ id: target.id, name: target.name, color: target.color, stats }];
+                });
+                const results = [...cachedResults, ...fetchedResults];
 
                 if (!signal.aborted) {
                     setDatasetStats(results);
                     setLoading(false);
 
                     if (results.length === 0 && targets.length > 0) {
-                        // If we had targets but no results, likely missing residuals
-                        // Check if any target *invalid* because of missing residuals
                         const anyMissing = targets.some(t => !t.data.some((d: CsemData) => d.Residual !== undefined));
                         if (anyMissing) {
                             setMissingResidual(true);
@@ -391,9 +422,17 @@ export const MisfitStatsWindow = () => {
                 data.push([xPhi, yPhi]); // Phi Data
             });
 
+            const containerWidth = scatterRef.current.offsetWidth || 800;
+            const containerHeight = 300;
+            
+            // Guard: Don't initialize with non-positive dimensions
+            if (containerWidth <= 0 || containerHeight <= 0) {
+                return;
+            }
+
             const opts: uPlot.Options = {
-                width: scatterRef.current.offsetWidth || 800,
-                height: 300,
+                width: containerWidth,
+                height: containerHeight,
                 mode: 2, // Scatter
                 scales: {
                     x: { time: false, auto: true },
@@ -436,10 +475,16 @@ export const MisfitStatsWindow = () => {
 
             try {
                 if (scatterPlotRef.current && scatterRef.current) {
-                    scatterPlotRef.current.setSize({
-                        width: scatterRef.current.offsetWidth,
-                        height: 300,  // Fixed height
-                    });
+                    const newWidth = scatterRef.current.offsetWidth;
+                    const newHeight = 300;
+                    
+                    // Guard: Don't resize to non-positive dimensions
+                    if (newWidth > 0 && newHeight > 0) {
+                        scatterPlotRef.current.setSize({
+                            width: newWidth,
+                            height: newHeight,
+                        });
+                    }
                 }
             } catch (e) {
                 console.warn('[MisfitStats] Resize error:', e);
@@ -507,9 +552,9 @@ export const MisfitStatsWindow = () => {
         <div className="h-full w-full p-4">
             <div className="grid grid-rows-[1fr_1fr_1fr] gap-4 h-full">
                 {/* Top: Scatter plot for RMS vs Rx Y Position */}
-                <div className="border rounded-lg p-4">
+                <div className="border rounded-lg p-4 flex flex-col">
                     <h3 className="text-sm font-semibold mb-2">RMS vs Receiver Y Position</h3>
-                    <div ref={scatterRef} className="w-full h-[calc(100%-2rem)]" />
+                    <div ref={scatterRef} className="w-full flex-1 min-h-0" />
                 </div>
 
                 {/* Middle: Combined bar chart for RMS vs Tx Y Position */}
