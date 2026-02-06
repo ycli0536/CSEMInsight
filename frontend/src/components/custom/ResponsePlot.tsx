@@ -27,6 +27,8 @@ import {
   buildOverlayDatasets,
   hasModelResponseData,
   hasResidualResponseData,
+  unwrapPhaseSeries,
+  wrapPhaseValue,
 } from './responsePlot.utils';
 import { orderIdsByPrimaryLast } from '@/lib/datasetOrdering';
 
@@ -74,17 +76,6 @@ export function ResponsesWithErrorBars() {
 
   type LegendHideSeries = uPlot.Series & { _hide?: boolean };
 
-  const normalizePhase = useCallback(
-    (value: number) => {
-      if (!wrapPhase) {
-        return value;
-      }
-      const normalized = ((value + 180) % 360 + 360) % 360 - 180;
-      return normalized === -180 ? 180 : normalized;
-    },
-    [wrapPhase]
-  );
-
   const extractPlotData = useCallback(
     (data: CsemData[], type: string): [Float64Array[][][][], number, LegendInfo[]] => {
       // Get unique Tx_id (actual rcv id) values
@@ -118,19 +109,39 @@ export function ResponsesWithErrorBars() {
           const YdistSeries = filteredData.map((item) => item.Y_rx / 1e3);
           let dataSeries: number[];
           let stdErrSeries: number[];
-          let rawDataSeries: number[] | undefined; // For errors in phi
+          let upperSeries: number[] = [];
+          let lowerSeries: number[] = [];
           let modelSeries: number[] = [];
           let residualSeries: number[] = [];
           const hasResponse = filteredData.some((item) => Number.isFinite(item.Response));
           const hasResidual = filteredData.some((item) => Number.isFinite(item.Residual));
 
           if (type === 'phi') {
-            rawDataSeries = filteredData.map((item) => item.Data);
-            dataSeries = rawDataSeries.map((value) => normalizePhase(value));
             stdErrSeries = filteredData.map((item) => item.StdError);
+            const rawDataSeries = filteredData.map((item) => item.Data);
+            const unwrappedDataSeries = unwrapPhaseSeries(rawDataSeries);
+
+            dataSeries = wrapPhase
+              ? unwrappedDataSeries.map((value) => wrapPhaseValue(value))
+              : unwrappedDataSeries;
+            upperSeries = unwrappedDataSeries.map((value, idx) => value + stdErrSeries[idx]);
+            lowerSeries = unwrappedDataSeries.map((value, idx) => value - stdErrSeries[idx]);
+
+            if (wrapPhase) {
+              upperSeries = upperSeries.map((value) => wrapPhaseValue(value));
+              lowerSeries = lowerSeries.map((value) => wrapPhaseValue(value));
+            }
 
             if (showModel) {
-              modelSeries = filteredData.map(d => d.Response !== undefined ? normalizePhase(d.Response) : NaN);
+              const modelRawSeries = filteredData.map((d) =>
+                d.Response !== undefined ? d.Response : NaN
+              );
+              const modelUnwrappedSeries = unwrapPhaseSeries(modelRawSeries);
+              modelSeries = wrapPhase
+                ? modelUnwrappedSeries.map((value) =>
+                    Number.isFinite(value) ? wrapPhaseValue(value) : value
+                  )
+                : modelUnwrappedSeries;
             }
             if (showResidual) {
               // Use pre-computed Residual from data file
@@ -147,6 +158,9 @@ export function ResponsesWithErrorBars() {
               // Use pre-computed Residual from data file
               residualSeries = filteredData.map(d => d.Residual !== undefined ? d.Residual : NaN);
             }
+
+            upperSeries = dataSeries.map((value, idx) => value + stdErrSeries[idx]);
+            lowerSeries = dataSeries.map((value, idx) => value - stdErrSeries[idx]);
           }
 
           comb_info.push({ freqId, RxId, type, hasResponse, hasResidual });
@@ -162,15 +176,11 @@ export function ResponsesWithErrorBars() {
             ],
             [
               new Float64Array(YdistSeries),  // x-values (dist)
-              (type === 'phi' && rawDataSeries)
-                ? new Float64Array(rawDataSeries).map((v, idx) => normalizePhase(v + new Float64Array(stdErrSeries)[idx]))
-                : new Float64Array(dataSeries).map((v, idx) => v + new Float64Array(stdErrSeries)[idx])
+              new Float64Array(upperSeries)
             ],
             [
               new Float64Array(YdistSeries),  // x-values (dist)
-              (type === 'phi' && rawDataSeries)
-                ? new Float64Array(rawDataSeries).map((v, idx) => normalizePhase(v - new Float64Array(stdErrSeries)[idx]))
-                : new Float64Array(dataSeries).map((v, idx) => v - new Float64Array(stdErrSeries)[idx])
+              new Float64Array(lowerSeries)
             ]
           ];
 
@@ -189,7 +199,7 @@ export function ResponsesWithErrorBars() {
       // Bug: if uniqueRxIds.length is different for each RxId, plotting will be wrong
       return [plotData, uniqueRxIds.length * uniqueFreqIds.length, comb_info];
     },
-    [normalizePhase, showModel, showResidual]
+    [showModel, showResidual, wrapPhase]
   );
 
   const orderedDatasetIds = useMemo(

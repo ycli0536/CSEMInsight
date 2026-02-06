@@ -45,3 +45,49 @@ export function hasResidualResponseData(datasets: Dataset[]): boolean {
     dataset.data.some((row) => Number.isFinite(row.Residual))
   );
 }
+
+export function wrapPhaseValue(value: number): number {
+  const normalized = ((value + 180) % 360 + 360) % 360 - 180;
+  return normalized === -180 ? 180 : normalized;
+}
+
+export function unwrapPhaseSeries(values: number[]): number[] {
+  if (!values.length) {
+    return [];
+  }
+
+  const unwrapped: number[] = [];
+  let prevUnwrapped: number | null = null;
+
+  for (const value of values) {
+    if (!Number.isFinite(value)) {
+      unwrapped.push(value);
+      prevUnwrapped = null;
+      continue;
+    }
+
+    if (prevUnwrapped === null) {
+      unwrapped.push(value);
+      prevUnwrapped = value;
+      continue;
+    }
+
+    let current = value;
+    let delta = current - prevUnwrapped;
+
+    while (delta > 180) {
+      current -= 360;
+      delta -= 360;
+    }
+
+    while (delta < -180) {
+      current += 360;
+      delta += 360;
+    }
+
+    unwrapped.push(current);
+    prevUnwrapped = current;
+  }
+
+  return unwrapped;
+}
