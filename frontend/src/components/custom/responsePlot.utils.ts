@@ -51,7 +51,7 @@ export function wrapPhaseValue(value: number): number {
   return normalized === -180 ? 180 : normalized;
 }
 
-export function unwrapPhaseSeries(values: number[]): number[] {
+function unwrapPhaseSeries(values: number[]): number[] {
   if (!values.length) {
     return [];
   }
@@ -90,4 +90,20 @@ export function unwrapPhaseSeries(values: number[]): number[] {
   }
 
   return unwrapped;
+}
+
+export function initializePhaseSeries(values: number[]): number[] {
+  const unwrappedValues = unwrapPhaseSeries(values);
+  const finiteValues = unwrappedValues.filter(Number.isFinite);
+  if (!finiteValues.length) {
+    return unwrappedValues;
+  }
+
+  const sortedValues = [...finiteValues].sort((a, b) => a - b);
+  const medianValue = sortedValues[Math.floor(sortedValues.length / 2)];
+  const shift = 360 * Math.round(medianValue / 360);
+
+  return unwrappedValues.map((value) =>
+    Number.isFinite(value) ? value - shift : value
+  );
 }

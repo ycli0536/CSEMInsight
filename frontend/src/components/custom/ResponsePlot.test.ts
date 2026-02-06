@@ -6,7 +6,7 @@ import {
   buildOverlayDatasets,
   hasModelResponseData,
   hasResidualResponseData,
-  unwrapPhaseSeries,
+  initializePhaseSeries,
   wrapPhaseValue,
   resolveReferenceDataset,
 } from './responsePlot.utils';
@@ -122,16 +122,16 @@ describe('response plot data availability', () => {
 });
 
 describe('phase wrapping utilities', () => {
-  it('unwraps wrapped phase series into a continuous sequence', () => {
+  it('initializes wrapped phase series into a continuous recentered sequence', () => {
     const wrapped = [170, 175, 179, -179, -175, -170];
 
-    expect(unwrapPhaseSeries(wrapped)).toEqual([170, 175, 179, 181, 185, 190]);
+    expect(initializePhaseSeries(wrapped)).toEqual([-190, -185, -181, -179, -175, -170]);
   });
 
-  it('keeps already unwrapped series values continuous', () => {
+  it('unwraps and recenters already unwrapped values', () => {
     const unwrapped = [170, 190, 205, 225];
 
-    expect(unwrapPhaseSeries(unwrapped)).toEqual([170, 190, 205, 225]);
+    expect(initializePhaseSeries(unwrapped)).toEqual([-190, -170, -155, -135]);
   });
 
   it('normalizes wrapped value into (-180, 180] range', () => {

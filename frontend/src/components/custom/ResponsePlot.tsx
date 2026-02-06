@@ -27,7 +27,7 @@ import {
   buildOverlayDatasets,
   hasModelResponseData,
   hasResidualResponseData,
-  unwrapPhaseSeries,
+  initializePhaseSeries,
   wrapPhaseValue,
 } from './responsePlot.utils';
 import { orderIdsByPrimaryLast } from '@/lib/datasetOrdering';
@@ -119,7 +119,7 @@ export function ResponsesWithErrorBars() {
           if (type === 'phi') {
             stdErrSeries = filteredData.map((item) => item.StdError);
             const rawDataSeries = filteredData.map((item) => item.Data);
-            const unwrappedDataSeries = unwrapPhaseSeries(rawDataSeries);
+            const unwrappedDataSeries = initializePhaseSeries(rawDataSeries);
 
             dataSeries = wrapPhase
               ? unwrappedDataSeries.map((value) => wrapPhaseValue(value))
@@ -136,7 +136,7 @@ export function ResponsesWithErrorBars() {
               const modelRawSeries = filteredData.map((d) =>
                 d.Response !== undefined ? d.Response : NaN
               );
-              const modelUnwrappedSeries = unwrapPhaseSeries(modelRawSeries);
+              const modelUnwrappedSeries = initializePhaseSeries(modelRawSeries);
               modelSeries = wrapPhase
                 ? modelUnwrappedSeries.map((value) =>
                     Number.isFinite(value) ? wrapPhaseValue(value) : value
