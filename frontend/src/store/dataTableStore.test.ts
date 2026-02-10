@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { useDataTableStore, useSettingFormStore } from './settingFormStore';
 import { useComparisonStore } from './comparisonStore';
 import type { CsemData, Dataset } from '@/types';
+import { datasetColors } from '@/lib/datasetColors';
 import type { FilterModel } from 'ag-grid-community';
 
 const baseCsemRow: CsemData = {
@@ -184,6 +185,30 @@ describe('useDataTableStore setPrimaryDataset', () => {
 
     const comparisonState = useComparisonStore.getState();
     expect(comparisonState.referenceDatasetId).toBe('B');
+  });
+});
+
+describe('useDataTableStore addDataset color allocation', () => {
+  it('reuses freed palette colors and avoids collisions', () => {
+    const [firstColor, secondColor] = datasetColors;
+
+    useDataTableStore
+      .getState()
+      .addDataset(buildDataset({ id: 'A', color: firstColor }));
+    useDataTableStore
+      .getState()
+      .addDataset(buildDataset({ id: 'B', color: secondColor }));
+
+    useDataTableStore.getState().removeDataset('A');
+
+    // Simulates current loader behavior that might pass an already-used color.
+    useDataTableStore
+      .getState()
+      .addDataset(buildDataset({ id: 'C', color: secondColor }));
+
+    const state = useDataTableStore.getState();
+    expect(state.datasets.get('B')?.color).toBe(secondColor);
+    expect(state.datasets.get('C')?.color).toBe(firstColor);
   });
 });
 

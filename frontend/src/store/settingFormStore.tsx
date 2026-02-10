@@ -11,6 +11,7 @@ import type {
   TxData,
 } from "@/types";
 import { useComparisonStore } from "@/store/comparisonStore";
+import { datasetColors } from "@/lib/datasetColors";
 import { ColDef, FilterModel } from "ag-grid-community";
 import { ITextFilterParams, INumberFilterParams } from "ag-grid-community";
 import NumberFloatingFilterComponent from '@/components/custom/numberFloatingFilterComponent';
@@ -306,6 +307,32 @@ const initialColumns = defaultColDefs
   .map((col) => col.field)
   .filter((field): field is string => field !== undefined && initialVisibleColumns.includes(field)); // Set only default visible columns
 
+const normalizeColor = (color: string) => color.trim().toLowerCase();
+
+const getNextDatasetColor = (
+  datasets: Map<string, Dataset>,
+  preferredColor: string,
+): string => {
+  const usedColors = new Set(
+    Array.from(datasets.values()).map((dataset) => normalizeColor(dataset.color)),
+  );
+
+  const normalizedPreferred = normalizeColor(preferredColor);
+  if (!usedColors.has(normalizedPreferred)) {
+    return preferredColor;
+  }
+
+  const reusableColor = datasetColors.find(
+    (color) => !usedColors.has(normalizeColor(color)),
+  );
+
+  if (reusableColor) {
+    return reusableColor;
+  }
+
+  return preferredColor;
+};
+
 export const useDataTableStore = create<DataTableStore>()((set, _get) => ({
   data: [],
   txData: [],
@@ -352,9 +379,11 @@ export const useDataTableStore = create<DataTableStore>()((set, _get) => ({
   addDataset: (dataset) => set((state) => {
     const datasets = new Map(state.datasets);
     const isFirstDataset = state.datasets.size === 0;
+    const assignedColor = getNextDatasetColor(state.datasets, dataset.color);
     
     const datasetWithRole: Dataset = {
       ...dataset,
+      color: assignedColor,
       role: isFirstDataset ? 'primary' : 'compared',
       visible: true,
     };
