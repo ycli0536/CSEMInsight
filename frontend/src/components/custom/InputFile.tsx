@@ -126,9 +126,9 @@ export function InputFile() {
     };
 
     return (
-        <div className="grid gap-6">
+        <div className="grid w-full min-w-0 gap-6">
             <DropZone
-                className="h-full min-h-[100px] text-base text-center justify-center 
+                className="w-full min-w-0 h-full min-h-[100px] text-base text-center justify-center 
                        border-dashed border-2 border-muted-foreground/25 hover:border-primary/50 transition-colors rounded-lg bg-muted/5"
                 onDrop={(e) => {
                     const files = e.items.filter(
