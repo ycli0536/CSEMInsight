@@ -23,7 +23,7 @@ pub fn run() {
             Ok(())
         })
         .on_window_event(|window, event| match event {
-            WindowEvent::CloseRequested { api, .. } => {
+            WindowEvent::CloseRequested { api: _, .. } => {
                 if window.label() == "main" {
                     info!("Close requested - exiting app");
                 }
