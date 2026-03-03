@@ -7,6 +7,7 @@ import {
   hasModelResponseData,
   hasResidualResponseData,
   initializePhaseSeries,
+  resolveDatasetViewData,
   wrapPhaseValue,
   resolveReferenceDataset,
 } from './responsePlot.utils';
@@ -138,5 +139,16 @@ describe('phase wrapping utilities', () => {
     expect(wrapPhaseValue(181)).toBe(-179);
     expect(wrapPhaseValue(-181)).toBe(179);
     expect(wrapPhaseValue(-180)).toBe(180);
+  });
+});
+
+describe('resolveDatasetViewData', () => {
+  it('keeps an inactive dataset empty when it already has an empty filtered view', () => {
+    const dataset = {
+      ...makeDataset('B', 5),
+      filteredData: [],
+    };
+
+    expect(resolveDatasetViewData(dataset, 'A', [{ ...baseRow, Data: 99 }])).toEqual([]);
   });
 });

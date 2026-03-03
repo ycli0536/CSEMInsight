@@ -1,4 +1,4 @@
-import type { ComparisonMode, Dataset } from "@/types";
+import type { ComparisonMode, CsemData, Dataset } from "@/types";
 import { computeDifferenceData } from "@/services/extractComparisonData";
 
 export function resolveReferenceDataset(
@@ -44,6 +44,22 @@ export function hasResidualResponseData(datasets: Dataset[]): boolean {
   return datasets.some((dataset) =>
     dataset.data.some((row) => Number.isFinite(row.Residual))
   );
+}
+
+export function resolveDatasetViewData(
+  dataset: Dataset,
+  activeTableDatasetId: string | null,
+  activeFilteredData: CsemData[],
+): CsemData[] {
+  if (dataset.id === activeTableDatasetId) {
+    return activeFilteredData;
+  }
+
+  if (dataset.filteredData !== undefined) {
+    return dataset.filteredData;
+  }
+
+  return dataset.data;
 }
 
 export function wrapPhaseValue(value: number): number {

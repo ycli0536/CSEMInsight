@@ -27,6 +27,7 @@ import {
   buildOverlayDatasets,
   hasModelResponseData,
   hasResidualResponseData,
+  resolveDatasetViewData,
   initializePhaseSeries,
   wrapPhaseValue,
 } from './responsePlot.utils';
@@ -43,7 +44,6 @@ export function ResponsesWithErrorBars() {
   const [isNarrowLayout, setIsNarrowLayout] = useState(false);
   const {
     filteredData,
-    data: rawData, // Destructure raw data
     datasets,
     activeDatasetIds,
     activeTableDatasetId, // Need this to check which dataset should use the 'live' filteredData
@@ -1075,12 +1075,11 @@ export function ResponsesWithErrorBars() {
         // So we check if it is defined (not null/undefined).
         // BUT 'filteredData' (global) is initialized to dataset.data or saved filter.
 
-        let dataToUse = dataset.data;
-        if (dataset.id === activeTableDatasetId) {
-          dataToUse = filteredData;
-        } else if (dataset.filteredData) {
-          dataToUse = dataset.filteredData;
-        }
+        const dataToUse = resolveDatasetViewData(
+          dataset,
+          activeTableDatasetId,
+          filteredData,
+        );
 
         const ampRes = preparePlotData(dataToUse, 'amp');
         const phiRes = preparePlotData(dataToUse, 'phi');
@@ -1144,17 +1143,11 @@ export function ResponsesWithErrorBars() {
 
     const filterDatasets = (datasets: typeof overlayDatasets) => {
       return datasets.map(d => {
-        // Use the dataset's own filteredData if available (it represents the "view" configured for that dataset)
-        // If it's the active table dataset, store.filteredData is the source of truth (and syncs to dataset.filteredData anyway).
-        // But simply checking `d.filteredData` covers background datasets.
-
-        let dataToUse = d.data;
-        if (d.filteredData && d.filteredData.length > 0) {
-          dataToUse = d.filteredData;
-        } else if (d.data === rawData) {
-          // Fallback for active dataset if not yet synced to .filteredData property on object
-          dataToUse = filteredData;
-        }
+        const dataToUse = resolveDatasetViewData(
+          d,
+          activeTableDatasetId,
+          filteredData,
+        );
 
         return {
           ...d,
@@ -1355,7 +1348,6 @@ export function ResponsesWithErrorBars() {
     rxSelected,
     isDarkMode,
     activeTableDatasetId,
-    rawData,
     showData,
     showModel,
     showResidual,

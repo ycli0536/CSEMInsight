@@ -1,22 +1,27 @@
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { ListBoxItem, ListBox as MyListBox } from "@/components/custom/ListBox";
+import { CustomAlertDialog } from "@/components/custom/CustomAlertDialog";
 import { Item, ListBox, Provider, lightTheme, darkTheme, Text } from "@adobe/react-spectrum";
 import { useCallback, useMemo } from "react";
 import type { Selection } from 'react-aria-components';
 
 import type { TxData, RxData } from "@/types";
 import { useSettingFormStore, useDataTableStore } from "@/store/settingFormStore";
+import { useAlertDialog } from "@/hooks/useAlertDialog";
 import { useTheme } from "@/hooks/useTheme";
 
 export function DataTableCtrl() {
+  const { alertState, showAlert, hideAlert, handleConfirm } = useAlertDialog();
   const {
     freqSelected,
     txSelected,
     rxSelected,
+    applyQuickFiltersGlobally,
     setFreqSelected,
     setTxSelected,
     setRxSelected,
+    setApplyQuickFiltersGlobally,
     resetColumnFilters,
     setResetColumnFilters,
   } = useSettingFormStore();
@@ -25,71 +30,207 @@ export function DataTableCtrl() {
     data,
     txData,
     rxData,
+    datasets,
+    syncQuickFiltersAcrossDatasets,
   } = useDataTableStore();
   const { colDefs, visibleColumns, setVisibleColumns } = useDataTableStore();
   const { theme, systemTheme } = useTheme();
   const resolvedTheme = theme === "system" ? systemTheme : theme;
   const spectrumTheme = resolvedTheme === "dark" ? darkTheme : lightTheme;
 
-  const uniqueFreqs = useMemo(() => Array.from(new Set(data.map((item) => item.Freq))).sort((a, b) => a - b), [data]);
-  const uniqueFreqIds = useMemo(() => Array.from(new Set(data.map((item) => item.Freq_id))).sort((a, b) => Number(a) - Number(b)), [data]);
+  const freqOptions = useMemo(() => {
+    const sourceData = applyQuickFiltersGlobally
+      ? Array.from(datasets.values()).flatMap((dataset) => dataset.data)
+      : data;
+    const freqMap = new Map<string, { id: string; freq: number }>();
+
+    sourceData.forEach((item) => {
+      const id = String(item.Freq_id);
+      if (!freqMap.has(id)) {
+        freqMap.set(id, { id, freq: item.Freq });
+      }
+    });
+
+    return Array.from(freqMap.values()).sort((a, b) => {
+      if (a.freq !== b.freq) {
+        return a.freq - b.freq;
+      }
+
+      const numericDiff = Number(a.id) - Number(b.id);
+      return Number.isNaN(numericDiff) ? a.id.localeCompare(b.id) : numericDiff;
+    });
+  }, [applyQuickFiltersGlobally, data, datasets]);
+
+  const availableTxData = useMemo(() => {
+    if (!applyQuickFiltersGlobally) {
+      return txData;
+    }
+
+    const txMap = new Map<number, TxData>();
+    Array.from(datasets.values()).forEach((dataset) => {
+      dataset.txData.forEach((tx) => {
+        if (!txMap.has(tx.Tx_id)) {
+          txMap.set(tx.Tx_id, tx);
+        }
+      });
+    });
+
+    return Array.from(txMap.values()).sort((a, b) => a.Tx_id - b.Tx_id);
+  }, [applyQuickFiltersGlobally, datasets, txData]);
+
+  const availableRxData = useMemo(() => {
+    if (!applyQuickFiltersGlobally) {
+      return rxData;
+    }
+
+    const rxMap = new Map<number, RxData>();
+    Array.from(datasets.values()).forEach((dataset) => {
+      dataset.rxData.forEach((rx) => {
+        if (!rxMap.has(rx.Rx_id)) {
+          rxMap.set(rx.Rx_id, rx);
+        }
+      });
+    });
+
+    return Array.from(rxMap.values()).sort((a, b) => a.Rx_id - b.Rx_id);
+  }, [applyQuickFiltersGlobally, datasets, rxData]);
+
+  const syncQuickFilters = useCallback((nextSelectionState: {
+    freqSelected: Selection;
+    txSelected: Selection;
+    rxSelected: Selection;
+  }) => {
+    if (!applyQuickFiltersGlobally) {
+      return;
+    }
+
+    syncQuickFiltersAcrossDatasets(nextSelectionState);
+  }, [applyQuickFiltersGlobally, syncQuickFiltersAcrossDatasets]);
+
+  const onApplyQuickFiltersGloballyChange = useCallback((checked: boolean) => {
+    setApplyQuickFiltersGlobally(checked);
+    if (checked) {
+      showAlert(
+        'Shared Quick Filter Mode',
+        'Please ensure datasets share consistent ID indexing; otherwise, consistency between the selected filters and visualization results is not guaranteed.',
+        'warning',
+      );
+      syncQuickFiltersAcrossDatasets({
+        freqSelected,
+        txSelected,
+        rxSelected,
+      });
+    }
+  }, [
+    freqSelected,
+    rxSelected,
+    setApplyQuickFiltersGlobally,
+    showAlert,
+    syncQuickFiltersAcrossDatasets,
+    txSelected,
+  ]);
 
   const onFreqSelectedChange = useCallback((newSelection: Selection) => {
-    const getAntiSelection = (allItems: string[], newSelection: Selection) => {
-      const antiSelectedFreq = allItems.filter((item) => !(newSelection as Set<string>).has(String(item)));
+    const getAntiSelection = (allItems: string[], selection: Selection) => {
+      const antiSelectedFreq = allItems.filter(
+        (item) => !(selection as Set<string>).has(String(item)),
+      );
       return new Set<string>(antiSelectedFreq.map(String));
     };
 
-    if ((newSelection as Set<string>).size === uniqueFreqIds.length) {
-      setFreqSelected('all');
+    let nextFreqSelected: Selection;
+    if (newSelection === 'all' || (newSelection as Set<string>).size === freqOptions.length) {
+      nextFreqSelected = 'all';
+    } else {
+      nextFreqSelected = freqSelected === 'all'
+        ? getAntiSelection(
+          freqOptions.map((item) => item.id),
+          newSelection,
+        )
+        : newSelection;
     }
-    else {
-      const isAllSelected = newSelection === 'all' || (newSelection as Set<string>).size === uniqueFreqIds.length;
-      if (freqSelected === 'all' && !isAllSelected) {
-        setFreqSelected(getAntiSelection(uniqueFreqIds, newSelection));
-      } else {
-        setFreqSelected(newSelection);
-      }
-    }
-  }, [setFreqSelected, uniqueFreqIds, freqSelected]);
+
+    setFreqSelected(nextFreqSelected);
+    syncQuickFilters({
+      freqSelected: nextFreqSelected,
+      txSelected,
+      rxSelected,
+    });
+  }, [freqOptions, freqSelected, rxSelected, setFreqSelected, syncQuickFilters, txSelected]);
 
   const onTxSelectedChange = useCallback((newSelection: Selection) => {
-    const getAntiSelection = (allItems: TxData[], newSelection: Selection) => {
-      const antiSelectedTx = allItems.filter((item) => !(newSelection as Set<string>).has(item.Tx_id.toString()));
-      return new Set<string>(antiSelectedTx.map((item) => item.Tx_id.toString()));
+    const getAntiSelection = (allItems: TxData[], selection: Selection) => {
+      const antiSelectedTx = allItems.filter(
+        (item) => !(selection as Set<string>).has(item.Tx_id.toString()),
+      );
+      return new Set<string>(
+        antiSelectedTx.map((item) => item.Tx_id.toString()),
+      );
     };
 
-    if ((newSelection as Set<string>).size === txData.length) {
-      setTxSelected('all');
+    let nextTxSelected: Selection;
+    if (
+      newSelection === 'all' ||
+      (newSelection as Set<string>).size === availableTxData.length
+    ) {
+      nextTxSelected = 'all';
+    } else {
+      nextTxSelected = txSelected === 'all'
+        ? getAntiSelection(availableTxData, newSelection)
+        : newSelection;
     }
-    else {
-      const isAllSelected = newSelection === 'all' || (newSelection as Set<string>).size === txData.length;
-      if (txSelected === 'all' && !isAllSelected) {
-        setTxSelected(getAntiSelection(txData, newSelection));
-      } else {
-        setTxSelected(newSelection);
-      }
-    }
-  }, [setTxSelected, txData, txSelected]);
+
+    setTxSelected(nextTxSelected);
+    syncQuickFilters({
+      freqSelected,
+      txSelected: nextTxSelected,
+      rxSelected,
+    });
+  }, [
+    availableTxData,
+    freqSelected,
+    rxSelected,
+    setTxSelected,
+    syncQuickFilters,
+    txSelected,
+  ]);
 
   const onRxSelectedChange = useCallback((newSelection: Selection) => {
-    const getAntiSelection = (allItems: RxData[], newSelection: Selection) => {
-      const antiSelectedRx = allItems.filter((item) => !(newSelection as Set<string>).has(item.Rx_id.toString()));
-      return new Set<string>(antiSelectedRx.map((item) => item.Rx_id.toString()));
+    const getAntiSelection = (allItems: RxData[], selection: Selection) => {
+      const antiSelectedRx = allItems.filter(
+        (item) => !(selection as Set<string>).has(item.Rx_id.toString()),
+      );
+      return new Set<string>(
+        antiSelectedRx.map((item) => item.Rx_id.toString()),
+      );
     };
 
-    if ((newSelection as Set<string>).size === rxData.length) {
-      setRxSelected('all');
+    let nextRxSelected: Selection;
+    if (
+      newSelection === 'all' ||
+      (newSelection as Set<string>).size === availableRxData.length
+    ) {
+      nextRxSelected = 'all';
+    } else {
+      nextRxSelected = rxSelected === 'all'
+        ? getAntiSelection(availableRxData, newSelection)
+        : newSelection;
     }
-    else {
-      const isAllSelected = newSelection === 'all' || (newSelection as Set<string>).size === rxData.length;
-      if (rxSelected === 'all' && !isAllSelected) {
-        setRxSelected(getAntiSelection(rxData, newSelection));
-      } else {
-        setRxSelected(newSelection);
-      }
-    }
-  }, [setRxSelected, rxData, rxSelected]);
+
+    setRxSelected(nextRxSelected);
+    syncQuickFilters({
+      freqSelected,
+      txSelected,
+      rxSelected: nextRxSelected,
+    });
+  }, [
+    availableRxData,
+    freqSelected,
+    rxSelected,
+    setRxSelected,
+    syncQuickFilters,
+    txSelected,
+  ]);
 
   return (
     <div className="flex flex-col">
@@ -128,6 +269,17 @@ export function DataTableCtrl() {
         <div className="flex-1 flex flex-col space-y-3 min-w-0">
           <Label htmlFor="filter">Quick Filter Options</Label>
 
+          <div className="flex items-center space-x-2">
+            <Switch
+              id="global-quick-filters"
+              checked={applyQuickFiltersGlobally}
+              onCheckedChange={onApplyQuickFiltersGloballyChange}
+            />
+            <Label htmlFor="global-quick-filters" className="text-sm font-medium leading-none">
+              Apply To All Datasets
+            </Label>
+          </div>
+
           <div className="flex flex-col space-y-3">
             <Label htmlFor="freq">Frequencies (Hz)</Label>
             <Provider theme={spectrumTheme} colorScheme={resolvedTheme as "light" | "dark"} width="100%">
@@ -138,7 +290,7 @@ export function DataTableCtrl() {
                 selectionMode="multiple"
                 selectedKeys={freqSelected}
                 onSelectionChange={onFreqSelectedChange}
-                items={uniqueFreqIds.map((id, index) => ({ id, freq: uniqueFreqs[index] }))}
+                items={freqOptions}
               >
                 {(item) => <Item key={item.id}>{item.freq.toString()}</Item>}
               </ListBox>
@@ -156,7 +308,7 @@ export function DataTableCtrl() {
                 selectionMode="multiple"
                 selectedKeys={txSelected}
                 onSelectionChange={onTxSelectedChange}
-                items={txData}
+                items={availableTxData}
                 UNSAFE_style={{ width: '100%', maxWidth: '100%' }}
               >
                 {(tx) => (
@@ -179,7 +331,7 @@ export function DataTableCtrl() {
                 selectionMode="multiple"
                 selectedKeys={rxSelected}
                 onSelectionChange={onRxSelectedChange}
-                items={rxData}
+                items={availableRxData}
                 UNSAFE_style={{ width: '100%', maxWidth: '100%' }}
               >
                 {(rx) => (
@@ -192,6 +344,11 @@ export function DataTableCtrl() {
           </div>
         </div>
       </div>
+      <CustomAlertDialog
+        alertState={alertState}
+        onClose={hideAlert}
+        onConfirm={handleConfirm}
+      />
     </div>
   );
 }

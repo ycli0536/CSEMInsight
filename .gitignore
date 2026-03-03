@@ -19,6 +19,7 @@ conductor/
 .gemini/
 .github/skills/
 .agents/
+.github/
 
 # Python
 __pycache__/

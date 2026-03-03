@@ -28,6 +28,7 @@ interface SettingFormState {
   freqSelected: Selection;
   txSelected: Selection;
   rxSelected: Selection;
+  applyQuickFiltersGlobally: boolean;
   mapLayer: MapLayerKey;
   recenterTimestamp: number;
   xAxisColumn: string;
@@ -40,6 +41,7 @@ interface SettingFormState {
   setFreqSelected: (selected: Selection) => void;
   setTxSelected: (selected: Selection) => void;
   setRxSelected: (selected: Selection) => void;
+  setApplyQuickFiltersGlobally: (applyGlobally: boolean) => void;
   setMapLayer: (mapLayer: MapLayerKey) => void;
   setXAxisColumn: (column: string) => void;
   setYAxisColumn: (column: string) => void;
@@ -47,6 +49,12 @@ interface SettingFormState {
   setResetColumnFilters: (reset: boolean) => void;
   resetFilters: () => void;
 }
+
+type QuickFilterSettings = {
+  freqSelected: Selection;
+  txSelected: Selection;
+  rxSelected: Selection;
+};
 
 type DataTableStore = {
   data: CsemData[];
@@ -101,7 +109,8 @@ type DataTableStore = {
   removeFromCompared: (id: string) => void;
   
   setComparisonMode: (mode: ComparisonMode) => void;
-  updateDatasetFilter: (id: string, filteredData: CsemData[], filterSettings: { freqSelected: Selection, txSelected: Selection, rxSelected: Selection }, filterModel?: FilterModel | null) => void;
+  updateDatasetFilter: (id: string, filteredData: CsemData[], filterSettings: QuickFilterSettings, filterModel?: FilterModel | null) => void;
+  syncQuickFiltersAcrossDatasets: (filterSettings: QuickFilterSettings) => void;
   resetAllFilters: () => void;
   resetDatasets: () => void;
 }
@@ -309,6 +318,52 @@ const initialColumns = defaultColDefs
 
 const normalizeColor = (color: string) => color.trim().toLowerCase();
 
+const cloneSelection = (selection: Selection): Selection => {
+  if (selection === 'all') {
+    return 'all';
+  }
+
+  return new Set<string>(Array.from(selection as Set<string>, (item) => String(item)));
+};
+
+const cloneQuickFilterSettings = (
+  filterSettings: QuickFilterSettings,
+): QuickFilterSettings => ({
+  freqSelected: cloneSelection(filterSettings.freqSelected),
+  txSelected: cloneSelection(filterSettings.txSelected),
+  rxSelected: cloneSelection(filterSettings.rxSelected),
+});
+
+const applyQuickFilters = (
+  data: CsemData[],
+  filterSettings: QuickFilterSettings,
+): CsemData[] => {
+  return data.filter(({ Freq_id, Tx_id, Rx_id }) => {
+    if (
+      filterSettings.freqSelected !== 'all' &&
+      !(filterSettings.freqSelected as Set<string>).has(String(Freq_id))
+    ) {
+      return false;
+    }
+
+    if (
+      filterSettings.txSelected !== 'all' &&
+      !(filterSettings.txSelected as Set<string>).has(String(Tx_id))
+    ) {
+      return false;
+    }
+
+    if (
+      filterSettings.rxSelected !== 'all' &&
+      !(filterSettings.rxSelected as Set<string>).has(String(Rx_id))
+    ) {
+      return false;
+    }
+
+    return true;
+  });
+};
+
 const getNextDatasetColor = (
   datasets: Map<string, Dataset>,
   preferredColor: string,
@@ -380,12 +435,24 @@ export const useDataTableStore = create<DataTableStore>()((set, _get) => ({
     const datasets = new Map(state.datasets);
     const isFirstDataset = state.datasets.size === 0;
     const assignedColor = getNextDatasetColor(state.datasets, dataset.color);
+    const settingState = useSettingFormStore.getState();
+    const sharedQuickFilterSettings: QuickFilterSettings = {
+      freqSelected: settingState.freqSelected,
+      txSelected: settingState.txSelected,
+      rxSelected: settingState.rxSelected,
+    };
     
     const datasetWithRole: Dataset = {
       ...dataset,
       color: assignedColor,
       role: isFirstDataset ? 'primary' : 'compared',
       visible: true,
+      ...(settingState.applyQuickFiltersGlobally
+        ? {
+          filteredData: applyQuickFilters(dataset.data, sharedQuickFilterSettings),
+          filterSettings: cloneQuickFilterSettings(sharedQuickFilterSettings),
+        }
+        : {}),
     };
     datasets.set(dataset.id, datasetWithRole);
     
@@ -513,20 +580,29 @@ export const useDataTableStore = create<DataTableStore>()((set, _get) => ({
       newComparedIds.unshift(state.primaryDatasetId);
     }
     
-    const { setFreqSelected, setTxSelected, setRxSelected } = useSettingFormStore.getState();
-    if (dataset.filterSettings) {
-      setFreqSelected(dataset.filterSettings.freqSelected);
-      setTxSelected(dataset.filterSettings.txSelected);
-      setRxSelected(dataset.filterSettings.rxSelected);
-    } else {
-      setFreqSelected('all');
-      setTxSelected('all');
-      setRxSelected('all');
+    const {
+      setFreqSelected,
+      setTxSelected,
+      setRxSelected,
+      applyQuickFiltersGlobally,
+    } = useSettingFormStore.getState();
+    if (!applyQuickFiltersGlobally) {
+      if (dataset.filterSettings) {
+        setFreqSelected(dataset.filterSettings.freqSelected);
+        setTxSelected(dataset.filterSettings.txSelected);
+        setRxSelected(dataset.filterSettings.rxSelected);
+      } else {
+        setFreqSelected('all');
+        setTxSelected('all');
+        setRxSelected('all');
+      }
     }
     
-    const initialViewData = (dataset.filteredData && dataset.filteredData.length > 0) 
-      ? dataset.filteredData 
-      : dataset.data;
+    const initialViewData =
+      dataset.filteredData !== undefined &&
+      (applyQuickFiltersGlobally || dataset.filteredData.length > 0)
+        ? dataset.filteredData
+        : dataset.data;
     
     const visibleIds = [id, ...newComparedIds];
 
@@ -612,12 +688,64 @@ export const useDataTableStore = create<DataTableStore>()((set, _get) => ({
     datasets.set(id, { ...dataset, ...updates });
     return { datasets };
   }),
+
+  syncQuickFiltersAcrossDatasets: (filterSettings) => set((state) => {
+    const datasets = new Map(state.datasets);
+
+    datasets.forEach((dataset, id) => {
+      datasets.set(id, {
+        ...dataset,
+        filteredData: applyQuickFilters(dataset.data, filterSettings),
+        filterSettings: cloneQuickFilterSettings(filterSettings),
+      });
+    });
+
+    const activeDataset = state.activeTableDatasetId
+      ? datasets.get(state.activeTableDatasetId)
+      : null;
+
+    return {
+      datasets,
+      ...(activeDataset
+        ? { filteredData: activeDataset.filteredData ?? activeDataset.data }
+        : {}),
+    };
+  }),
   
-  resetAllFilters: () => set(() => {
+  resetAllFilters: () => set((state) => {
     const settingStore = useSettingFormStore.getState();
     settingStore.resetFilters();
     settingStore.setResetColumnFilters(true);
-    return { filterModel: null };
+    if (!settingStore.applyQuickFiltersGlobally) {
+      return { filterModel: null };
+    }
+
+    const resetFilterSettings: QuickFilterSettings = {
+      freqSelected: 'all',
+      txSelected: 'all',
+      rxSelected: 'all',
+    };
+    const datasets = new Map(state.datasets);
+
+    datasets.forEach((dataset, id) => {
+      datasets.set(id, {
+        ...dataset,
+        filteredData: dataset.data,
+        filterSettings: cloneQuickFilterSettings(resetFilterSettings),
+      });
+    });
+
+    const activeDataset = state.activeTableDatasetId
+      ? datasets.get(state.activeTableDatasetId)
+      : null;
+
+    return {
+      filterModel: null,
+      datasets,
+      ...(activeDataset
+        ? { filteredData: activeDataset.filteredData ?? activeDataset.data }
+        : {}),
+    };
   }),
   
   resetDatasets: () => set(() => {
@@ -654,6 +782,7 @@ export const useSettingFormStore = create<SettingFormState>()((set) => ({
   freqSelected: 'all',
   txSelected: 'all',
   rxSelected: 'all',
+  applyQuickFiltersGlobally: false,
   mapLayer: "satellite",
   recenterTimestamp: 0,
   xAxisColumn: "Lon_tx",
@@ -666,6 +795,8 @@ export const useSettingFormStore = create<SettingFormState>()((set) => ({
   setFreqSelected: (freqSelected) => set({ freqSelected }),
   setTxSelected: (txSelected) => set({ txSelected }),
   setRxSelected: (rxSelected) => set({ rxSelected }),
+  setApplyQuickFiltersGlobally: (applyQuickFiltersGlobally) =>
+    set({ applyQuickFiltersGlobally }),
   setMapLayer: (mapLayer) => set({ mapLayer }),
   setXAxisColumn: (xAxisColumn) => set({ xAxisColumn }),
   setYAxisColumn: (yAxisColumn) => set({ yAxisColumn }),

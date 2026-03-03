@@ -61,6 +61,7 @@ beforeEach(() => {
     freqSelected: 'all',
     txSelected: 'all',
     rxSelected: 'all',
+    applyQuickFiltersGlobally: false,
     mapLayer: 'satellite',
     recenterTimestamp: 0,
     xAxisColumn: 'Lon_tx',
@@ -109,9 +110,9 @@ describe('useDataTableStore setPrimaryDataset', () => {
         },
       ],
       filterSettings: {
-        freqSelected: 'f1',
-        txSelected: 't1',
-        rxSelected: 'r1',
+        freqSelected: new Set<string>(['f1']),
+        txSelected: new Set<string>(['t1']),
+        rxSelected: new Set<string>(['r1']),
       },
     });
 
@@ -134,9 +135,9 @@ describe('useDataTableStore setPrimaryDataset', () => {
     expect(state.filteredData).toEqual(datasetB.filteredData);
 
     const settingState = useSettingFormStore.getState();
-    expect(settingState.freqSelected).toBe('f1');
-    expect(settingState.txSelected).toBe('t1');
-    expect(settingState.rxSelected).toBe('r1');
+    expect(settingState.freqSelected).toEqual(new Set<string>(['f1']));
+    expect(settingState.txSelected).toEqual(new Set<string>(['t1']));
+    expect(settingState.rxSelected).toEqual(new Set<string>(['r1']));
   });
 
   it('falls back to dataset data when filtered data is empty', () => {
@@ -186,6 +187,87 @@ describe('useDataTableStore setPrimaryDataset', () => {
     const comparisonState = useComparisonStore.getState();
     expect(comparisonState.referenceDatasetId).toBe('B');
   });
+
+  it('keeps the shared quick filter selection when global mode is enabled', () => {
+    const datasetA = buildDataset({ id: 'A', role: 'primary' });
+    const datasetB = buildDataset({
+      id: 'B',
+      filteredData: [
+        {
+          ...baseCsemRow,
+          index: 1,
+          Data: 2,
+        },
+      ],
+      filterSettings: {
+        freqSelected: new Set<string>(['dataset-freq']),
+        txSelected: new Set<string>(['dataset-tx']),
+        rxSelected: new Set<string>(['dataset-rx']),
+      },
+    });
+
+    useSettingFormStore.setState({
+      applyQuickFiltersGlobally: true,
+      freqSelected: new Set<string>(['shared-freq']),
+      txSelected: new Set<string>(['shared-tx']),
+      rxSelected: new Set<string>(['shared-rx']),
+    });
+
+    useDataTableStore.setState({
+      datasets: new Map([
+        ['A', datasetA],
+        ['B', datasetB],
+      ]),
+      primaryDatasetId: 'A',
+      comparedDatasetIds: ['B'],
+      data: datasetA.data,
+      tableData: datasetA.data,
+      filteredData: datasetA.data,
+    });
+
+    useDataTableStore.getState().setPrimaryDataset('B');
+
+    const settingState = useSettingFormStore.getState();
+    expect(settingState.freqSelected).toEqual(new Set<string>(['shared-freq']));
+    expect(settingState.txSelected).toEqual(new Set<string>(['shared-tx']));
+    expect(settingState.rxSelected).toEqual(new Set<string>(['shared-rx']));
+  });
+
+  it('preserves an empty shared filtered view when switching datasets', () => {
+    const datasetA = buildDataset({ id: 'A', role: 'primary' });
+    const datasetB = buildDataset({
+      id: 'B',
+      filteredData: [],
+      filterSettings: {
+        freqSelected: new Set<string>(['missing-freq']),
+        txSelected: new Set<string>(['missing-tx']),
+        rxSelected: new Set<string>(['missing-rx']),
+      },
+    });
+
+    useSettingFormStore.setState({
+      applyQuickFiltersGlobally: true,
+      freqSelected: new Set<string>(['missing-freq']),
+      txSelected: new Set<string>(['missing-tx']),
+      rxSelected: new Set<string>(['missing-rx']),
+    });
+
+    useDataTableStore.setState({
+      datasets: new Map([
+        ['A', datasetA],
+        ['B', datasetB],
+      ]),
+      primaryDatasetId: 'A',
+      comparedDatasetIds: ['B'],
+      data: datasetA.data,
+      tableData: datasetA.data,
+      filteredData: datasetA.data,
+    });
+
+    useDataTableStore.getState().setPrimaryDataset('B');
+
+    expect(useDataTableStore.getState().filteredData).toEqual([]);
+  });
 });
 
 describe('useDataTableStore addDataset color allocation', () => {
@@ -215,9 +297,9 @@ describe('useDataTableStore addDataset color allocation', () => {
 describe('useDataTableStore resetAllFilters', () => {
   it('clears filter model and resets selection', () => {
     useSettingFormStore.setState({
-      freqSelected: 'custom',
-      txSelected: 'custom',
-      rxSelected: 'custom',
+      freqSelected: new Set<string>(['custom']),
+      txSelected: new Set<string>(['custom']),
+      rxSelected: new Set<string>(['custom']),
       resetColumnFilters: false,
     });
 
@@ -235,5 +317,68 @@ describe('useDataTableStore resetAllFilters', () => {
     expect(settingState.txSelected).toBe('all');
     expect(settingState.rxSelected).toBe('all');
     expect(settingState.resetColumnFilters).toBe(true);
+  });
+});
+
+describe('useDataTableStore syncQuickFiltersAcrossDatasets', () => {
+  it('applies the same quick filters to every dataset', () => {
+    const matchingRowA = baseCsemRow;
+    const excludedRowA = {
+      ...baseCsemRow,
+      index: 1,
+      Freq_id: '2',
+      Freq: 2,
+      Tx_id: 2,
+      Rx_id: 2,
+    };
+    const matchingRowB = {
+      ...baseCsemRow,
+      index: 2,
+      Data: 3,
+    };
+    const excludedRowB = {
+      ...baseCsemRow,
+      index: 3,
+      Freq_id: '3',
+      Freq: 3,
+      Tx_id: 3,
+      Rx_id: 3,
+    };
+
+    const datasetA = buildDataset({
+      id: 'A',
+      role: 'primary',
+      data: [matchingRowA, excludedRowA],
+    });
+    const datasetB = buildDataset({
+      id: 'B',
+      data: [matchingRowB, excludedRowB],
+    });
+    const sharedFilterSettings = {
+      freqSelected: new Set<string>(['1']),
+      txSelected: new Set<string>(['1']),
+      rxSelected: new Set<string>(['1']),
+    };
+
+    useDataTableStore.setState({
+      datasets: new Map([
+        ['A', datasetA],
+        ['B', datasetB],
+      ]),
+      primaryDatasetId: 'A',
+      activeTableDatasetId: 'A',
+      data: datasetA.data,
+      tableData: datasetA.data,
+      filteredData: datasetA.data,
+    });
+
+    useDataTableStore.getState().syncQuickFiltersAcrossDatasets(sharedFilterSettings);
+
+    const state = useDataTableStore.getState();
+    expect(state.filteredData).toEqual([matchingRowA]);
+    expect(state.datasets.get('A')?.filteredData).toEqual([matchingRowA]);
+    expect(state.datasets.get('B')?.filteredData).toEqual([matchingRowB]);
+    expect(state.datasets.get('A')?.filterSettings).toEqual(sharedFilterSettings);
+    expect(state.datasets.get('B')?.filterSettings).toEqual(sharedFilterSettings);
   });
 });

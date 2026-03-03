@@ -10,4 +10,10 @@ describe('useSettingFormStore defaults', () => {
     expect(state.yAxisColumn).toBe('Lat_rx');
     expect(state.splitByColumn).toBe('Freq');
   });
+
+  it('disables shared quick filters by default', () => {
+    const state = useSettingFormStore.getState();
+
+    expect(state.applyQuickFiltersGlobally).toBe(false);
+  });
 });
