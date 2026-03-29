@@ -16,6 +16,7 @@ import { SampleDataLoader } from "@/components/custom/SampleDataLoader";
 import { useSettingFormStore, useDataTableStore } from '@/store/settingFormStore';
 import { useWindowStore } from '@/store/windowStore';
 import { Button } from "@/components/ui/button";
+import { isDemoModeEnabled } from '@/demo/demoModeConfig';
 
 export function SettingForm() {
   const {
@@ -25,6 +26,7 @@ export function SettingForm() {
   } = useSettingFormStore();
   const { colDefs } = useDataTableStore();
   const { toggleWindow } = useWindowStore();
+  const isDemoMode = isDemoModeEnabled();
 
   const columnOptions = colDefs
     .filter(col => col.field && col.headerName)
@@ -36,16 +38,35 @@ export function SettingForm() {
   return (
     <div className="w-full overflow-x-auto">
       <form className="sticky flex w-full min-w-[450px] flex-col gap-6 p-4 pt-0">
-        <fieldset className="grid w-full min-w-0 gap-6">
-          <InputFile />
-        </fieldset>
-        <fieldset className="grid w-full min-w-0 gap-6 overflow-hidden rounded-lg border p-4">
-          <legend className="-ml-1 px-1 text-base font-medium">
-            Datasets
-          </legend>
-          <DatasetManager />
-          <SampleDataLoader />
-        </fieldset>
+        {!isDemoMode && (
+          <>
+            <fieldset className="grid w-full min-w-0 gap-6">
+              <InputFile />
+            </fieldset>
+            <fieldset className="grid w-full min-w-0 gap-6 overflow-hidden rounded-lg border p-4">
+              <legend className="-ml-1 px-1 text-base font-medium">
+                Datasets
+              </legend>
+              <DatasetManager />
+              <SampleDataLoader />
+            </fieldset>
+          </>
+        )}
+
+        {isDemoMode && (
+          <fieldset className="grid w-full min-w-0 gap-4 rounded-lg border p-4">
+            <legend className="-ml-1 px-1 text-base font-medium">
+              Demo dataset
+            </legend>
+            <div className="rounded-md border border-dashed bg-muted/30 p-3 text-sm">
+              <p className="font-medium">Shumagin Line 5 Response (.resp)</p>
+              <p className="mt-1 text-muted-foreground">
+                Demo mode now preloads a single response dataset and hides
+                multi-dataset comparison controls.
+              </p>
+            </div>
+          </fieldset>
+        )}
 
         <fieldset className="grid w-full min-w-0 gap-6 rounded-lg border p-4">
           <legend className="-ml-1 px-1 text-base font-medium">

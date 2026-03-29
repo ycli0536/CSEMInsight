@@ -1,17 +1,18 @@
 import { mountApp } from '@/app/mountApp';
+import { getDemoDatasetIds, isDemoModeEnabled } from '@/demo/demoModeConfig';
 import { loadDemoDatasets } from '@/demo/loadDemoData';
 
 const rootElement = document.getElementById('root');
 
 if (rootElement) {
-  const isDemoMode = import.meta.env.VITE_DEMO_MODE === 'true';
+  const isDemoMode = isDemoModeEnabled();
   if (isDemoMode) {
     const baseUrl = import.meta.env.BASE_URL;
     const manifestUrl = `${baseUrl}demo-data/demo-manifest.json`;
     loadDemoDatasets({
       manifestUrl,
       baseUrl,
-      datasetIds: ['shumagin-line5-data', 'shumagin-line5-resp'],
+      datasetIds: getDemoDatasetIds(),
     })
       .catch((error) => {
         console.error('[Demo] Failed to load demo datasets:', error);

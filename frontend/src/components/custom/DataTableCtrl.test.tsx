@@ -77,6 +77,7 @@ vi.mock('@adobe/react-spectrum', () => ({
 describe('DataTableCtrl', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.unstubAllEnvs();
 
     (useSettingFormStore as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
       freqSelected: 'all',
@@ -140,5 +141,13 @@ describe('DataTableCtrl', () => {
       'Please ensure datasets share consistent ID indexing; otherwise, consistency between the selected filters and visualization results is not guaranteed.',
       'warning',
     );
+  });
+
+  it('hides the shared quick filter toggle in demo mode', () => {
+    vi.stubEnv('VITE_DEMO_MODE', 'true');
+
+    render(<DataTableCtrl />);
+
+    expect(screen.queryByText('Apply To All Datasets')).not.toBeInTheDocument();
   });
 });

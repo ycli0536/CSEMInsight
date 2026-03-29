@@ -10,8 +10,10 @@ import type { TxData, RxData } from "@/types";
 import { useSettingFormStore, useDataTableStore } from "@/store/settingFormStore";
 import { useAlertDialog } from "@/hooks/useAlertDialog";
 import { useTheme } from "@/hooks/useTheme";
+import { isDemoModeEnabled } from '@/demo/demoModeConfig';
 
 export function DataTableCtrl() {
+  const isDemoMode = isDemoModeEnabled();
   const { alertState, showAlert, hideAlert, handleConfirm } = useAlertDialog();
   const {
     freqSelected,
@@ -269,16 +271,18 @@ export function DataTableCtrl() {
         <div className="flex-1 flex flex-col space-y-3 min-w-0">
           <Label htmlFor="filter">Quick Filter Options</Label>
 
-          <div className="flex items-center space-x-2">
-            <Switch
-              id="global-quick-filters"
-              checked={applyQuickFiltersGlobally}
-              onCheckedChange={onApplyQuickFiltersGloballyChange}
-            />
-            <Label htmlFor="global-quick-filters" className="text-sm font-medium leading-none">
-              Apply To All Datasets
-            </Label>
-          </div>
+          {!isDemoMode && (
+            <div className="flex items-center space-x-2">
+              <Switch
+                id="global-quick-filters"
+                checked={applyQuickFiltersGlobally}
+                onCheckedChange={onApplyQuickFiltersGloballyChange}
+              />
+              <Label htmlFor="global-quick-filters" className="text-sm font-medium leading-none">
+                Apply To All Datasets
+              </Label>
+            </div>
+          )}
 
           <div className="flex flex-col space-y-3">
             <Label htmlFor="freq">Frequencies (Hz)</Label>

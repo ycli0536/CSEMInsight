@@ -12,20 +12,25 @@ import { useExportData } from "@/hooks/useExportData";
 import { useEffect } from "react";
 import { useAlertDialog } from "@/hooks/useAlertDialog";
 import { CustomAlertDialog } from "@/components/custom/CustomAlertDialog";
+import { getVisibleNavWindowIds, isDemoModeEnabled } from '@/demo/demoModeConfig';
 
 export default function SpatialLayout() {
   const { toggleWindow, windows } = useWindowStore();
   const { exportData, status, message, hasData, resetStatus, activeDatasetName, filteredDataCount } = useExportData();
   const { alertState, showAlert, hideAlert, handleConfirm } = useAlertDialog();
-  const isDemoMode = import.meta.env.VITE_DEMO_MODE === 'true';
+  const isDemoMode = isDemoModeEnabled();
 
-  const navItems = [
+  const allNavItems = [
     { id: "settings", icon: Settings, label: "Settings" },
     { id: "response-plot", icon: Activity, label: "Response" },
     { id: "bathymetry", icon: Waves, label: "Bathymetry" },
     { id: "custom-plot", icon: LineChart, label: "Plot" },
     { id: "misfit-stats", icon: BarChart3, label: "Misfit" },
   ] as const;
+  const visibleNavWindowIds = new Set(getVisibleNavWindowIds(isDemoMode));
+  const navItems = allNavItems.filter((item) =>
+    visibleNavWindowIds.has(item.id as WindowId),
+  );
 
   useEffect(() => {
     if (status === "error" && message) {
