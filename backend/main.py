@@ -3,14 +3,20 @@ import os
 import tempfile
 import uuid
 import json
+from datetime import datetime
 from typing import List
+import numpy as np
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from werkzeug.utils import secure_filename
 from werkzeug.exceptions import ClientDisconnected
 from suesi_depth_reader import process_SuesiDepth_mat_file
+from MARE2DEM_poly_parser import MARE2DEMPolyParser
+from resistivity_file_parser import ResistivityFileParser
 from csem_datafile_parser import CSEMDataFileReader
 from csem_datafile_parser import CSEMDataFileManager
+from csem_datafile_parser import AMPLITUDE_TYPE_CODES
+from csem_datafile_parser import PHASE_TYPE_CODES
 from csem_datafile_parser import calculate_misfit_statistics
 from xyz_datafile_parser import XYZDataFileReader
 from bathymetry_parser import BathymetryParser
@@ -65,6 +71,186 @@ def _parse_csem_datafile(path):
     )
     data_js = csem_datafile_reader.df_to_json(data_rx_tx_df)
     return geometry_info, data_js, csem_data
+
+
+def _json_safe_value(value):
+    if isinstance(value, datetime):
+        return value.isoformat()
+    if isinstance(value, dict):
+        return {key: _json_safe_value(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_json_safe_value(item) for item in value]
+    if isinstance(value, (str, bytes, bytearray)):
+        return value
+    if isinstance(value, np.generic):
+        return value.item()
+    if isinstance(value, np.ndarray):
+        return _json_safe_value(value.tolist())
+    if hasattr(value, "tolist"):
+        return _json_safe_value(value.tolist())
+    return value
+
+
+def _serialize_poly_model(vertices, segments, holes, regions):
+    ordered_vertices = [
+        {
+            "id": vertex_id,
+            "hCoor": vertex["hCoor"],
+            "vCoor": vertex["vCoor"],
+            "attributes": vertex.get("attributes", []),
+            "boundary_marker": vertex.get("boundary_marker"),
+        }
+        for vertex_id, vertex in sorted(vertices.items())
+    ]
+    ordered_segments = [
+        {
+            "id": segment["id"],
+            "endpoint_1": segment["endpoint_1"],
+            "endpoint_2": segment["endpoint_2"],
+            "boundary_marker": segment.get("boundary_marker"),
+        }
+        for segment in sorted(segments, key=lambda item: item["id"])
+    ]
+    ordered_holes = [
+        {
+            "id": hole["id"],
+            "hCoor": hole["hCoor"],
+            "vCoor": hole["vCoor"],
+        }
+        for hole in holes
+    ]
+    ordered_regions = [
+        {
+            "id": region["id"],
+            "hCoor": region["hCoor"],
+            "vCoor": region["vCoor"],
+            "attribute": region.get("attribute"),
+            "max_area": region.get("max_area"),
+        }
+        for region in (regions or [])
+    ]
+    return ordered_vertices, ordered_segments, ordered_holes, ordered_regions
+
+
+def _serialize_resistivity_model(parsed_resistivity):
+    if parsed_resistivity is None:
+        return None
+
+    metadata = {}
+    for key, value in parsed_resistivity.items():
+        if key == "table":
+            continue
+        if isinstance(value, dict) and "value" in value:
+            metadata[key] = _json_safe_value(value["value"])
+
+    resistivity_table = parsed_resistivity.get("table")
+    table = []
+    if resistivity_table is not None:
+        table = [
+            {column: _json_safe_value(row[column]) for column in resistivity_table.columns}
+            for _, row in resistivity_table.iterrows()
+        ]
+
+    return {
+        "metadata": metadata,
+        "table": table,
+    }
+
+
+def _build_region_resistivity_lookup(parsed_resistivity):
+    if parsed_resistivity is None:
+        return {}
+
+    resistivity_table = parsed_resistivity.get("table")
+    if resistivity_table is None or len(resistivity_table.columns) == 0:
+        return {}
+
+    region_column = None
+    rho_column = None
+
+    for column in resistivity_table.columns:
+        normalized = str(column).strip().lower()
+        if normalized in {"region", "#", "!#"}:
+            region_column = column
+        if normalized in {"rho", "rho-z", "rho_h", "rho-h"}:
+            rho_column = column
+
+    if region_column is None:
+        region_column = resistivity_table.columns[0]
+    if rho_column is None:
+        return {}
+
+    lookup = {}
+    for _, row in resistivity_table.iterrows():
+        try:
+            region_id = int(float(row[region_column]))
+            rho_value = float(row[rho_column])
+        except (TypeError, ValueError):
+            continue
+        lookup[region_id] = rho_value
+
+    return lookup
+
+
+def _serialize_constrained_mesh(poly_parser, vertices, segments, regions, parsed_resistivity):
+    triangles, mesh_vertices, _ = poly_parser.create_constrained_delaunay(vertices, segments)
+    ordered_vertex_ids = sorted(mesh_vertices.keys())
+    vertex_index_by_id = {
+        vertex_id: index for index, vertex_id in enumerate(ordered_vertex_ids)
+    }
+    ordered_vertices = [
+        {
+            "id": index,
+            "x": _json_safe_value(mesh_vertices[vertex_id]["hCoor"]),
+            "y": _json_safe_value(mesh_vertices[vertex_id]["vCoor"]),
+        }
+        for index, vertex_id in enumerate(ordered_vertex_ids)
+    ]
+
+    ordered_triangles = [
+        [vertex_index_by_id[int(vertex_id)] for vertex_id in triangle]
+        for triangle in triangles
+    ]
+
+    triangle_region_ids = [None] * len(ordered_triangles)
+    triangle_resistivity_values = [None] * len(ordered_triangles)
+    region_lookup = _build_region_resistivity_lookup(parsed_resistivity)
+    region_resistivity = []
+
+    if regions:
+        triangle_region_numbers, region_index = poly_parser.get_triangle_regions(regions)
+        seen_region_ids = set()
+
+        for triangle_index, region_number in enumerate(triangle_region_numbers):
+            region_number = int(region_number)
+            if region_number <= 0 or region_number - 1 >= len(region_index):
+                continue
+
+            original_region = regions[int(region_index[region_number - 1])]
+            original_region_id = original_region.get("attribute") or original_region["id"]
+            original_region_id = int(original_region_id)
+            triangle_region_ids[triangle_index] = original_region_id
+            rho_value = region_lookup.get(original_region_id)
+            if rho_value is not None:
+                triangle_resistivity_values[triangle_index] = float(rho_value)
+                if original_region_id not in seen_region_ids:
+                    region_resistivity.append(
+                        {
+                            "regionId": original_region_id,
+                            "rho": float(rho_value),
+                        }
+                    )
+                    seen_region_ids.add(original_region_id)
+
+    return {
+        "vertices": ordered_vertices,
+        "triangles": ordered_triangles,
+        "triangleRegionIds": triangle_region_ids,
+        "triangleResistivityValues": triangle_resistivity_values,
+        "regionResistivity": sorted(
+            region_resistivity, key=lambda item: item["regionId"]
+        ),
+    }
 
 
 @app.route("/api/upload-xyz", methods=["POST"])
@@ -132,6 +318,73 @@ def upload_data_file():
                 return jsonify({"error": traceback.format_exc()}), 500
 
     return "Invalid file format"
+
+
+@app.route("/api/upload-triangle-model", methods=["POST"])
+def upload_triangle_model_file():
+    poly_file = request.files.get("poly_file")
+    if poly_file is None:
+        return jsonify({"error": "No .poly file provided"}), 400
+    if poly_file.filename == "":
+        return jsonify({"error": "No selected .poly file"}), 400
+    if not poly_file.filename.endswith(".poly"):
+        return jsonify({"error": "Invalid .poly file format"}), 400
+
+    resistivity_file = request.files.get("resistivity_file")
+    if (
+        resistivity_file is not None
+        and resistivity_file.filename != ""
+        and not resistivity_file.filename.endswith(".resistivity")
+    ):
+        return jsonify({"error": "Invalid .resistivity file format"}), 400
+
+    try:
+        temp_dir = tempfile.gettempdir()
+        poly_path = _save_uploaded_file(poly_file, temp_dir)
+        poly_parser = MARE2DEMPolyParser()
+        vertices, segments, holes, regions = poly_parser.read_poly_file(poly_path)
+        (
+            ordered_vertices,
+            ordered_segments,
+            ordered_holes,
+            ordered_regions,
+        ) = _serialize_poly_model(vertices, segments, holes, regions)
+
+        parsed_resistivity = None
+        resistivity_payload = None
+        resistivity_file_name = None
+        if resistivity_file is not None and resistivity_file.filename != "":
+            resistivity_path = _save_uploaded_file(resistivity_file, temp_dir)
+            resistivity_parser = ResistivityFileParser()
+            parsed_resistivity = resistivity_parser.parse_resistivity_file(
+                resistivity_path, rho_parse=True
+            )
+            resistivity_payload = _serialize_resistivity_model(parsed_resistivity)
+            resistivity_file_name = resistivity_file.filename
+
+        constrained_mesh = _serialize_constrained_mesh(
+            poly_parser,
+            vertices,
+            segments,
+            regions,
+            parsed_resistivity,
+        )
+
+        return jsonify(
+            {
+                "polyFileName": poly_file.filename,
+                "resistivityFileName": resistivity_file_name,
+                "vertices": ordered_vertices,
+                "segments": ordered_segments,
+                "holes": ordered_holes,
+                "regions": ordered_regions,
+                "resistivity": resistivity_payload,
+                "constrainedMesh": constrained_mesh,
+            }
+        )
+    except Exception:
+        traceback.print_exc()
+        return jsonify({"error": traceback.format_exc()}), 500
 
 
 @app.route("/api/upload-multiple-data", methods=["POST"])

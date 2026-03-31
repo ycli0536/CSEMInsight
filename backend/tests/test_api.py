@@ -7,6 +7,7 @@ import json
 import io
 import os
 
+import pandas as pd
 import pytest
 
 import main as backend_main
@@ -230,6 +231,123 @@ class TestUploadMultipleData:
         assert "Invalid file format" in response.get_json()["error"]
 
 
+class TestUploadTriangleModel:
+    """Tests for the /api/upload-triangle-model endpoint."""
+
+    SIMPLE_POLY = b"""4 2 0 0
+1 0 0
+2 10 0
+3 10 10
+4 0 10
+4 0
+1 1 2
+2 2 3
+3 3 4
+4 4 1
+0
+1
+1 5 5 1 -1
+"""
+
+    SIMPLE_RESISTIVITY = b""" Format:                         MARE2DEM_1.1
+ Model File:                     simple.poly
+ Number of regions:              1
+!#        Rho           Param      Lower        Upper         Prej         Weight
+       1   1.0000E+02        1   0.0000E+00   0.0000E+00   0.0000E+00   0.0000E+00
+"""
+
+    def test_upload_triangle_model_returns_poly_and_optional_resistivity(
+        self, app_client
+    ):
+        """Test uploading a valid .poly and .resistivity file pair."""
+        data = {
+            "poly_file": (io.BytesIO(self.SIMPLE_POLY), "simple.poly"),
+            "resistivity_file": (
+                io.BytesIO(self.SIMPLE_RESISTIVITY),
+                "simple.resistivity",
+            ),
+        }
+
+        response = app_client.post(
+            "/api/upload-triangle-model",
+            data=data,
+            content_type="multipart/form-data",
+        )
+
+        assert response.status_code == 200
+        payload = response.get_json()
+        assert payload["polyFileName"] == "simple.poly"
+        assert payload["resistivityFileName"] == "simple.resistivity"
+        assert len(payload["vertices"]) == 4
+        assert len(payload["segments"]) == 4
+        assert len(payload["regions"]) == 1
+        assert payload["resistivity"] is not None
+        assert payload["resistivity"]["metadata"]["Number of regions"] == 1
+        assert len(payload["resistivity"]["table"]) == 1
+
+    def test_upload_triangle_model_returns_constrained_mesh_with_region_rho(
+        self, app_client
+    ):
+        """Successful uploads should include constrained mesh coloring data."""
+        data = {
+            "poly_file": (io.BytesIO(self.SIMPLE_POLY), "simple.poly"),
+            "resistivity_file": (
+                io.BytesIO(self.SIMPLE_RESISTIVITY),
+                "simple.resistivity",
+            ),
+        }
+
+        response = app_client.post(
+            "/api/upload-triangle-model",
+            data=data,
+            content_type="multipart/form-data",
+        )
+
+        assert response.status_code == 200
+        payload = response.get_json()
+        constrained_mesh = payload["constrainedMesh"]
+
+        assert constrained_mesh is not None
+        assert len(constrained_mesh["vertices"]) == 4
+        assert len(constrained_mesh["triangles"]) == 2
+        assert constrained_mesh["triangleRegionIds"] == [1, 1]
+        assert constrained_mesh["triangleResistivityValues"] == [100.0, 100.0]
+        assert constrained_mesh["regionResistivity"] == [{"regionId": 1, "rho": 100.0}]
+
+    def test_upload_triangle_model_accepts_poly_without_resistivity(self, app_client):
+        """Test uploading only a .poly file."""
+        data = {
+            "poly_file": (io.BytesIO(self.SIMPLE_POLY), "simple.poly"),
+        }
+
+        response = app_client.post(
+            "/api/upload-triangle-model",
+            data=data,
+            content_type="multipart/form-data",
+        )
+
+        assert response.status_code == 200
+        payload = response.get_json()
+        assert payload["polyFileName"] == "simple.poly"
+        assert payload["resistivityFileName"] is None
+        assert payload["resistivity"] is None
+
+    def test_upload_triangle_model_rejects_invalid_extension(self, app_client):
+        """Test invalid file extensions are rejected."""
+        data = {
+            "poly_file": (io.BytesIO(b"bad"), "simple.txt"),
+        }
+
+        response = app_client.post(
+            "/api/upload-triangle-model",
+            data=data,
+            content_type="multipart/form-data",
+        )
+
+        assert response.status_code == 400
+        assert "Invalid .poly file format" in response.get_json()["error"]
+
+
 class TestMisfitStats:
     """Tests for the /api/misfit_stats endpoint."""
 
@@ -416,6 +534,25 @@ class TestWriteDataFile:
         # Check CORS headers
         assert "Access-Control-Allow-Origin" in response.headers
         assert "Access-Control-Allow-Methods" in response.headers
+
+
+class TestTriangleModelSerialization:
+    """Tests for triangle-model serialization helpers."""
+
+    def test_serialize_resistivity_model_handles_duplicate_column_series(self):
+        """Duplicate column labels should not crash resistivity serialization."""
+        parsed = {
+            "Number of regions": {"value": 1, "comment": None, "line": ""},
+            "table": pd.DataFrame(
+                [[1, 100.0, 200.0]],
+                columns=["Region", "Rho", "Rho"],
+            ),
+        }
+
+        result = backend_main._serialize_resistivity_model(parsed)
+
+        assert result["metadata"]["Number of regions"] == 1
+        assert result["table"] == [{"Region": 1.0, "Rho": [100.0, 200.0]}]
 
 
 class TestConfigHelpers:

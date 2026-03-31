@@ -1,0 +1,630 @@
+import * as THREE from 'three';
+
+import {
+  createTriangleCameraState,
+  getTriangleCameraWorldSize,
+  panTriangleCameraByPixels,
+  projectScreenPointToWorldWithCamera,
+  zoomTriangleCamera,
+} from '@/services/triangleCamera';
+import {
+  buildTriangleRegionHighlightPositions,
+  buildTriangleSceneBuffers,
+  buildTriangleSegmentPositions,
+} from '@/services/triangleSceneBuffers';
+import { findNearestSegment, findNearestVertex } from '@/services/triangleViewport';
+import type {
+  TriangleCameraState,
+  TriangleHoverState,
+  TriangleLayerVisibility,
+  TriangleMesh,
+  TriangleMeshPoint,
+  TriangleModelResponse,
+} from '@/types';
+
+const CAMERA_Z = 10;
+const MAX_PIXEL_RATIO = 2;
+
+function getCanvasSize(canvas: HTMLCanvasElement) {
+  return {
+    width: Math.max(canvas.clientWidth || canvas.width || 1, 1),
+    height: Math.max(canvas.clientHeight || canvas.height || 1, 1),
+  };
+}
+
+function applyTriangleCamera(
+  camera: THREE.OrthographicCamera,
+  state: TriangleCameraState,
+) {
+  camera.left = -state.baseWidth / 2;
+  camera.right = state.baseWidth / 2;
+  camera.top = state.baseHeight / 2;
+  camera.bottom = -state.baseHeight / 2;
+  camera.zoom = state.zoom;
+  camera.position.set(state.centerX, state.centerY, CAMERA_Z);
+  camera.up.set(0, -1, 0);
+  camera.lookAt(state.centerX, state.centerY, 0);
+  camera.updateProjectionMatrix();
+}
+
+function updatePositionGeometry(
+  geometry: THREE.BufferGeometry,
+  positions: Float32Array,
+) {
+  geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+  geometry.computeBoundingSphere();
+}
+
+function updateLineHighlight(
+  geometry: THREE.BufferGeometry,
+  start: TriangleMeshPoint,
+  end: TriangleMeshPoint,
+) {
+  updatePositionGeometry(
+    geometry,
+    new Float32Array([start.x, start.y, 0, end.x, end.y, 0]),
+  );
+}
+
+function updatePointHighlight(geometry: THREE.BufferGeometry, point: TriangleMeshPoint) {
+  updatePositionGeometry(geometry, new Float32Array([point.x, point.y, 0]));
+}
+
+function updateTriangleHighlight(geometry: THREE.BufferGeometry, positions: Float32Array) {
+  geometry.setAttribute(
+    'position',
+    new THREE.BufferAttribute(positions, 3),
+  );
+  geometry.setIndex(null);
+  geometry.computeBoundingSphere();
+}
+
+export interface TriangleRegionHoverHit {
+  triangleIndex: number;
+  regionId: number | null;
+  resistivityValue: number | null;
+}
+
+export function buildTriangleHoverState(options: {
+  point: TriangleHoverState['point'];
+  regionHit: TriangleRegionHoverHit | null;
+  vertex: TriangleMeshPoint | null;
+  segment: TriangleModelSegment | null;
+}): TriangleHoverState {
+  const { point, regionHit, vertex, segment } = options;
+
+  if (!point) {
+    return {
+      point: null,
+      triangleIndex: null,
+      regionId: null,
+      resistivityValue: null,
+      vertex: null,
+      segment: null,
+    };
+  }
+
+  return {
+    point,
+    triangleIndex: regionHit?.triangleIndex ?? null,
+    regionId: regionHit?.regionId ?? null,
+    resistivityValue: regionHit?.resistivityValue ?? null,
+    vertex,
+    segment,
+  };
+}
+
+export interface TriangleModelViewer {
+  dispose(): void;
+  resetView(): void;
+  resize(): void;
+  setData(data: { mesh: TriangleMesh; model: TriangleModelResponse }): void;
+  setLayerVisibility(visibility: TriangleLayerVisibility): void;
+}
+
+export function createTriangleModelViewer(options: {
+  canvas: HTMLCanvasElement;
+  onHoverChange: (hover: TriangleHoverState) => void;
+}): TriangleModelViewer {
+  const { canvas, onHoverChange } = options;
+  const renderer = new THREE.WebGLRenderer({
+    alpha: true,
+    antialias: true,
+    canvas,
+  });
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(0xf8fafc);
+
+  const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 100);
+  const raycaster = new THREE.Raycaster();
+
+  const triangleGroup = new THREE.Group();
+  const triangleFillGeometry = new THREE.BufferGeometry();
+  const triangleFillMaterial = new THREE.MeshBasicMaterial({
+    depthWrite: false,
+    opacity: 0.12,
+    polygonOffset: true,
+    polygonOffsetFactor: 1,
+    polygonOffsetUnits: 1,
+    side: THREE.DoubleSide,
+    transparent: true,
+    vertexColors: true,
+  });
+  const triangleFillMesh = new THREE.Mesh(triangleFillGeometry, triangleFillMaterial);
+  triangleFillMesh.renderOrder = 1;
+
+  const triangleEdgeGeometry = new THREE.BufferGeometry();
+  const triangleEdgeMaterial = new THREE.LineBasicMaterial({
+    color: 0x0284c7,
+    opacity: 0.48,
+    transparent: true,
+  });
+  const triangleEdges = new THREE.LineSegments(triangleEdgeGeometry, triangleEdgeMaterial);
+  triangleEdges.renderOrder = 2;
+
+  triangleGroup.add(triangleFillMesh);
+  triangleGroup.add(triangleEdges);
+  scene.add(triangleGroup);
+
+  const segmentGeometry = new THREE.BufferGeometry();
+  const segmentMaterial = new THREE.LineBasicMaterial({
+    color: 0x000000,
+    opacity: 0.95,
+    transparent: true,
+  });
+  const segmentLines = new THREE.LineSegments(segmentGeometry, segmentMaterial);
+  segmentLines.renderOrder = 3;
+  scene.add(segmentLines);
+
+  const pointGeometry = new THREE.BufferGeometry();
+  const pointMaterial = new THREE.PointsMaterial({
+    color: 0x0f172a,
+    size: 5,
+    sizeAttenuation: false,
+  });
+  const points = new THREE.Points(pointGeometry, pointMaterial);
+  points.renderOrder = 4;
+  scene.add(points);
+
+  const hoverTriangleGeometry = new THREE.BufferGeometry();
+  const hoverTriangleMaterial = new THREE.MeshBasicMaterial({
+    color: 0x2563eb,
+    depthWrite: false,
+    opacity: 0.2,
+    side: THREE.DoubleSide,
+    transparent: true,
+  });
+  const hoverTriangle = new THREE.Mesh(hoverTriangleGeometry, hoverTriangleMaterial);
+  hoverTriangle.visible = false;
+  hoverTriangle.renderOrder = 5;
+  scene.add(hoverTriangle);
+
+  const hoverSegmentGeometry = new THREE.BufferGeometry();
+  const hoverSegmentMaterial = new THREE.LineBasicMaterial({
+    color: 0x000000,
+    opacity: 0.96,
+    transparent: true,
+  });
+  const hoverSegment = new THREE.LineSegments(
+    hoverSegmentGeometry,
+    hoverSegmentMaterial,
+  );
+  hoverSegment.visible = false;
+  hoverSegment.renderOrder = 6;
+  scene.add(hoverSegment);
+
+  const hoverPointGeometry = new THREE.BufferGeometry();
+  const hoverPointMaterial = new THREE.PointsMaterial({
+    color: 0x000000,
+    size: 8,
+    sizeAttenuation: false,
+  });
+  const hoverPoint = new THREE.Points(hoverPointGeometry, hoverPointMaterial);
+  hoverPoint.visible = false;
+  hoverPoint.renderOrder = 7;
+  scene.add(hoverPoint);
+
+  let canvasSize = getCanvasSize(canvas);
+  let cameraState: TriangleCameraState = {
+    baseHeight: 2,
+    baseWidth: 2,
+    centerX: 0,
+    centerY: 0,
+    zoom: 1,
+  };
+  let mesh: TriangleMesh | null = null;
+  let model: TriangleModelResponse | null = null;
+  let initialCameraState: TriangleCameraState | null = null;
+  let dragState:
+    | {
+        lastX: number;
+        lastY: number;
+        pointerId: number;
+      }
+    | null = null;
+
+  const sourceVertexById = new Map<number, TriangleMeshPoint>();
+
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, MAX_PIXEL_RATIO));
+  renderer.setSize(canvasSize.width, canvasSize.height, false);
+  applyTriangleCamera(camera, cameraState);
+  canvas.style.touchAction = 'none';
+  canvas.style.cursor = 'grab';
+
+  const renderScene = () => {
+    renderer.render(scene, camera);
+  };
+
+  const clearHoverVisuals = () => {
+    hoverPoint.visible = false;
+    hoverSegment.visible = false;
+    hoverTriangle.visible = false;
+  };
+
+  const setHoverState = (nextHover: TriangleHoverState) => {
+    onHoverChange(nextHover);
+  };
+
+  const getRelativePoint = (clientX: number, clientY: number) => {
+    const rect = canvas.getBoundingClientRect();
+
+    return {
+      rect,
+      point: {
+        x: clientX - rect.left,
+        y: clientY - rect.top,
+      },
+    };
+  };
+
+  const updateHover = (clientX: number, clientY: number) => {
+    if (!mesh || !model) {
+      return;
+    }
+
+    const { rect, point } = getRelativePoint(clientX, clientY);
+    if (rect.width <= 0 || rect.height <= 0) {
+      return;
+    }
+
+    const worldPoint = projectScreenPointToWorldWithCamera(point, rect, camera);
+    if (!worldPoint) {
+      clearHoverVisuals();
+      setHoverState({
+        point: null,
+        triangleIndex: null,
+        regionId: null,
+        resistivityValue: null,
+        vertex: null,
+        segment: null,
+      });
+      renderScene();
+      return;
+    }
+    const worldSize = getTriangleCameraWorldSize(cameraState);
+    const tolerance = Math.max(worldSize.width, worldSize.height) * 0.02;
+    const nearestVertex = findNearestVertex(mesh.points, worldPoint, tolerance);
+    const nearestSegment = nearestVertex
+      ? null
+      : findNearestSegment(model.segments, sourceVertexById, worldPoint, tolerance);
+    raycaster.setFromCamera(
+      {
+        x: (point.x / rect.width) * 2 - 1,
+        y: -(point.y / rect.height) * 2 + 1,
+      },
+      camera,
+    );
+    const hit = raycaster.intersectObject(triangleFillMesh, false)[0];
+    const regionHit: TriangleRegionHoverHit | null =
+      hit?.faceIndex !== undefined && mesh.triangles[hit.faceIndex]
+        ? {
+            triangleIndex: hit.faceIndex,
+            regionId: mesh.triangleRegionIds?.[hit.faceIndex] ?? null,
+            resistivityValue: mesh.triangleResistivityValues?.[hit.faceIndex] ?? null,
+          }
+        : null;
+
+    clearHoverVisuals();
+
+    if (nearestVertex) {
+      updatePointHighlight(hoverPointGeometry, nearestVertex);
+      hoverPoint.visible = true;
+      setHoverState(
+        buildTriangleHoverState({
+          point: worldPoint,
+          regionHit,
+          vertex: nearestVertex,
+          segment: null,
+        }),
+      );
+      renderScene();
+      return;
+    }
+
+    if (nearestSegment) {
+      const start = sourceVertexById.get(nearestSegment.endpoint_1);
+      const end = sourceVertexById.get(nearestSegment.endpoint_2);
+
+      if (start && end) {
+        updateLineHighlight(hoverSegmentGeometry, start, end);
+        hoverSegment.visible = true;
+      }
+
+      setHoverState(
+        buildTriangleHoverState({
+          point: worldPoint,
+          regionHit,
+          vertex: null,
+          segment: nearestSegment,
+        }),
+      );
+      renderScene();
+      return;
+    }
+
+    if (regionHit) {
+      updateTriangleHighlight(
+        hoverTriangleGeometry,
+        buildTriangleRegionHighlightPositions(mesh, regionHit.triangleIndex),
+      );
+      hoverTriangle.visible = true;
+      setHoverState(
+        buildTriangleHoverState({
+          point: worldPoint,
+          regionHit,
+          vertex: null,
+          segment: null,
+        }),
+      );
+      renderScene();
+      return;
+    }
+
+    setHoverState(
+      buildTriangleHoverState({
+        point: worldPoint,
+        regionHit: null,
+        vertex: null,
+        segment: null,
+      }),
+    );
+    renderScene();
+  };
+
+  const handlePointerDown = (event: PointerEvent) => {
+    if (!mesh) {
+      return;
+    }
+
+    dragState = {
+      lastX: event.clientX,
+      lastY: event.clientY,
+      pointerId: event.pointerId,
+    };
+
+    if (typeof canvas.setPointerCapture === 'function') {
+      canvas.setPointerCapture(event.pointerId);
+    }
+    canvas.style.cursor = 'grabbing';
+  };
+
+  const handlePointerMove = (event: PointerEvent) => {
+    if (!mesh || !model) {
+      return;
+    }
+
+    if (dragState && dragState.pointerId === event.pointerId) {
+      const rect = canvas.getBoundingClientRect();
+      cameraState = panTriangleCameraByPixels(
+        cameraState,
+        {
+          dx: event.clientX - dragState.lastX,
+          dy: event.clientY - dragState.lastY,
+        },
+        rect,
+      );
+      dragState = {
+        ...dragState,
+        lastX: event.clientX,
+        lastY: event.clientY,
+      };
+      applyTriangleCamera(camera, cameraState);
+      renderScene();
+      return;
+    }
+
+    updateHover(event.clientX, event.clientY);
+  };
+
+  const handlePointerUp = (event: PointerEvent) => {
+    if (dragState && dragState.pointerId === event.pointerId) {
+      dragState = null;
+      canvas.style.cursor = 'grab';
+      if (typeof canvas.releasePointerCapture === 'function') {
+        try {
+          canvas.releasePointerCapture(event.pointerId);
+        } catch {
+          // Pointer capture is not fully implemented in every test/browser context.
+        }
+      }
+      updateHover(event.clientX, event.clientY);
+    }
+  };
+
+  const handlePointerLeave = () => {
+    if (dragState) {
+      return;
+    }
+
+    clearHoverVisuals();
+    setHoverState({
+      point: null,
+      triangleIndex: null,
+      regionId: null,
+      resistivityValue: null,
+      vertex: null,
+      segment: null,
+    });
+    renderScene();
+  };
+
+  const handleWheel = (event: WheelEvent) => {
+    if (!mesh) {
+      return;
+    }
+
+    event.preventDefault();
+    const { rect, point } = getRelativePoint(event.clientX, event.clientY);
+    if (rect.width <= 0 || rect.height <= 0) {
+      return;
+    }
+
+    const anchor = projectScreenPointToWorldWithCamera(point, rect, camera);
+    if (!anchor) {
+      return;
+    }
+    cameraState = zoomTriangleCamera(
+      cameraState,
+      event.deltaY < 0 ? 1.12 : 1 / 1.12,
+      anchor,
+    );
+    applyTriangleCamera(camera, cameraState);
+    updateHover(event.clientX, event.clientY);
+  };
+
+  const handleDoubleClick = () => {
+    if (!initialCameraState) {
+      return;
+    }
+
+    cameraState = { ...initialCameraState };
+    applyTriangleCamera(camera, cameraState);
+    renderScene();
+  };
+
+  canvas.addEventListener('pointerdown', handlePointerDown);
+  canvas.addEventListener('pointermove', handlePointerMove);
+  canvas.addEventListener('pointerup', handlePointerUp);
+  canvas.addEventListener('pointercancel', handlePointerUp);
+  canvas.addEventListener('pointerleave', handlePointerLeave);
+  canvas.addEventListener('wheel', handleWheel, { passive: false });
+  canvas.addEventListener('dblclick', handleDoubleClick);
+
+  return {
+    dispose() {
+      canvas.removeEventListener('pointerdown', handlePointerDown);
+      canvas.removeEventListener('pointermove', handlePointerMove);
+      canvas.removeEventListener('pointerup', handlePointerUp);
+      canvas.removeEventListener('pointercancel', handlePointerUp);
+      canvas.removeEventListener('pointerleave', handlePointerLeave);
+      canvas.removeEventListener('wheel', handleWheel);
+      canvas.removeEventListener('dblclick', handleDoubleClick);
+
+      triangleFillGeometry.dispose();
+      triangleFillMaterial.dispose();
+      triangleEdgeGeometry.dispose();
+      triangleEdgeMaterial.dispose();
+      segmentGeometry.dispose();
+      segmentMaterial.dispose();
+      pointGeometry.dispose();
+      pointMaterial.dispose();
+      hoverTriangleGeometry.dispose();
+      hoverTriangleMaterial.dispose();
+      hoverSegmentGeometry.dispose();
+      hoverSegmentMaterial.dispose();
+      hoverPointGeometry.dispose();
+      hoverPointMaterial.dispose();
+      renderer.dispose();
+    },
+    resetView() {
+      if (!initialCameraState) {
+        return;
+      }
+
+      cameraState = { ...initialCameraState };
+      applyTriangleCamera(camera, cameraState);
+      renderScene();
+    },
+    resize() {
+      canvasSize = getCanvasSize(canvas);
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, MAX_PIXEL_RATIO));
+      renderer.setSize(canvasSize.width, canvasSize.height, false);
+
+      if (mesh) {
+        const fittedState = createTriangleCameraState(mesh.bounds, canvasSize);
+        cameraState = {
+          ...cameraState,
+          baseWidth: fittedState.baseWidth,
+          baseHeight: fittedState.baseHeight,
+        };
+        initialCameraState = {
+          ...fittedState,
+        };
+        applyTriangleCamera(camera, cameraState);
+      }
+
+      renderScene();
+    },
+    setData(data) {
+      mesh = data.mesh;
+      model = data.model;
+      sourceVertexById.clear();
+      model.vertices.forEach((vertex) => {
+        sourceVertexById.set(vertex.id, {
+          id: vertex.id,
+          x: vertex.hCoor,
+          y: vertex.vCoor,
+        });
+      });
+
+      const buffers = buildTriangleSceneBuffers(mesh);
+      const sourcePoints = model.vertices.map((vertex) => ({
+        id: vertex.id,
+        x: vertex.hCoor,
+        y: vertex.vCoor,
+      }));
+
+      updatePositionGeometry(triangleFillGeometry, buffers.triangleFillPositions);
+      triangleFillGeometry.setAttribute(
+        'color',
+        new THREE.BufferAttribute(buffers.triangleFillColors, 3),
+      );
+      triangleFillGeometry.setIndex(null);
+      const hasResistivityColors =
+        mesh.source === 'constrained' &&
+        (mesh.triangleResistivityValues ?? []).some((value) => value !== null);
+      triangleFillMaterial.opacity =
+        hasResistivityColors ? 1 : mesh.source === 'constrained' ? 0.22 : 0.12;
+      triangleEdgeMaterial.opacity =
+        hasResistivityColors ? 0 : mesh.source === 'constrained' ? 0.18 : 0.48;
+      segmentMaterial.opacity = hasResistivityColors ? 0.72 : 0.95;
+
+      updatePositionGeometry(triangleEdgeGeometry, buffers.triangleEdgePositions);
+      updatePositionGeometry(
+        segmentGeometry,
+        buildTriangleSegmentPositions(sourcePoints, model.segments),
+      );
+      updatePositionGeometry(pointGeometry, buffers.pointPositions);
+
+      cameraState = createTriangleCameraState(mesh.bounds, canvasSize);
+      initialCameraState = { ...cameraState };
+      applyTriangleCamera(camera, cameraState);
+      clearHoverVisuals();
+      setHoverState({
+        point: null,
+        triangleIndex: null,
+        regionId: null,
+        resistivityValue: null,
+        vertex: null,
+        segment: null,
+      });
+      renderScene();
+    },
+    setLayerVisibility(visibility) {
+      triangleGroup.visible = visibility.triangles;
+      segmentLines.visible = visibility.segments;
+      points.visible = visibility.vertices;
+      renderScene();
+    },
+  };
+}
