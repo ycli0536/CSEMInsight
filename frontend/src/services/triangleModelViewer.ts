@@ -38,11 +38,11 @@ function applyTriangleCamera(
 ) {
   camera.left = -state.baseWidth / 2;
   camera.right = state.baseWidth / 2;
-  camera.top = state.baseHeight / 2;
-  camera.bottom = -state.baseHeight / 2;
+  camera.top = -state.baseHeight / 2;
+  camera.bottom = state.baseHeight / 2;
   camera.zoom = state.zoom;
   camera.position.set(state.centerX, state.centerY, CAMERA_Z);
-  camera.up.set(0, -1, 0);
+  camera.up.set(0, 1, 0);
   camera.lookAt(state.centerX, state.centerY, 0);
   camera.updateProjectionMatrix();
 }
@@ -122,11 +122,26 @@ export interface TriangleModelViewer {
   setLayerVisibility(visibility: TriangleLayerVisibility): void;
 }
 
+export interface TriangleViewportView {
+  cameraState: TriangleCameraState;
+  canvasSize: {
+    height: number;
+    width: number;
+  };
+}
+
 export function createTriangleModelViewer(options: {
   canvas: HTMLCanvasElement;
+  interactionTarget?: HTMLElement;
   onHoverChange: (hover: TriangleHoverState) => void;
+  onViewChange?: (view: TriangleViewportView) => void;
 }): TriangleModelViewer {
-  const { canvas, onHoverChange } = options;
+  const {
+    canvas,
+    interactionTarget = canvas,
+    onHoverChange,
+    onViewChange,
+  } = options;
   const renderer = new THREE.WebGLRenderer({
     alpha: true,
     antialias: true,
@@ -248,11 +263,18 @@ export function createTriangleModelViewer(options: {
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, MAX_PIXEL_RATIO));
   renderer.setSize(canvasSize.width, canvasSize.height, false);
   applyTriangleCamera(camera, cameraState);
-  canvas.style.touchAction = 'none';
-  canvas.style.cursor = 'grab';
+  interactionTarget.style.touchAction = 'none';
+  interactionTarget.style.cursor = 'grab';
 
   const renderScene = () => {
     renderer.render(scene, camera);
+  };
+
+  const publishView = () => {
+    onViewChange?.({
+      cameraState: { ...cameraState },
+      canvasSize: { ...canvasSize },
+    });
   };
 
   const clearHoverVisuals = () => {
@@ -283,7 +305,24 @@ export function createTriangleModelViewer(options: {
     }
 
     const { rect, point } = getRelativePoint(clientX, clientY);
-    if (rect.width <= 0 || rect.height <= 0) {
+    if (
+      rect.width <= 0 ||
+      rect.height <= 0 ||
+      point.x < 0 ||
+      point.x > rect.width ||
+      point.y < 0 ||
+      point.y > rect.height
+    ) {
+      clearHoverVisuals();
+      setHoverState({
+        point: null,
+        triangleIndex: null,
+        regionId: null,
+        resistivityValue: null,
+        vertex: null,
+        segment: null,
+      });
+      renderScene();
       return;
     }
 
@@ -402,10 +441,10 @@ export function createTriangleModelViewer(options: {
       pointerId: event.pointerId,
     };
 
-    if (typeof canvas.setPointerCapture === 'function') {
-      canvas.setPointerCapture(event.pointerId);
+    if (typeof interactionTarget.setPointerCapture === 'function') {
+      interactionTarget.setPointerCapture(event.pointerId);
     }
-    canvas.style.cursor = 'grabbing';
+    interactionTarget.style.cursor = 'grabbing';
   };
 
   const handlePointerMove = (event: PointerEvent) => {
@@ -429,6 +468,7 @@ export function createTriangleModelViewer(options: {
         lastY: event.clientY,
       };
       applyTriangleCamera(camera, cameraState);
+      publishView();
       renderScene();
       return;
     }
@@ -439,10 +479,10 @@ export function createTriangleModelViewer(options: {
   const handlePointerUp = (event: PointerEvent) => {
     if (dragState && dragState.pointerId === event.pointerId) {
       dragState = null;
-      canvas.style.cursor = 'grab';
-      if (typeof canvas.releasePointerCapture === 'function') {
+      interactionTarget.style.cursor = 'grab';
+      if (typeof interactionTarget.releasePointerCapture === 'function') {
         try {
-          canvas.releasePointerCapture(event.pointerId);
+          interactionTarget.releasePointerCapture(event.pointerId);
         } catch {
           // Pointer capture is not fully implemented in every test/browser context.
         }
@@ -489,6 +529,7 @@ export function createTriangleModelViewer(options: {
       anchor,
     );
     applyTriangleCamera(camera, cameraState);
+    publishView();
     updateHover(event.clientX, event.clientY);
   };
 
@@ -499,26 +540,27 @@ export function createTriangleModelViewer(options: {
 
     cameraState = { ...initialCameraState };
     applyTriangleCamera(camera, cameraState);
+    publishView();
     renderScene();
   };
 
-  canvas.addEventListener('pointerdown', handlePointerDown);
-  canvas.addEventListener('pointermove', handlePointerMove);
-  canvas.addEventListener('pointerup', handlePointerUp);
-  canvas.addEventListener('pointercancel', handlePointerUp);
-  canvas.addEventListener('pointerleave', handlePointerLeave);
+  interactionTarget.addEventListener('pointerdown', handlePointerDown);
+  interactionTarget.addEventListener('pointermove', handlePointerMove);
+  interactionTarget.addEventListener('pointerup', handlePointerUp);
+  interactionTarget.addEventListener('pointercancel', handlePointerUp);
+  interactionTarget.addEventListener('pointerleave', handlePointerLeave);
   canvas.addEventListener('wheel', handleWheel, { passive: false });
-  canvas.addEventListener('dblclick', handleDoubleClick);
+  interactionTarget.addEventListener('dblclick', handleDoubleClick);
 
   return {
     dispose() {
-      canvas.removeEventListener('pointerdown', handlePointerDown);
-      canvas.removeEventListener('pointermove', handlePointerMove);
-      canvas.removeEventListener('pointerup', handlePointerUp);
-      canvas.removeEventListener('pointercancel', handlePointerUp);
-      canvas.removeEventListener('pointerleave', handlePointerLeave);
+      interactionTarget.removeEventListener('pointerdown', handlePointerDown);
+      interactionTarget.removeEventListener('pointermove', handlePointerMove);
+      interactionTarget.removeEventListener('pointerup', handlePointerUp);
+      interactionTarget.removeEventListener('pointercancel', handlePointerUp);
+      interactionTarget.removeEventListener('pointerleave', handlePointerLeave);
       canvas.removeEventListener('wheel', handleWheel);
-      canvas.removeEventListener('dblclick', handleDoubleClick);
+      interactionTarget.removeEventListener('dblclick', handleDoubleClick);
 
       triangleFillGeometry.dispose();
       triangleFillMaterial.dispose();
@@ -543,6 +585,7 @@ export function createTriangleModelViewer(options: {
 
       cameraState = { ...initialCameraState };
       applyTriangleCamera(camera, cameraState);
+      publishView();
       renderScene();
     },
     resize() {
@@ -563,6 +606,7 @@ export function createTriangleModelViewer(options: {
         applyTriangleCamera(camera, cameraState);
       }
 
+      publishView();
       renderScene();
     },
     setData(data) {
@@ -609,6 +653,7 @@ export function createTriangleModelViewer(options: {
       cameraState = createTriangleCameraState(mesh.bounds, canvasSize);
       initialCameraState = { ...cameraState };
       applyTriangleCamera(camera, cameraState);
+      publishView();
       clearHoverVisuals();
       setHoverState({
         point: null,

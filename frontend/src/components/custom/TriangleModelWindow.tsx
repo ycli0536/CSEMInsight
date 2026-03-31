@@ -19,10 +19,16 @@ import {
 import { formatTriangleHoverSummary } from '@/services/triangleModelHoverSummary';
 import { buildTriangleMeshFromModel } from '@/services/triangleModelMesh';
 import {
+  buildTriangleViewportAxes,
+  TRIANGLE_VIEWPORT_AXIS_GUTTERS,
+} from '@/services/triangleViewportAxes';
+import {
   createTriangleModelViewer,
   type TriangleModelViewer,
+  type TriangleViewportView,
 } from '@/services/triangleModelViewer';
 import type {
+  TriangleHoverState,
   TriangleLayerVisibility,
   TriangleMesh,
   TriangleModelResponse,
@@ -80,6 +86,7 @@ export function TriangleModelWindow() {
     DEFAULT_LAYER_VISIBILITY,
   );
   const [hover, setHover] = useState<TriangleHoverState | null>(null);
+  const [viewportView, setViewportView] = useState<TriangleViewportView | null>(null);
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const viewportRef = useRef<HTMLDivElement | null>(null);
@@ -107,6 +114,16 @@ export function TriangleModelWindow() {
     () => Array.from(TRIANGLE_RESISTIVITY_LEGEND_TICKS).reverse(),
     [],
   );
+  const viewportAxes = useMemo(
+    () =>
+      viewportView
+        ? buildTriangleViewportAxes({
+            cameraState: viewportView.cameraState,
+            plotSize: viewportView.canvasSize,
+          })
+        : null,
+    [viewportView],
+  );
 
   const handleLoadModel = async () => {
     if (!polyFile) {
@@ -133,11 +150,13 @@ export function TriangleModelWindow() {
       setMesh(nextMesh);
       setVisibleLayers(getInitialLayerVisibility(nextMesh));
       setHover(null);
+      setViewportView(null);
     } catch (uploadError) {
       setError(getUploadErrorMessage(uploadError));
       setModel(null);
       setMesh(null);
       setHover(null);
+      setViewportView(null);
     } finally {
       setIsLoading(false);
     }
@@ -151,14 +170,16 @@ export function TriangleModelWindow() {
   };
 
   useEffect(() => {
-    if (!model || !mesh || !canvasRef.current) {
+    if (!model || !mesh || !canvasRef.current || !viewportRef.current) {
       return;
     }
 
     if (!viewerRef.current) {
       viewerRef.current = createTriangleModelViewer({
         canvas: canvasRef.current,
+        interactionTarget: viewportRef.current,
         onHoverChange: setHover,
+        onViewChange: setViewportView,
       });
     }
 
@@ -188,6 +209,7 @@ export function TriangleModelWindow() {
 
     viewerRef.current.dispose();
     viewerRef.current = null;
+    setViewportView(null);
   }, [mesh, model]);
 
   useEffect(() => {
@@ -441,20 +463,115 @@ export function TriangleModelWindow() {
 
         <div
           ref={viewportRef}
+          data-testid="triangle-model-viewport-frame"
           className="relative min-h-0 flex-1 overflow-hidden bg-[radial-gradient(circle_at_top,_rgba(14,165,233,0.14),_transparent_42%),linear-gradient(180deg,rgba(15,23,42,0.06),rgba(15,23,42,0.02))]"
         >
           {mesh && model ? (
             <>
-              <canvas
-                ref={canvasRef}
-                data-testid="triangle-model-canvas"
-                aria-label="Triangle model mesh viewport"
-                className="h-full w-full"
-              />
+              <div
+                data-testid="triangle-model-plot-area"
+                className="absolute overflow-hidden"
+                style={{
+                  bottom: TRIANGLE_VIEWPORT_AXIS_GUTTERS.bottom,
+                  left: TRIANGLE_VIEWPORT_AXIS_GUTTERS.left,
+                  right: 0,
+                  top: 0,
+                }}
+              >
+                <canvas
+                  ref={canvasRef}
+                  data-testid="triangle-model-canvas"
+                  aria-label="Triangle model mesh viewport"
+                  className="h-full w-full"
+                />
+              </div>
+              {viewportAxes ? (
+                <svg
+                  data-testid="triangle-viewport-axes"
+                  aria-hidden="true"
+                  className="pointer-events-none absolute inset-0 z-10"
+                  viewBox={`0 0 ${viewportAxes.frameWidth} ${viewportAxes.frameHeight}`}
+                  preserveAspectRatio="none"
+                >
+                  <rect
+                    x="0"
+                    y={viewportAxes.xAxisY}
+                    width={viewportAxes.frameWidth}
+                    height={TRIANGLE_VIEWPORT_AXIS_GUTTERS.bottom}
+                    fill="rgba(248, 250, 252, 0.88)"
+                  />
+                  <rect
+                    x="0"
+                    y="0"
+                    width={TRIANGLE_VIEWPORT_AXIS_GUTTERS.left}
+                    height={viewportAxes.plotHeight}
+                    fill="rgba(248, 250, 252, 0.88)"
+                  />
+                  <line
+                    x1={viewportAxes.yAxisX}
+                    y1="0"
+                    x2={viewportAxes.yAxisX}
+                    y2={viewportAxes.xAxisY}
+                    stroke="rgba(15, 23, 42, 0.48)"
+                    strokeWidth="1"
+                  />
+                  <line
+                    x1={viewportAxes.yAxisX}
+                    y1={viewportAxes.xAxisY}
+                    x2={viewportAxes.frameWidth}
+                    y2={viewportAxes.xAxisY}
+                    stroke="rgba(15, 23, 42, 0.48)"
+                    strokeWidth="1"
+                  />
+                  {viewportAxes.xTicks.map((tick) => (
+                    <g key={`x-${tick.value}`}>
+                      <line
+                        x1={tick.pixel}
+                        y1={viewportAxes.xAxisY}
+                        x2={tick.pixel}
+                        y2={viewportAxes.xAxisY + 6}
+                        stroke="rgba(15, 23, 42, 0.56)"
+                        strokeWidth="1"
+                      />
+                      <text
+                        x={tick.pixel}
+                        y={viewportAxes.xAxisY + 18}
+                        fill="rgba(15, 23, 42, 0.78)"
+                        fontSize="10"
+                        textAnchor="middle"
+                      >
+                        {tick.label}
+                      </text>
+                    </g>
+                  ))}
+                  {viewportAxes.yTicks.map((tick) => (
+                    <g key={`y-${tick.value}`}>
+                      <line
+                        x1={viewportAxes.yAxisX - 6}
+                        y1={tick.pixel}
+                        x2={viewportAxes.yAxisX}
+                        y2={tick.pixel}
+                        stroke="rgba(15, 23, 42, 0.56)"
+                        strokeWidth="1"
+                      />
+                      <text
+                        x={viewportAxes.yAxisX - 10}
+                        y={tick.pixel + 3}
+                        fill="rgba(15, 23, 42, 0.78)"
+                        fontSize="10"
+                        textAnchor="end"
+                      >
+                        {tick.label}
+                      </text>
+                    </g>
+                  ))}
+                </svg>
+              ) : null}
               {showColorbar ? (
                 <div
                   data-testid="triangle-colorbar"
                   className="pointer-events-none absolute bottom-4 right-4 z-10 w-[min(18rem,calc(100%-2rem))] rounded-2xl border border-border/50 bg-background/90 px-3 py-3 shadow-lg backdrop-blur"
+                  style={{ bottom: TRIANGLE_VIEWPORT_AXIS_GUTTERS.bottom + 16 }}
                 >
                   <div className="mb-2 flex items-end justify-between gap-3">
                     <div className="space-y-0.5">

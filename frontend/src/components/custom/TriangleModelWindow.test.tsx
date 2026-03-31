@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import axios from 'axios';
@@ -22,13 +22,26 @@ const mockViewer = {
   setLayerVisibility: vi.fn(),
 };
 
+let latestViewerOptions:
+  | {
+      onHoverChange: (hover: unknown) => void;
+      onViewChange: (view: unknown) => void;
+      canvas: HTMLCanvasElement;
+      interactionTarget: HTMLElement;
+    }
+  | null = null;
+
 vi.mock('@/services/triangleModelViewer', () => ({
-  createTriangleModelViewer: vi.fn(() => mockViewer),
+  createTriangleModelViewer: vi.fn((options) => {
+    latestViewerOptions = options;
+    return mockViewer;
+  }),
 }));
 
 describe('TriangleModelWindow', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    latestViewerOptions = null;
   });
 
   it('renders the three.js canvas viewport after upload succeeds', async () => {
@@ -123,6 +136,125 @@ describe('TriangleModelWindow', () => {
       triangles: true,
       vertices: false,
     });
+  });
+
+  it('renders viewport axes from the current camera view and updates ticks after zooming', async () => {
+    const user = userEvent.setup();
+    vi.mocked(axios.post).mockResolvedValue({
+      data: {
+        polyFileName: 'simple.poly',
+        resistivityFileName: null,
+        vertices: [
+          { id: 1, hCoor: 0, vCoor: 0, attributes: [], boundary_marker: null },
+          { id: 2, hCoor: 10, vCoor: 0, attributes: [], boundary_marker: null },
+          { id: 3, hCoor: 0, vCoor: 10, attributes: [], boundary_marker: null },
+        ],
+        segments: [
+          { id: 1, endpoint_1: 1, endpoint_2: 2, boundary_marker: null },
+          { id: 2, endpoint_1: 2, endpoint_2: 3, boundary_marker: null },
+          { id: 3, endpoint_1: 3, endpoint_2: 1, boundary_marker: null },
+        ],
+        holes: [],
+        regions: [],
+        resistivity: null,
+        constrainedMesh: null,
+      },
+    });
+
+    render(<TriangleModelWindow />);
+
+    await user.upload(
+      screen.getByLabelText(/poly file/i),
+      new File(['poly'], 'simple.poly', { type: 'text/plain' }),
+    );
+    await user.click(screen.getByRole('button', { name: /load triangle model/i }));
+
+    await waitFor(() => {
+      expect(mockViewer.setData).toHaveBeenCalled();
+      expect(latestViewerOptions).not.toBeNull();
+    });
+
+    expect(latestViewerOptions?.interactionTarget).toBe(
+      screen.getByTestId('triangle-model-viewport-frame'),
+    );
+
+    act(() => {
+      latestViewerOptions?.onViewChange({
+        cameraState: {
+          baseHeight: 10,
+          baseWidth: 10,
+          centerX: 5,
+          centerY: 5,
+          zoom: 1,
+        },
+        canvasSize: {
+          height: 240,
+          width: 360,
+        },
+      });
+    });
+
+    const axes = await screen.findByTestId('triangle-viewport-axes');
+    expect(within(axes).getAllByText('0')).toHaveLength(2);
+    expect(within(axes).getAllByText('10')).toHaveLength(2);
+
+    act(() => {
+      latestViewerOptions?.onViewChange({
+        cameraState: {
+          baseHeight: 10,
+          baseWidth: 10,
+          centerX: 5,
+          centerY: 5,
+          zoom: 8,
+        },
+        canvasSize: {
+          height: 240,
+          width: 360,
+        },
+      });
+    });
+
+    await waitFor(() => {
+      expect(within(axes).getAllByText('4.5')).toHaveLength(2);
+    });
+  });
+
+  it('keeps the three.js canvas stretched to the plot area when axes are shown', async () => {
+    const user = userEvent.setup();
+    vi.mocked(axios.post).mockResolvedValue({
+      data: {
+        polyFileName: 'simple.poly',
+        resistivityFileName: null,
+        vertices: [
+          { id: 1, hCoor: 0, vCoor: 0, attributes: [], boundary_marker: null },
+          { id: 2, hCoor: 10, vCoor: 0, attributes: [], boundary_marker: null },
+          { id: 3, hCoor: 0, vCoor: 10, attributes: [], boundary_marker: null },
+        ],
+        segments: [
+          { id: 1, endpoint_1: 1, endpoint_2: 2, boundary_marker: null },
+          { id: 2, endpoint_1: 2, endpoint_2: 3, boundary_marker: null },
+          { id: 3, endpoint_1: 3, endpoint_2: 1, boundary_marker: null },
+        ],
+        holes: [],
+        regions: [],
+        resistivity: null,
+        constrainedMesh: null,
+      },
+    });
+
+    render(<TriangleModelWindow />);
+
+    await user.upload(
+      screen.getByLabelText(/poly file/i),
+      new File(['poly'], 'simple.poly', { type: 'text/plain' }),
+    );
+    await user.click(screen.getByRole('button', { name: /load triangle model/i }));
+
+    const plotArea = await screen.findByTestId('triangle-model-plot-area');
+    const canvas = screen.getByTestId('triangle-model-canvas');
+
+    expect(plotArea).toHaveClass('absolute', 'overflow-hidden');
+    expect(canvas).toHaveClass('h-full', 'w-full');
   });
 
   it('forwards layer visibility changes to the viewer after the model loads', async () => {

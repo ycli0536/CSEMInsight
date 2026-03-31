@@ -62,11 +62,11 @@ export function screenPointToWorld(
   const safeViewportHeight = Math.max(viewport.height, 1);
   const visibleSize = getTriangleCameraWorldSize(state);
   const left = state.centerX - visibleSize.width / 2;
-  const top = state.centerY + visibleSize.height / 2;
+  const bottom = state.centerY - visibleSize.height / 2;
 
   return {
     x: left + (point.x / safeViewportWidth) * visibleSize.width,
-    y: top - (point.y / safeViewportHeight) * visibleSize.height,
+    y: bottom + (point.y / safeViewportHeight) * visibleSize.height,
   };
 }
 
@@ -105,7 +105,7 @@ export function panTriangleCameraByPixels(
 
   return {
     ...state,
-    centerX: state.centerX + (delta.dx / safeViewportWidth) * visibleSize.width,
+    centerX: state.centerX - (delta.dx / safeViewportWidth) * visibleSize.width,
     centerY: state.centerY - (delta.dy / safeViewportHeight) * visibleSize.height,
   };
 }
@@ -130,16 +130,16 @@ export function zoomTriangleCamera(
     height: state.baseHeight / nextZoom,
   };
   const left = state.centerX - currentSize.width / 2;
-  const top = state.centerY + currentSize.height / 2;
+  const bottom = state.centerY - currentSize.height / 2;
   const ratioX = (anchor.x - left) / currentSize.width;
-  const ratioY = (top - anchor.y) / currentSize.height;
+  const ratioY = (anchor.y - bottom) / currentSize.height;
   const nextLeft = anchor.x - nextSize.width * ratioX;
-  const nextTop = anchor.y + nextSize.height * ratioY;
+  const nextBottom = anchor.y - nextSize.height * ratioY;
 
   return {
     ...state,
     centerX: nextLeft + nextSize.width / 2,
-    centerY: nextTop - nextSize.height / 2,
+    centerY: nextBottom + nextSize.height / 2,
     zoom: nextZoom,
   };
 }

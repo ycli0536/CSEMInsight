@@ -51,7 +51,7 @@ describe('triangleCamera', () => {
     });
   });
 
-  it('maps the screen top edge to the visually upper world coordinate in the flipped 2d view', () => {
+  it('maps the screen top edge to the minimum world Y in the depth-down view', () => {
     expect(
       screenPointToWorld(
         { x: 0, y: 0 },
@@ -66,15 +66,15 @@ describe('triangleCamera', () => {
       ),
     ).toEqual({
       x: 0,
-      y: 25,
+      y: 15,
     });
   });
 
   it('projects screen points through the actual three.js camera so hover stays aligned with the rendered mesh', () => {
-    const camera = new THREE.OrthographicCamera(-20, 20, 10, -10, 0.1, 100);
+    const camera = new THREE.OrthographicCamera(-20, 20, -10, 10, 0.1, 100);
     camera.zoom = 2;
     camera.position.set(10, 20, 10);
-    camera.up.set(0, -1, 0);
+    camera.up.set(0, 1, 0);
     camera.lookAt(10, 20, 0);
     camera.updateProjectionMatrix();
 
@@ -85,7 +85,7 @@ describe('triangleCamera', () => {
         camera,
       ),
     ).toMatchObject({
-      y: 25,
+      y: 15,
     });
     expect(
       projectScreenPointToWorldWithCamera(
@@ -102,7 +102,7 @@ describe('triangleCamera', () => {
         camera,
       ),
     ).toMatchObject({
-      y: 15,
+      y: 25,
     });
     expect(
       projectScreenPointToWorldWithCamera(
@@ -113,7 +113,7 @@ describe('triangleCamera', () => {
     ).toBeCloseTo(20);
   });
 
-  it('pans horizontally with the drag and compensates for the inverted screen Y axis', () => {
+  it('moves the viewport center in the same drag direction as the pointer', () => {
     expect(
       panTriangleCameraByPixels(
         {
@@ -129,7 +129,7 @@ describe('triangleCamera', () => {
     ).toEqual({
       baseHeight: 20,
       baseWidth: 40,
-      centerX: 15,
+      centerX: 5,
       centerY: 22.5,
       zoom: 2,
     });
