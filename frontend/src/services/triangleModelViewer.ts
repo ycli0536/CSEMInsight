@@ -18,12 +18,24 @@ import type {
   TriangleHoverState,
   TriangleLayerVisibility,
   TriangleMesh,
+  TriangleMeshBounds,
   TriangleMeshPoint,
   TriangleModelResponse,
 } from '@/types';
 
 const CAMERA_Z = 10;
 const MAX_PIXEL_RATIO = 2;
+
+function getScaledBounds(bounds: TriangleMeshBounds, ve: number): TriangleMeshBounds {
+  return {
+    minX: bounds.minX,
+    maxX: bounds.maxX,
+    minY: bounds.minY * ve,
+    maxY: bounds.maxY * ve,
+    width: bounds.width,
+    height: bounds.height * ve,
+  };
+}
 
 function getCanvasSize(canvas: HTMLCanvasElement) {
   return {
@@ -120,6 +132,7 @@ export interface TriangleModelViewer {
   resize(): void;
   setData(data: { mesh: TriangleMesh; model: TriangleModelResponse }): void;
   setLayerVisibility(visibility: TriangleLayerVisibility): void;
+  setVerticalExaggeration(factor: number): void;
 }
 
 export interface TriangleViewportView {
@@ -153,6 +166,9 @@ export function createTriangleModelViewer(options: {
   const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 100);
   const raycaster = new THREE.Raycaster();
 
+  const rootGroup = new THREE.Group();
+  scene.add(rootGroup);
+
   const triangleGroup = new THREE.Group();
   const triangleFillGeometry = new THREE.BufferGeometry();
   const triangleFillMaterial = new THREE.MeshBasicMaterial({
@@ -179,7 +195,7 @@ export function createTriangleModelViewer(options: {
 
   triangleGroup.add(triangleFillMesh);
   triangleGroup.add(triangleEdges);
-  scene.add(triangleGroup);
+  rootGroup.add(triangleGroup);
 
   const segmentGeometry = new THREE.BufferGeometry();
   const segmentMaterial = new THREE.LineBasicMaterial({
@@ -189,7 +205,7 @@ export function createTriangleModelViewer(options: {
   });
   const segmentLines = new THREE.LineSegments(segmentGeometry, segmentMaterial);
   segmentLines.renderOrder = 3;
-  scene.add(segmentLines);
+  rootGroup.add(segmentLines);
 
   const pointGeometry = new THREE.BufferGeometry();
   const pointMaterial = new THREE.PointsMaterial({
@@ -199,7 +215,7 @@ export function createTriangleModelViewer(options: {
   });
   const points = new THREE.Points(pointGeometry, pointMaterial);
   points.renderOrder = 4;
-  scene.add(points);
+  rootGroup.add(points);
 
   const hoverTriangleGeometry = new THREE.BufferGeometry();
   const hoverTriangleMaterial = new THREE.MeshBasicMaterial({
@@ -212,7 +228,7 @@ export function createTriangleModelViewer(options: {
   const hoverTriangle = new THREE.Mesh(hoverTriangleGeometry, hoverTriangleMaterial);
   hoverTriangle.visible = false;
   hoverTriangle.renderOrder = 5;
-  scene.add(hoverTriangle);
+  rootGroup.add(hoverTriangle);
 
   const hoverSegmentGeometry = new THREE.BufferGeometry();
   const hoverSegmentMaterial = new THREE.LineBasicMaterial({
@@ -226,7 +242,7 @@ export function createTriangleModelViewer(options: {
   );
   hoverSegment.visible = false;
   hoverSegment.renderOrder = 6;
-  scene.add(hoverSegment);
+  rootGroup.add(hoverSegment);
 
   const hoverPointGeometry = new THREE.BufferGeometry();
   const hoverPointMaterial = new THREE.PointsMaterial({
@@ -237,7 +253,7 @@ export function createTriangleModelViewer(options: {
   const hoverPoint = new THREE.Points(hoverPointGeometry, hoverPointMaterial);
   hoverPoint.visible = false;
   hoverPoint.renderOrder = 7;
-  scene.add(hoverPoint);
+  rootGroup.add(hoverPoint);
 
   let canvasSize = getCanvasSize(canvas);
   let cameraState: TriangleCameraState = {
@@ -249,6 +265,7 @@ export function createTriangleModelViewer(options: {
   };
   let mesh: TriangleMesh | null = null;
   let model: TriangleModelResponse | null = null;
+  let verticalExaggeration = 1;
   let initialCameraState: TriangleCameraState | null = null;
   let dragState:
     | {
@@ -340,12 +357,16 @@ export function createTriangleModelViewer(options: {
       renderScene();
       return;
     }
+    const dataPoint = {
+      x: worldPoint.x,
+      y: worldPoint.y / verticalExaggeration,
+    };
     const worldSize = getTriangleCameraWorldSize(cameraState);
-    const tolerance = Math.max(worldSize.width, worldSize.height) * 0.02;
-    const nearestVertex = findNearestVertex(mesh.points, worldPoint, tolerance);
+    const tolerance = Math.max(worldSize.width, worldSize.height / verticalExaggeration) * 0.02;
+    const nearestVertex = findNearestVertex(mesh.points, dataPoint, tolerance);
     const nearestSegment = nearestVertex
       ? null
-      : findNearestSegment(model.segments, sourceVertexById, worldPoint, tolerance);
+      : findNearestSegment(model.segments, sourceVertexById, dataPoint, tolerance);
     raycaster.setFromCamera(
       {
         x: (point.x / rect.width) * 2 - 1,
@@ -370,7 +391,7 @@ export function createTriangleModelViewer(options: {
       hoverPoint.visible = true;
       setHoverState(
         buildTriangleHoverState({
-          point: worldPoint,
+          point: dataPoint,
           regionHit,
           vertex: nearestVertex,
           segment: null,
@@ -391,7 +412,7 @@ export function createTriangleModelViewer(options: {
 
       setHoverState(
         buildTriangleHoverState({
-          point: worldPoint,
+          point: dataPoint,
           regionHit,
           vertex: null,
           segment: nearestSegment,
@@ -409,7 +430,7 @@ export function createTriangleModelViewer(options: {
       hoverTriangle.visible = true;
       setHoverState(
         buildTriangleHoverState({
-          point: worldPoint,
+          point: dataPoint,
           regionHit,
           vertex: null,
           segment: null,
@@ -421,7 +442,7 @@ export function createTriangleModelViewer(options: {
 
     setHoverState(
       buildTriangleHoverState({
-        point: worldPoint,
+        point: dataPoint,
         regionHit: null,
         vertex: null,
         segment: null,
@@ -594,7 +615,8 @@ export function createTriangleModelViewer(options: {
       renderer.setSize(canvasSize.width, canvasSize.height, false);
 
       if (mesh) {
-        const fittedState = createTriangleCameraState(mesh.bounds, canvasSize);
+        const scaledBounds = getScaledBounds(mesh.bounds, verticalExaggeration);
+        const fittedState = createTriangleCameraState(scaledBounds, canvasSize);
         cameraState = {
           ...cameraState,
           baseWidth: fittedState.baseWidth,
@@ -650,7 +672,9 @@ export function createTriangleModelViewer(options: {
       );
       updatePositionGeometry(pointGeometry, buffers.pointPositions);
 
-      cameraState = createTriangleCameraState(mesh.bounds, canvasSize);
+      rootGroup.scale.y = verticalExaggeration;
+      const scaledBounds = getScaledBounds(mesh.bounds, verticalExaggeration);
+      cameraState = createTriangleCameraState(scaledBounds, canvasSize);
       initialCameraState = { ...cameraState };
       applyTriangleCamera(camera, cameraState);
       publishView();
@@ -669,6 +693,28 @@ export function createTriangleModelViewer(options: {
       triangleGroup.visible = visibility.triangles;
       segmentLines.visible = visibility.segments;
       points.visible = visibility.vertices;
+      renderScene();
+    },
+    setVerticalExaggeration(factor) {
+      if (!mesh || factor === verticalExaggeration) {
+        verticalExaggeration = factor;
+        return;
+      }
+
+      const ratio = factor / verticalExaggeration;
+      verticalExaggeration = factor;
+      rootGroup.scale.y = factor;
+
+      cameraState = {
+        ...cameraState,
+        centerY: cameraState.centerY * ratio,
+      };
+
+      const scaledBounds = getScaledBounds(mesh.bounds, factor);
+      initialCameraState = createTriangleCameraState(scaledBounds, canvasSize);
+
+      applyTriangleCamera(camera, cameraState);
+      publishView();
       renderScene();
     },
   };

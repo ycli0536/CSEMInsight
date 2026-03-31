@@ -87,6 +87,7 @@ export function TriangleModelWindow() {
   );
   const [hover, setHover] = useState<TriangleHoverState | null>(null);
   const [viewportView, setViewportView] = useState<TriangleViewportView | null>(null);
+  const [verticalExaggeration, setVerticalExaggeration] = useState(1);
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const viewportRef = useRef<HTMLDivElement | null>(null);
@@ -120,9 +121,10 @@ export function TriangleModelWindow() {
         ? buildTriangleViewportAxes({
             cameraState: viewportView.cameraState,
             plotSize: viewportView.canvasSize,
+            verticalExaggeration,
           })
         : null,
-    [viewportView],
+    [viewportView, verticalExaggeration],
   );
 
   const handleLoadModel = async () => {
@@ -201,6 +203,14 @@ export function TriangleModelWindow() {
 
     viewerRef.current.setLayerVisibility(visibleLayers);
   }, [mesh, model, visibleLayers]);
+
+  useEffect(() => {
+    if (!viewerRef.current || !model || !mesh) {
+      return;
+    }
+
+    viewerRef.current.setVerticalExaggeration(verticalExaggeration);
+  }, [mesh, model, verticalExaggeration]);
 
   useEffect(() => {
     if ((model && mesh) || !viewerRef.current) {
@@ -452,6 +462,27 @@ export function TriangleModelWindow() {
                 <RotateCcw className="h-3.5 w-3.5" />
                 Reset
               </Button>
+              <div className="flex items-center gap-2">
+                <label
+                  htmlFor="triangle-ve-slider"
+                  className="whitespace-nowrap text-xs text-muted-foreground"
+                >
+                  VE:
+                </label>
+                <input
+                  id="triangle-ve-slider"
+                  type="range"
+                  min="1"
+                  max="20"
+                  step="1"
+                  value={verticalExaggeration}
+                  onChange={(e) => setVerticalExaggeration(Number(e.target.value))}
+                  className="h-1.5 w-20 cursor-pointer accent-sky-600"
+                />
+                <span className="min-w-[2ch] text-xs font-medium tabular-nums">
+                  {verticalExaggeration}x
+                </span>
+              </div>
             </div>
           ) : null}
         </div>

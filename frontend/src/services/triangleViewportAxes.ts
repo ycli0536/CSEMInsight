@@ -102,15 +102,16 @@ export function buildTriangleViewportAxes(options: {
     height: number;
     width: number;
   };
+  verticalExaggeration?: number;
 }): TriangleViewportAxes {
-  const { cameraState, plotSize } = options;
+  const { cameraState, plotSize, verticalExaggeration = 1 } = options;
   const safePlotWidth = Math.max(plotSize.width, 1);
   const safePlotHeight = Math.max(plotSize.height, 1);
   const worldSize = getTriangleCameraWorldSize(cameraState);
   const minX = cameraState.centerX - worldSize.width / 2;
   const maxX = cameraState.centerX + worldSize.width / 2;
-  const minY = cameraState.centerY - worldSize.height / 2;
-  const maxY = cameraState.centerY + worldSize.height / 2;
+  const minY = (cameraState.centerY - worldSize.height / 2) / verticalExaggeration;
+  const maxY = (cameraState.centerY + worldSize.height / 2) / verticalExaggeration;
 
   return {
     frameHeight: safePlotHeight + TRIANGLE_VIEWPORT_AXIS_GUTTERS.bottom,

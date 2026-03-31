@@ -20,6 +20,7 @@ const mockViewer = {
   resize: vi.fn(),
   setData: vi.fn(),
   setLayerVisibility: vi.fn(),
+  setVerticalExaggeration: vi.fn(),
 };
 
 let latestViewerOptions:
