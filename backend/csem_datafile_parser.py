@@ -5,9 +5,84 @@ import numpy as np
 import utm
 from io import StringIO
 
-# Constants for data type codes
-AMPLITUDE_TYPE_CODES = {'21', '23', '25', '27', '28', '29', '31', '33', '35', '37', '38', '39'}
-PHASE_TYPE_CODES = {'22', '24', '26', '32', '34', '36'}
+# Official MARE2DEM datatype catalog:
+# https://mare2dem.bitbucket.io/master/data_file_format.html#sect-data-file
+DATA_TYPE_DESCRIPTIONS = {
+    '1': 'real Ex',
+    '2': 'imaginary Ex',
+    '3': 'real Ey',
+    '4': 'imaginary Ey',
+    '5': 'real Ez',
+    '6': 'imaginary Ez',
+    '11': 'real Bx',
+    '12': 'imaginary Bx',
+    '13': 'real By',
+    '14': 'imaginary By',
+    '15': 'real Bz',
+    '16': 'imaginary Bz',
+    '21': 'amplitude Ex',
+    '22': 'phase Ex',
+    '23': 'amplitude Ey',
+    '24': 'phase Ey',
+    '25': 'amplitude Ez',
+    '26': 'phase Ez',
+    '27': 'log10 amplitude Ex',
+    '28': 'log10 amplitude Ey',
+    '29': 'log10 amplitude Ez',
+    '31': 'amplitude Bx',
+    '32': 'phase Bx',
+    '33': 'amplitude By',
+    '34': 'phase By',
+    '35': 'amplitude Bz',
+    '36': 'phase Bz',
+    '37': 'log10 amplitude Bx',
+    '38': 'log10 amplitude By',
+    '39': 'log10 amplitude Bz',
+    '41': 'electric xy polarization ellipse max',
+    '42': 'electric xy polarization ellipse min',
+    '43': 'magnetic xy polarization ellipse max',
+    '44': 'magnetic xy polarization ellipse min',
+    '103': 'TE (Zxy) apparent resistivity',
+    '104': 'TE (Zxy) phase',
+    '105': 'TM (Zyx) apparent resistivity',
+    '106': 'TM (Zyx) phase',
+    '109': '|Z| determinant apparent resistivity',
+    '110': '|Z| determinant phase',
+    '113': 'TE (Zxy) real',
+    '114': 'TE (Zxy) imaginary',
+    '115': 'TM (Zyx) real',
+    '116': 'TM (Zyx) imaginary',
+    '123': 'TE (Zxy) log10 apparent resistivity',
+    '125': 'TM (Zyx) log10 apparent resistivity',
+    '129': '|Z| log10 determinant apparent resistivity',
+    '133': 'TE (Mzy) real tipper',
+    '134': 'TE (Mzy) imaginary tipper',
+    '135': 'TE (Mzy) amplitude tipper',
+    '136': 'TE (Mzy) phase tipper',
+    '151': 'TE mode real Ex',
+    '152': 'TE mode imaginary Ex',
+    '153': 'TM mode real Ey',
+    '154': 'TM mode imaginary Ey',
+    '155': 'TM mode real Ez',
+    '156': 'TM mode imaginary Ez',
+    '161': 'TM mode real Hx',
+    '162': 'TM mode imaginary Hx',
+    '163': 'TE mode real Hy',
+    '164': 'TE mode imaginary Hy',
+    '165': 'TE mode real Hz',
+    '166': 'TE mode imaginary Hz',
+}
+DATA_TYPE_CODES = list(DATA_TYPE_DESCRIPTIONS.keys())
+
+# Keep amplitude/phase groupings broad enough to support both CSEM and MT files.
+AMPLITUDE_TYPE_CODES = {
+    '21', '23', '25', '27', '28', '29', '31', '33', '35', '37', '38', '39',
+    '103', '105', '109', '123', '125', '129', '135',
+}
+PHASE_TYPE_CODES = {
+    '22', '24', '26', '32', '34', '36',
+    '104', '106', '110', '136',
+}
 
 def calculate_misfit_statistics(data_array: list) -> dict:
     """Calculate RMS statistics from CSEM data residuals.
@@ -86,9 +161,13 @@ class CSEMDataFileReader():
         self.file_path = file_path
         self.data_type = None
         self.extracted_blocks = []
-        self.data_type_codes_amplitude = ['21', '23', '25', '27', '28', '29', '31', '33', '35', '37', '38', '39']
-        self.data_type_codes_phase = ['22', '24', '26', '32', '34', '36']
-        self.data_type_codes = self.data_type_codes_amplitude + self.data_type_codes_phase
+        self.data_type_codes_amplitude = [
+            code for code in DATA_TYPE_CODES if code in AMPLITUDE_TYPE_CODES
+        ]
+        self.data_type_codes_phase = [
+            code for code in DATA_TYPE_CODES if code in PHASE_TYPE_CODES
+        ]
+        self.data_type_codes = DATA_TYPE_CODES.copy()
         self.data = None
         self.read_file()
         self.format, self.version = self.extract_file_info()
