@@ -152,3 +152,39 @@ export function buildTriangleRegionHighlightPositions(
 
   return new Float32Array(positions);
 }
+
+export function buildTriangleSelectionHighlightPositions(
+  mesh: TriangleMesh,
+  triangleIndices: number[],
+) {
+  const positions: number[] = [];
+
+  for (const triangleIndex of triangleIndices) {
+    const triangle = mesh.triangles[triangleIndex];
+    if (!triangle) {
+      continue;
+    }
+
+    const first = mesh.points[triangle[0]];
+    const second = mesh.points[triangle[1]];
+    const third = mesh.points[triangle[2]];
+
+    if (!first || !second || !third) {
+      continue;
+    }
+
+    positions.push(
+      first.x,
+      first.y,
+      0.04,
+      second.x,
+      second.y,
+      0.04,
+      third.x,
+      third.y,
+      0.04,
+    );
+  }
+
+  return new Float32Array(positions);
+}

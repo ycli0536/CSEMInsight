@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   buildTriangleRegionHighlightPositions,
   buildTriangleSceneBuffers,
+  buildTriangleSelectionHighlightPositions,
   buildTriangleSegmentPositions,
 } from './triangleSceneBuffers';
 
@@ -111,5 +112,38 @@ describe('triangleSceneBuffers', () => {
     expect(positions[15]).toBe(0);
     expect(positions[16]).toBe(1);
     expect(positions[17]).toBeCloseTo(0.03);
+  });
+
+  it('builds selection highlight positions for explicit triangle indices', () => {
+    const selectionPositions = buildTriangleSelectionHighlightPositions(
+      {
+        points: [
+          { id: 0, x: 0, y: 0 },
+          { id: 1, x: 1, y: 0 },
+          { id: 2, x: 0, y: 1 },
+          { id: 3, x: 1, y: 1 },
+        ],
+        triangles: [
+          [0, 1, 2],
+          [1, 3, 2],
+        ],
+        bounds: {
+          minX: 0,
+          maxX: 1,
+          minY: 0,
+          maxY: 1,
+          width: 1,
+          height: 1,
+        },
+        source: 'constrained',
+        triangleRegionIds: [7, 8],
+        triangleResistivityValues: [10, 100],
+      },
+      [0, 1],
+    );
+
+    expect(Array.from(selectionPositions)).toHaveLength(18);
+    expect(selectionPositions[2]).toBeCloseTo(0.04);
+    expect(selectionPositions[17]).toBeCloseTo(0.04);
   });
 });

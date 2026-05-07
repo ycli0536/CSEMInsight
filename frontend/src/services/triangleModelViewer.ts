@@ -10,8 +10,10 @@ import {
 import {
   buildTriangleRegionHighlightPositions,
   buildTriangleSceneBuffers,
+  buildTriangleSelectionHighlightPositions,
   buildTriangleSegmentPositions,
 } from '@/services/triangleSceneBuffers';
+import { buildTriangleFillColors } from '@/services/triangleModelColorScale';
 import { findNearestSegment, findNearestVertex } from '@/services/triangleViewport';
 import type {
   TriangleCameraState,
@@ -25,6 +27,20 @@ import type {
 
 const CAMERA_Z = 10;
 const MAX_PIXEL_RATIO = 2;
+
+export type TriangleViewerInteractionMode = 'pan' | 'lasso';
+
+export interface TriangleSelectionOverlay {
+  featherTriangleIndices?: number[];
+  selectedTriangleIndices: number[];
+}
+
+export function shouldStartLassoDrag(options: {
+  hasMesh: boolean;
+  interactionMode: TriangleViewerInteractionMode;
+}) {
+  return options.hasMesh && options.interactionMode === 'lasso';
+}
 
 function getScaledBounds(bounds: TriangleMeshBounds, ve: number): TriangleMeshBounds {
   return {
@@ -131,7 +147,10 @@ export interface TriangleModelViewer {
   resetView(): void;
   resize(): void;
   setData(data: { mesh: TriangleMesh; model: TriangleModelResponse }): void;
+  setInteractionMode(mode: TriangleViewerInteractionMode): void;
   setLayerVisibility(visibility: TriangleLayerVisibility): void;
+  setSelectionOverlay(selection: TriangleSelectionOverlay | null): void;
+  setTriangleResistivityValues(values: Array<number | null>): void;
   setVerticalExaggeration(factor: number): void;
 }
 
@@ -147,12 +166,16 @@ export function createTriangleModelViewer(options: {
   canvas: HTMLCanvasElement;
   interactionTarget?: HTMLElement;
   onHoverChange: (hover: TriangleHoverState) => void;
+  onLassoComplete?: (path: Array<{ x: number; y: number }>) => void;
+  onLassoPreviewChange?: (path: Array<{ x: number; y: number }> | null) => void;
   onViewChange?: (view: TriangleViewportView) => void;
 }): TriangleModelViewer {
   const {
     canvas,
     interactionTarget = canvas,
     onHoverChange,
+    onLassoComplete,
+    onLassoPreviewChange,
     onViewChange,
   } = options;
   const renderer = new THREE.WebGLRenderer({
@@ -255,6 +278,43 @@ export function createTriangleModelViewer(options: {
   hoverPoint.renderOrder = 7;
   rootGroup.add(hoverPoint);
 
+  const selectionGeometry = new THREE.BufferGeometry();
+  const selectionMaterial = new THREE.MeshBasicMaterial({
+    color: 0x0284c7,
+    depthWrite: false,
+    opacity: 0.28,
+    side: THREE.DoubleSide,
+    transparent: true,
+  });
+  const selectionOverlay = new THREE.Mesh(selectionGeometry, selectionMaterial);
+  selectionOverlay.visible = false;
+  selectionOverlay.renderOrder = 8;
+  rootGroup.add(selectionOverlay);
+
+  const featherGeometry = new THREE.BufferGeometry();
+  const featherMaterial = new THREE.MeshBasicMaterial({
+    color: 0xf97316,
+    depthWrite: false,
+    opacity: 0.14,
+    side: THREE.DoubleSide,
+    transparent: true,
+  });
+  const featherOverlay = new THREE.Mesh(featherGeometry, featherMaterial);
+  featherOverlay.visible = false;
+  featherOverlay.renderOrder = 9;
+  rootGroup.add(featherOverlay);
+
+  const lassoGeometry = new THREE.BufferGeometry();
+  const lassoMaterial = new THREE.LineBasicMaterial({
+    color: 0xf97316,
+    opacity: 0.92,
+    transparent: true,
+  });
+  const lassoLine = new THREE.Line(lassoGeometry, lassoMaterial);
+  lassoLine.visible = false;
+  lassoLine.renderOrder = 10;
+  rootGroup.add(lassoLine);
+
   let canvasSize = getCanvasSize(canvas);
   let cameraState: TriangleCameraState = {
     baseHeight: 2,
@@ -265,12 +325,19 @@ export function createTriangleModelViewer(options: {
   };
   let mesh: TriangleMesh | null = null;
   let model: TriangleModelResponse | null = null;
+  let interactionMode: TriangleViewerInteractionMode = 'pan';
   let verticalExaggeration = 1;
   let initialCameraState: TriangleCameraState | null = null;
   let dragState:
     | {
         lastX: number;
         lastY: number;
+        pointerId: number;
+      }
+    | null = null;
+  let lassoState:
+    | {
+        path: Array<{ x: number; y: number }>;
         pointerId: number;
       }
     | null = null;
@@ -314,6 +381,61 @@ export function createTriangleModelViewer(options: {
         y: clientY - rect.top,
       },
     };
+  };
+
+  const getDataPointFromClient = (clientX: number, clientY: number) => {
+    const { rect, point } = getRelativePoint(clientX, clientY);
+    if (rect.width <= 0 || rect.height <= 0) {
+      return null;
+    }
+
+    const worldPoint = projectScreenPointToWorldWithCamera(point, rect, camera);
+    if (!worldPoint) {
+      return null;
+    }
+
+    return {
+      x: worldPoint.x,
+      y: worldPoint.y / verticalExaggeration,
+    };
+  };
+
+  const updateLassoPreview = (path: Array<{ x: number; y: number }>) => {
+    onLassoPreviewChange?.(path.length > 0 ? [...path] : null);
+
+    if (path.length < 2) {
+      lassoLine.visible = false;
+      renderScene();
+      return;
+    }
+
+    updatePositionGeometry(
+      lassoGeometry,
+      new Float32Array(path.flatMap((point) => [point.x, point.y, 0.06])),
+    );
+    lassoLine.visible = true;
+    renderScene();
+  };
+
+  const clearLassoPreview = () => {
+    lassoLine.visible = false;
+    onLassoPreviewChange?.(null);
+  };
+
+  const updateTriangleColorAttribute = (values: Array<number | null>) => {
+    triangleFillGeometry.setAttribute(
+      'color',
+      new THREE.BufferAttribute(buildTriangleFillColors(values), 3),
+    );
+    triangleFillGeometry.attributes.color.needsUpdate = true;
+
+    const hasResistivityColors =
+      mesh?.source === 'constrained' && values.some((value) => value !== null);
+    triangleFillMaterial.opacity =
+      hasResistivityColors ? 1 : mesh?.source === 'constrained' ? 0.22 : 0.12;
+    triangleEdgeMaterial.opacity =
+      hasResistivityColors ? 0 : mesh?.source === 'constrained' ? 0.18 : 0.48;
+    segmentMaterial.opacity = hasResistivityColors ? 0.72 : 0.95;
   };
 
   const updateHover = (clientX: number, clientY: number) => {
@@ -456,6 +578,26 @@ export function createTriangleModelViewer(options: {
       return;
     }
 
+    if (shouldStartLassoDrag({ hasMesh: !!mesh, interactionMode })) {
+      const dataPoint = getDataPointFromClient(event.clientX, event.clientY);
+      if (!dataPoint) {
+        return;
+      }
+
+      event.preventDefault();
+      lassoState = {
+        path: [dataPoint],
+        pointerId: event.pointerId,
+      };
+
+      if (typeof interactionTarget.setPointerCapture === 'function') {
+        interactionTarget.setPointerCapture(event.pointerId);
+      }
+      interactionTarget.style.cursor = 'crosshair';
+      updateLassoPreview(lassoState.path);
+      return;
+    }
+
     dragState = {
       lastX: event.clientX,
       lastY: event.clientY,
@@ -470,6 +612,23 @@ export function createTriangleModelViewer(options: {
 
   const handlePointerMove = (event: PointerEvent) => {
     if (!mesh || !model) {
+      return;
+    }
+
+    if (lassoState && lassoState.pointerId === event.pointerId) {
+      const dataPoint = getDataPointFromClient(event.clientX, event.clientY);
+      if (!dataPoint) {
+        return;
+      }
+
+      const lastPoint = lassoState.path[lassoState.path.length - 1];
+      if (!lastPoint || Math.hypot(lastPoint.x - dataPoint.x, lastPoint.y - dataPoint.y) > 0) {
+        lassoState = {
+          ...lassoState,
+          path: [...lassoState.path, dataPoint],
+        };
+        updateLassoPreview(lassoState.path);
+      }
       return;
     }
 
@@ -498,6 +657,27 @@ export function createTriangleModelViewer(options: {
   };
 
   const handlePointerUp = (event: PointerEvent) => {
+    if (lassoState && lassoState.pointerId === event.pointerId) {
+      const completedPath = lassoState.path;
+      lassoState = null;
+      clearLassoPreview();
+
+      if (typeof interactionTarget.releasePointerCapture === 'function') {
+        try {
+          interactionTarget.releasePointerCapture(event.pointerId);
+        } catch {
+          // Pointer capture is not fully implemented in every test/browser context.
+        }
+      }
+
+      interactionTarget.style.cursor = interactionMode === 'lasso' ? 'crosshair' : 'grab';
+      if (completedPath.length >= 3) {
+        onLassoComplete?.(completedPath);
+      }
+      renderScene();
+      return;
+    }
+
     if (dragState && dragState.pointerId === event.pointerId) {
       dragState = null;
       interactionTarget.style.cursor = 'grab';
@@ -513,7 +693,7 @@ export function createTriangleModelViewer(options: {
   };
 
   const handlePointerLeave = () => {
-    if (dragState) {
+    if (dragState || lassoState) {
       return;
     }
 
@@ -597,6 +777,12 @@ export function createTriangleModelViewer(options: {
       hoverSegmentMaterial.dispose();
       hoverPointGeometry.dispose();
       hoverPointMaterial.dispose();
+      selectionGeometry.dispose();
+      selectionMaterial.dispose();
+      featherGeometry.dispose();
+      featherMaterial.dispose();
+      lassoGeometry.dispose();
+      lassoMaterial.dispose();
       renderer.dispose();
     },
     resetView() {
@@ -687,12 +873,58 @@ export function createTriangleModelViewer(options: {
         vertex: null,
         segment: null,
       });
+      selectionOverlay.visible = false;
+      featherOverlay.visible = false;
+      clearLassoPreview();
+      renderScene();
+    },
+    setInteractionMode(mode) {
+      interactionMode = mode;
+      dragState = null;
+      lassoState = null;
+      clearLassoPreview();
+      interactionTarget.style.cursor = mode === 'lasso' ? 'crosshair' : 'grab';
       renderScene();
     },
     setLayerVisibility(visibility) {
       triangleGroup.visible = visibility.triangles;
       segmentLines.visible = visibility.segments;
       points.visible = visibility.vertices;
+      renderScene();
+    },
+    setSelectionOverlay(selection) {
+      if (!mesh || !selection) {
+        selectionOverlay.visible = false;
+        featherOverlay.visible = false;
+        renderScene();
+        return;
+      }
+
+      const selectedPositions = buildTriangleSelectionHighlightPositions(
+        mesh,
+        selection.selectedTriangleIndices,
+      );
+      updateTriangleHighlight(selectionGeometry, selectedPositions);
+      selectionOverlay.visible = selectedPositions.length > 0;
+
+      const featherPositions = buildTriangleSelectionHighlightPositions(
+        mesh,
+        selection.featherTriangleIndices ?? [],
+      );
+      updateTriangleHighlight(featherGeometry, featherPositions);
+      featherOverlay.visible = featherPositions.length > 0;
+      renderScene();
+    },
+    setTriangleResistivityValues(values) {
+      if (!mesh) {
+        return;
+      }
+
+      mesh = {
+        ...mesh,
+        triangleResistivityValues: [...values],
+      };
+      updateTriangleColorAttribute(values);
       renderScene();
     },
     setVerticalExaggeration(factor) {

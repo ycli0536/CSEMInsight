@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { buildTriangleHoverState } from './triangleModelViewer';
+import { buildTriangleHoverState, shouldStartLassoDrag } from './triangleModelViewer';
 
 describe('buildTriangleHoverState', () => {
   it('keeps region rho when a vertex wins the visible hover state', () => {
@@ -73,5 +73,13 @@ describe('buildTriangleHoverState', () => {
       vertex: null,
       segment: null,
     });
+  });
+});
+
+describe('shouldStartLassoDrag', () => {
+  it('starts lasso capture only when lasso mode has mesh data', () => {
+    expect(shouldStartLassoDrag({ interactionMode: 'lasso', hasMesh: true })).toBe(true);
+    expect(shouldStartLassoDrag({ interactionMode: 'pan', hasMesh: true })).toBe(false);
+    expect(shouldStartLassoDrag({ interactionMode: 'lasso', hasMesh: false })).toBe(false);
   });
 });

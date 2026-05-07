@@ -1,16 +1,36 @@
 import axios from 'axios';
 import {
+  Check,
   Eye,
+  LassoSelect,
   Loader2,
+  MousePointer2,
   Move,
   Network,
+  Redo2,
   RotateCcw,
+  Undo2,
   Upload,
+  X,
   ZoomIn,
 } from 'lucide-react';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
+import { buildRegionAdjacency, getFeatherRegionWeights } from '@/services/triangleRegionAdjacency';
+import {
+  applyEditPatch,
+  applySetRhoEdit,
+  buildRegionRhoMap,
+  deriveTriangleResistivityValues,
+  revertEditPatch,
+  type TriangleRegionEditPatch,
+} from '@/services/triangleRegionEditing';
+import {
+  collectSelectedRegionIds,
+  selectTrianglesByLasso,
+  type TriangleModelPoint2D,
+} from '@/services/triangleRegionSelection';
 import {
   buildTriangleResistivityGradientCss,
   formatTriangleResistivityTick,
@@ -40,6 +60,13 @@ const DEFAULT_LAYER_VISIBILITY: TriangleLayerVisibility = {
   vertices: false,
 };
 
+interface TriangleLassoSelection {
+  featherTriangleIndices: number[];
+  regionWeights: Map<number, number>;
+  selectedRegionIds: Set<number>;
+  selectedTriangleIndices: number[];
+}
+
 function getInitialLayerVisibility(mesh: TriangleMesh): TriangleLayerVisibility {
   const hasCellColors =
     mesh.source === 'constrained' &&
@@ -50,6 +77,18 @@ function getInitialLayerVisibility(mesh: TriangleMesh): TriangleLayerVisibility 
     segments: !hasCellColors,
     vertices: false,
   };
+}
+
+function getTriangleIndicesForRegionIds(mesh: TriangleMesh, regionIds: Set<number>) {
+  const triangleIndices: number[] = [];
+
+  mesh.triangleRegionIds?.forEach((regionId, triangleIndex) => {
+    if (regionId !== null && regionIds.has(regionId)) {
+      triangleIndices.push(triangleIndex);
+    }
+  });
+
+  return triangleIndices;
 }
 
 function getUploadErrorMessage(error: unknown): string {
@@ -88,10 +127,20 @@ export function TriangleModelWindow() {
   const [hover, setHover] = useState<TriangleHoverState | null>(null);
   const [viewportView, setViewportView] = useState<TriangleViewportView | null>(null);
   const [verticalExaggeration, setVerticalExaggeration] = useState(1);
+  const [interactionMode, setInteractionMode] = useState<'pan' | 'lasso'>('pan');
+  const [targetRho, setTargetRho] = useState('100');
+  const [isFeatherEnabled, setIsFeatherEnabled] = useState(false);
+  const [featherRings, setFeatherRings] = useState(2);
+  const [regionRhoById, setRegionRhoById] = useState<Map<number, number>>(new Map());
+  const [undoStack, setUndoStack] = useState<TriangleRegionEditPatch[]>([]);
+  const [redoStack, setRedoStack] = useState<TriangleRegionEditPatch[]>([]);
+  const [lassoSelection, setLassoSelection] = useState<TriangleLassoSelection | null>(null);
+  const [editStatus, setEditStatus] = useState<string | null>(null);
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const viewportRef = useRef<HTMLDivElement | null>(null);
   const viewerRef = useRef<TriangleModelViewer | null>(null);
+  const lassoCompleteHandlerRef = useRef<(path: TriangleModelPoint2D[]) => void>(() => {});
 
   const hoverSummary = useMemo(
     () =>
@@ -126,6 +175,12 @@ export function TriangleModelWindow() {
         : null,
     [viewportView, verticalExaggeration],
   );
+  const canEditRegions =
+    mesh?.source === 'constrained' &&
+    (mesh.triangleRegionIds ?? []).some((regionId) => regionId !== null) &&
+    regionRhoById.size > 0;
+  const targetRhoValue = Number(targetRho);
+  const hasValidTargetRho = Number.isFinite(targetRhoValue) && targetRhoValue > 0;
 
   const handleLoadModel = async () => {
     if (!polyFile) {
@@ -153,12 +208,23 @@ export function TriangleModelWindow() {
       setVisibleLayers(getInitialLayerVisibility(nextMesh));
       setHover(null);
       setViewportView(null);
+      setInteractionMode('pan');
+      setRegionRhoById(buildRegionRhoMap(response.data));
+      setUndoStack([]);
+      setRedoStack([]);
+      setLassoSelection(null);
+      setEditStatus(null);
     } catch (uploadError) {
       setError(getUploadErrorMessage(uploadError));
       setModel(null);
       setMesh(null);
       setHover(null);
       setViewportView(null);
+      setRegionRhoById(new Map());
+      setUndoStack([]);
+      setRedoStack([]);
+      setLassoSelection(null);
+      setEditStatus(null);
     } finally {
       setIsLoading(false);
     }
@@ -171,6 +237,144 @@ export function TriangleModelWindow() {
     }));
   };
 
+  const pushTriangleValuesToViewer = useCallback(
+    (rhoByRegion: Map<number, number>) => {
+      if (!viewerRef.current || !mesh) {
+        return;
+      }
+
+      viewerRef.current.setTriangleResistivityValues(
+        deriveTriangleResistivityValues({
+          mesh,
+          rhoByRegion,
+        }),
+      );
+    },
+    [mesh],
+  );
+
+  const handleCancelLasso = useCallback(() => {
+    setLassoSelection(null);
+    setEditStatus(null);
+    viewerRef.current?.setSelectionOverlay(null);
+  }, []);
+
+  const handleLassoComplete = useCallback(
+    (path: TriangleModelPoint2D[]) => {
+      if (!mesh || path.length < 3) {
+        handleCancelLasso();
+        return;
+      }
+
+      const hitTriangleIndices = selectTrianglesByLasso(mesh, path);
+      const selectedRegionIds = collectSelectedRegionIds(mesh, hitTriangleIndices);
+      if (selectedRegionIds.size === 0) {
+        setLassoSelection(null);
+        setEditStatus('No editable regions selected.');
+        viewerRef.current?.setSelectionOverlay(null);
+        return;
+      }
+
+      const regionWeights = isFeatherEnabled
+        ? getFeatherRegionWeights({
+            adjacency: buildRegionAdjacency(mesh),
+            selectedRegionIds,
+            rings: featherRings,
+          })
+        : new Map(Array.from(selectedRegionIds, (regionId) => [regionId, 1]));
+      const featherRegionIds = new Set(
+        Array.from(regionWeights.keys()).filter(
+          (regionId) => !selectedRegionIds.has(regionId),
+        ),
+      );
+      const selectedTriangleIndices = getTriangleIndicesForRegionIds(
+        mesh,
+        selectedRegionIds,
+      );
+      const featherTriangleIndices = getTriangleIndicesForRegionIds(mesh, featherRegionIds);
+
+      setLassoSelection({
+        featherTriangleIndices,
+        regionWeights,
+        selectedRegionIds,
+        selectedTriangleIndices,
+      });
+      setEditStatus(
+        `Selected ${selectedRegionIds.size} region${selectedRegionIds.size === 1 ? '' : 's'}.`,
+      );
+      viewerRef.current?.setSelectionOverlay({
+        selectedTriangleIndices,
+        featherTriangleIndices,
+      });
+    },
+    [featherRings, handleCancelLasso, isFeatherEnabled, mesh],
+  );
+
+  const handleApplyEdit = () => {
+    if (!lassoSelection) {
+      setEditStatus('Draw a lasso before applying an edit.');
+      return;
+    }
+
+    if (!hasValidTargetRho) {
+      setEditStatus('Target rho must be a positive number.');
+      return;
+    }
+
+    const patch = applySetRhoEdit({
+      currentRhoByRegion: regionRhoById,
+      regionWeights: lassoSelection.regionWeights,
+      targetRho: targetRhoValue,
+    });
+    if (patch.nextRhoByRegion.size === 0) {
+      setEditStatus('No selected regions have editable rho values.');
+      return;
+    }
+
+    const nextRhoByRegion = applyEditPatch(regionRhoById, patch);
+    setRegionRhoById(nextRhoByRegion);
+    setUndoStack((current) => [...current, patch]);
+    setRedoStack([]);
+    pushTriangleValuesToViewer(nextRhoByRegion);
+    setEditStatus(
+      `Updated ${patch.nextRhoByRegion.size} region${
+        patch.nextRhoByRegion.size === 1 ? '' : 's'
+      }${patch.skippedRegionIds.length > 0 ? `, skipped ${patch.skippedRegionIds.length}` : ''}.`,
+    );
+  };
+
+  const handleUndoEdit = () => {
+    const patch = undoStack[undoStack.length - 1];
+    if (!patch) {
+      return;
+    }
+
+    const nextRhoByRegion = revertEditPatch(regionRhoById, patch);
+    setRegionRhoById(nextRhoByRegion);
+    setUndoStack((current) => current.slice(0, -1));
+    setRedoStack((current) => [...current, patch]);
+    pushTriangleValuesToViewer(nextRhoByRegion);
+    setEditStatus('Undo applied.');
+  };
+
+  const handleRedoEdit = () => {
+    const patch = redoStack[redoStack.length - 1];
+    if (!patch) {
+      return;
+    }
+
+    const nextRhoByRegion = applyEditPatch(regionRhoById, patch);
+    setRegionRhoById(nextRhoByRegion);
+    setRedoStack((current) => current.slice(0, -1));
+    setUndoStack((current) => [...current, patch]);
+    pushTriangleValuesToViewer(nextRhoByRegion);
+    setEditStatus('Redo applied.');
+  };
+
+  useEffect(() => {
+    lassoCompleteHandlerRef.current = handleLassoComplete;
+  }, [handleLassoComplete]);
+
   useEffect(() => {
     if (!model || !mesh || !canvasRef.current || !viewportRef.current) {
       return;
@@ -181,6 +385,7 @@ export function TriangleModelWindow() {
         canvas: canvasRef.current,
         interactionTarget: viewportRef.current,
         onHoverChange: setHover,
+        onLassoComplete: (path) => lassoCompleteHandlerRef.current(path),
         onViewChange: setViewportView,
       });
     }
@@ -203,6 +408,14 @@ export function TriangleModelWindow() {
 
     viewerRef.current.setLayerVisibility(visibleLayers);
   }, [mesh, model, visibleLayers]);
+
+  useEffect(() => {
+    if (!viewerRef.current || !model || !mesh) {
+      return;
+    }
+
+    viewerRef.current.setInteractionMode(interactionMode);
+  }, [interactionMode, mesh, model]);
 
   useEffect(() => {
     if (!viewerRef.current || !model || !mesh) {
@@ -483,13 +696,132 @@ export function TriangleModelWindow() {
                   {verticalExaggeration}x
                 </span>
               </div>
+              {canEditRegions ? (
+                <div className="flex flex-wrap items-center justify-end gap-2 border-l border-border/40 pl-2">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant={interactionMode === 'pan' ? 'secondary' : 'outline'}
+                    className="gap-1.5"
+                    aria-pressed={interactionMode === 'pan'}
+                    onClick={() => setInteractionMode('pan')}
+                  >
+                    <MousePointer2 className="h-3.5 w-3.5" />
+                    Pan
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant={interactionMode === 'lasso' ? 'secondary' : 'outline'}
+                    className="gap-1.5"
+                    aria-pressed={interactionMode === 'lasso'}
+                    onClick={() => setInteractionMode('lasso')}
+                  >
+                    <LassoSelect className="h-3.5 w-3.5" />
+                    Lasso
+                  </Button>
+                  <label
+                    htmlFor="triangle-target-rho"
+                    className="whitespace-nowrap text-xs text-muted-foreground"
+                  >
+                    Rho
+                  </label>
+                  <input
+                    id="triangle-target-rho"
+                    aria-label="Target rho"
+                    type="number"
+                    min="0"
+                    step="any"
+                    value={targetRho}
+                    onChange={(event) => setTargetRho(event.target.value)}
+                    className="h-8 w-20 rounded-md border border-border/60 bg-background px-2 text-xs tabular-nums"
+                  />
+                  <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                    <input
+                      aria-label="Apply feather to neighboring regions"
+                      type="checkbox"
+                      checked={isFeatherEnabled}
+                      onChange={(event) => setIsFeatherEnabled(event.target.checked)}
+                      className="h-3.5 w-3.5 cursor-pointer accent-sky-600"
+                    />
+                    Feather
+                  </label>
+                  <input
+                    aria-label="Feather rings"
+                    type="number"
+                    min="0"
+                    max="5"
+                    step="1"
+                    value={featherRings}
+                    disabled={!isFeatherEnabled}
+                    onChange={(event) => {
+                      setFeatherRings(
+                        Math.min(Math.max(Number(event.target.value), 0), 5),
+                      );
+                    }}
+                    className="h-8 w-14 rounded-md border border-border/60 bg-background px-2 text-xs tabular-nums disabled:opacity-50"
+                  />
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="secondary"
+                    className="gap-1.5"
+                    disabled={!lassoSelection || !hasValidTargetRho}
+                    onClick={handleApplyEdit}
+                  >
+                    <Check className="h-3.5 w-3.5" />
+                    Apply
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="gap-1.5"
+                    disabled={!lassoSelection}
+                    onClick={handleCancelLasso}
+                  >
+                    <X className="h-3.5 w-3.5" />
+                    Cancel
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="gap-1.5"
+                    disabled={undoStack.length === 0}
+                    onClick={handleUndoEdit}
+                  >
+                    <Undo2 className="h-3.5 w-3.5" />
+                    Undo
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="gap-1.5"
+                    disabled={redoStack.length === 0}
+                    onClick={handleRedoEdit}
+                  >
+                    <Redo2 className="h-3.5 w-3.5" />
+                    Redo
+                  </Button>
+                </div>
+              ) : null}
             </div>
           ) : null}
         </div>
 
         <div className="flex items-center justify-between gap-4 border-b border-border/40 bg-background/70 px-4 py-2 text-xs text-muted-foreground">
           <p>Wheel to zoom, drag to pan, double-click to reset.</p>
-          {hoverSummary ? <p className="truncate">{hoverSummary}</p> : null}
+          <div className="min-w-0 text-right">
+            {editStatus ? (
+              <p data-testid="triangle-edit-status" className="truncate">
+                {editStatus}
+              </p>
+            ) : hoverSummary ? (
+              <p className="truncate">{hoverSummary}</p>
+            ) : null}
+          </div>
         </div>
 
         <div

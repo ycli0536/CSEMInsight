@@ -19,13 +19,18 @@ const mockViewer = {
   resetView: vi.fn(),
   resize: vi.fn(),
   setData: vi.fn(),
+  setInteractionMode: vi.fn(),
   setLayerVisibility: vi.fn(),
+  setSelectionOverlay: vi.fn(),
+  setTriangleResistivityValues: vi.fn(),
   setVerticalExaggeration: vi.fn(),
 };
 
 let latestViewerOptions:
   | {
       onHoverChange: (hover: unknown) => void;
+      onLassoComplete?: (path: Array<{ x: number; y: number }>) => void;
+      onLassoPreviewChange?: (path: Array<{ x: number; y: number }> | null) => void;
       onViewChange: (view: unknown) => void;
       canvas: HTMLCanvasElement;
       interactionTarget: HTMLElement;
@@ -38,6 +43,57 @@ vi.mock('@/services/triangleModelViewer', () => ({
     return mockViewer;
   }),
 }));
+
+function buildEditableTriangleModelResponse() {
+  return {
+    polyFileName: 'editable.poly',
+    resistivityFileName: 'editable.resistivity',
+    vertices: [
+      { id: 1, hCoor: 0, vCoor: 0, attributes: [], boundary_marker: null },
+      { id: 2, hCoor: 1, vCoor: 0, attributes: [], boundary_marker: null },
+      { id: 3, hCoor: 0, vCoor: 1, attributes: [], boundary_marker: null },
+      { id: 4, hCoor: 1, vCoor: 1, attributes: [], boundary_marker: null },
+    ],
+    segments: [
+      { id: 1, endpoint_1: 1, endpoint_2: 2, boundary_marker: null },
+      { id: 2, endpoint_1: 2, endpoint_2: 4, boundary_marker: null },
+      { id: 3, endpoint_1: 4, endpoint_2: 3, boundary_marker: null },
+      { id: 4, endpoint_1: 3, endpoint_2: 1, boundary_marker: null },
+    ],
+    holes: [],
+    regions: [
+      { id: 10, hCoor: 0.33, vCoor: 0.33, attribute: 10, max_area: -1 },
+      { id: 20, hCoor: 0.67, vCoor: 0.67, attribute: 20, max_area: -1 },
+    ],
+    resistivity: {
+      metadata: {
+        'Number of regions': 2,
+      },
+      table: [
+        { Region: 10, Rho: 10 },
+        { Region: 20, Rho: 100 },
+      ],
+    },
+    constrainedMesh: {
+      vertices: [
+        { id: 0, x: 0, y: 0 },
+        { id: 1, x: 1, y: 0 },
+        { id: 2, x: 0, y: 1 },
+        { id: 3, x: 1, y: 1 },
+      ],
+      triangles: [
+        [0, 1, 2],
+        [1, 3, 2],
+      ],
+      triangleRegionIds: [10, 20],
+      triangleResistivityValues: [10, 100],
+      regionResistivity: [
+        { regionId: 10, rho: 10 },
+        { regionId: 20, rho: 100 },
+      ],
+    },
+  };
+}
 
 describe('TriangleModelWindow', () => {
   beforeEach(() => {
@@ -341,6 +397,116 @@ describe('TriangleModelWindow', () => {
     await user.click(screen.getByRole('button', { name: /reset/i }));
 
     expect(mockViewer.resetView).toHaveBeenCalledTimes(1);
+  });
+
+  it('applies a lasso set-rho edit and updates triangle values without resetting data', async () => {
+    const user = userEvent.setup();
+    vi.mocked(axios.post).mockResolvedValue({
+      data: buildEditableTriangleModelResponse(),
+    });
+
+    render(<TriangleModelWindow />);
+
+    await user.upload(
+      screen.getByLabelText(/poly file/i),
+      new File(['poly'], 'editable.poly', { type: 'text/plain' }),
+    );
+    await user.upload(
+      screen.getByLabelText(/resistivity file/i),
+      new File(['rho'], 'editable.resistivity', { type: 'text/plain' }),
+    );
+    await user.click(screen.getByRole('button', { name: /load triangle model/i }));
+
+    await waitFor(() => {
+      expect(mockViewer.setData).toHaveBeenCalled();
+      expect(screen.getByRole('button', { name: /lasso/i })).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByRole('button', { name: /lasso/i }));
+    expect(mockViewer.setInteractionMode).toHaveBeenLastCalledWith('lasso');
+
+    act(() => {
+      latestViewerOptions?.onLassoComplete?.([
+        { x: -0.1, y: -0.1 },
+        { x: 0.6, y: -0.1 },
+        { x: 0.6, y: 0.6 },
+        { x: -0.1, y: 0.6 },
+      ]);
+    });
+
+    await waitFor(() => {
+      expect(mockViewer.setSelectionOverlay).toHaveBeenLastCalledWith({
+        selectedTriangleIndices: [0],
+        featherTriangleIndices: [],
+      });
+    });
+
+    await user.clear(screen.getByLabelText(/target rho/i));
+    await user.type(screen.getByLabelText(/target rho/i), '1000');
+    await user.click(screen.getByRole('button', { name: /^apply$/i }));
+
+    await waitFor(() => {
+      expect(mockViewer.setTriangleResistivityValues).toHaveBeenLastCalledWith([
+        1000,
+        100,
+      ]);
+      expect(screen.getByTestId('triangle-edit-status')).toHaveTextContent(
+        /updated 1 region/i,
+      );
+    });
+
+    expect(mockViewer.setData).toHaveBeenCalledTimes(1);
+  });
+
+  it('undoes and redoes a lasso region edit', async () => {
+    const user = userEvent.setup();
+    vi.mocked(axios.post).mockResolvedValue({
+      data: buildEditableTriangleModelResponse(),
+    });
+
+    render(<TriangleModelWindow />);
+
+    await user.upload(
+      screen.getByLabelText(/poly file/i),
+      new File(['poly'], 'editable.poly', { type: 'text/plain' }),
+    );
+    await user.click(screen.getByRole('button', { name: /load triangle model/i }));
+
+    await waitFor(() => {
+      expect(mockViewer.setData).toHaveBeenCalled();
+    });
+
+    act(() => {
+      latestViewerOptions?.onLassoComplete?.([
+        { x: -0.1, y: -0.1 },
+        { x: 0.6, y: -0.1 },
+        { x: 0.6, y: 0.6 },
+        { x: -0.1, y: 0.6 },
+      ]);
+    });
+
+    await user.clear(await screen.findByLabelText(/target rho/i));
+    await user.type(screen.getByLabelText(/target rho/i), '1000');
+    await user.click(screen.getByRole('button', { name: /^apply$/i }));
+
+    await waitFor(() => {
+      expect(mockViewer.setTriangleResistivityValues).toHaveBeenLastCalledWith([
+        1000,
+        100,
+      ]);
+    });
+
+    await user.click(screen.getByRole('button', { name: /undo/i }));
+    expect(mockViewer.setTriangleResistivityValues).toHaveBeenLastCalledWith([
+      10,
+      100,
+    ]);
+
+    await user.click(screen.getByRole('button', { name: /redo/i }));
+    expect(mockViewer.setTriangleResistivityValues).toHaveBeenLastCalledWith([
+      1000,
+      100,
+    ]);
   });
 
   it('formats hover copy as rho-only when resistivity is available', () => {
