@@ -52,17 +52,23 @@ def _parse_csem_datafile(path):
     elif csem_datafile_reader.data_type == "CSEM":
         rx_data_df = csem_datafile_reader.rx_data_block_init(csem_data["Rx"])
     elif csem_datafile_reader.data_type == "MT":
-        raise ValueError(f"Cannot process data type: {csem_datafile_reader.data_type}")
+        rx_data_df = csem_datafile_reader.rx_data_block_init(csem_data["Rx"], "MT")
     else:
         raise ValueError(f"Invalid data type: {csem_datafile_reader.data_type}")
-    tx_data_df = csem_datafile_reader.tx_data_block_init(csem_data["Tx"])
     rx_data_lonlat_df = csem_datafile_reader.ne2latlon(rx_data_df, geometry_info)
-    tx_data_lonlat_df = csem_datafile_reader.ne2latlon(tx_data_df, geometry_info)
-    data_rx_tx_df = csem_datafile_reader.merge_data_rx_tx(
-        data_df,
-        rx_data_lonlat_df,
-        tx_data_lonlat_df,
-    )
+    if csem_datafile_reader.data_type == "MT":
+        data_rx_tx_df = csem_datafile_reader.merge_mt_data_rx(
+            data_df,
+            rx_data_lonlat_df,
+        )
+    else:
+        tx_data_df = csem_datafile_reader.tx_data_block_init(csem_data["Tx"])
+        tx_data_lonlat_df = csem_datafile_reader.ne2latlon(tx_data_df, geometry_info)
+        data_rx_tx_df = csem_datafile_reader.merge_data_rx_tx(
+            data_df,
+            rx_data_lonlat_df,
+            tx_data_lonlat_df,
+        )
     data_js = csem_datafile_reader.df_to_json(data_rx_tx_df)
     return geometry_info, data_js, csem_data
 

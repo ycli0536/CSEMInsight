@@ -489,6 +489,29 @@ class CSEMDataFileReader():
         merged_df['distance'] = np.sqrt((merged_df['Y_rx'] - merged_df['Y_tx'])**2 + (merged_df['X_rx'] - merged_df['X_tx'])**2 + (merged_df['Z_rx'] - merged_df['Z_tx'])**2)
         return merged_df
 
+    def merge_mt_data_rx(self, data, rx_data):
+        """Merge MT data and receiver blocks into an editable flat table."""
+        merged_df = pd.merge(data, rx_data, on='Rx')
+        rename_map = {
+            'Freq': 'Freq_id',
+            'Tx': 'Tx_id',
+            'Rx': 'Rx_id',
+            'X': 'X_rx',
+            'Y': 'Y_rx',
+            'Z': 'Z_rx',
+            'Length': 'Length_rx',
+            'SolveStatic': 'SolveStatic_rx',
+            'Name': 'Name_rx',
+        }
+        if 'Lat' in merged_df.columns:
+            rename_map['Lat'] = 'Lat_rx'
+        if 'Lon' in merged_df.columns:
+            rename_map['Lon'] = 'Lon_rx'
+        merged_df.rename(columns=rename_map, inplace=True)
+        freq_dict = self.extract_freq_info()
+        merged_df = self.add_freq_column(merged_df, freq_dict)
+        return merged_df
+
     def df_to_json(self, df):
         """Convert DataFrame to JSON."""
         # result = df.to_json(orient='records', date_format='epoch', date_unit='s')
@@ -502,6 +525,20 @@ class CSEMDataFileReader():
 class CSEMDataFileManager():
     def __init__(self, data_type:str='CSEM'):
         self.data_type = data_type
+
+    def _infer_data_type_from_blocks(self, data_blocks: dict) -> str:
+        """Infer the file type from block headers when available."""
+        if 'Frequencies_MT' in data_blocks and 'Frequencies_CSEM' in data_blocks:
+            return 'joint'
+        if 'Rx' in data_blocks and data_blocks['Rx']:
+            rx_header = data_blocks['Rx'][0].lower()
+            if 'mt receivers' in rx_header:
+                return 'MT'
+            if 'csem receivers' in rx_header:
+                return 'CSEM'
+        if 'Tx' in data_blocks:
+            return 'CSEM'
+        return self.data_type
 
     def split_data_rx_tx(self, merged_df:pd.DataFrame):
         """Anti-merge the data, Rx and Tx blocks. Re-index Rx and Tx columns."""
@@ -534,6 +571,45 @@ class CSEMDataFileManager():
         tx_data = tx_data.drop_duplicates()
         return data, rx_data, tx_data
 
+    def split_mt_data_rx(self, merged_df:pd.DataFrame):
+        """Anti-merge the MT data and receiver blocks."""
+        data = merged_df[['Type', 'Freq_id', 'Tx_id', 'Rx_id', 'Data', 'StdError']].copy()
+        data.rename(columns={'Freq_id': 'Freq #',
+                             'Tx_id': 'Tx #',
+                             'Rx_id': 'Rx #'}, inplace=True)
+
+        rx_column_map = {
+            'X_rx': 'X',
+            'Y_rx': 'Y',
+            'Z_rx': 'Z',
+            'Theta': 'Theta',
+            'Alpha': 'Alpha',
+            'Beta': 'Beta',
+            'Length_rx': 'Length',
+            'SolveStatic_rx': 'SolveStatic',
+            'Name_rx': 'Name',
+        }
+        fallback_columns = {
+            'X_rx': 'X',
+            'Y_rx': 'Y',
+            'Z_rx': 'Z',
+            'Length_rx': 'Length',
+            'SolveStatic_rx': 'SolveStatic',
+            'Name_rx': 'Name',
+        }
+        selected_columns = {'Rx_id': 'Rx #'}
+        for source_column, target_column in rx_column_map.items():
+            actual_column = source_column
+            if actual_column not in merged_df.columns:
+                actual_column = fallback_columns.get(source_column, source_column)
+            selected_columns[actual_column] = target_column
+
+        rx_data = merged_df[list(selected_columns.keys())].copy()
+        rx_data.rename(columns=selected_columns, inplace=True)
+        rx_data = rx_data.sort_values(by='Rx #')
+        rx_data = rx_data.drop_duplicates()
+        return data, rx_data
+
     def reindex_rx_tx_in_data(self, data:pd.DataFrame):
         """Re-index Rx and Tx columns."""
         tx_ids = data['Tx #'].sort_values().unique()
@@ -543,6 +619,16 @@ class CSEMDataFileManager():
         data['Tx #'] = data['Tx #'].map(tx_id_map)
         data['Rx #'] = data['Rx #'].map(rx_id_map)
         return data
+
+    def reindex_mt_data(self, data:pd.DataFrame):
+        """Re-index MT frequency and receiver columns, preserving Tx sentinel values."""
+        freq_ids = data['Freq #'].sort_values().unique()
+        rx_ids = data['Rx #'].sort_values().unique()
+        freq_id_map = {freq_id: i + 1 for i, freq_id in enumerate(freq_ids)}
+        rx_id_map = {rx_id: i + 1 for i, rx_id in enumerate(rx_ids)}
+        data['Freq #'] = data['Freq #'].map(freq_id_map)
+        data['Rx #'] = data['Rx #'].map(rx_id_map)
+        return data, freq_id_map, rx_id_map
 
     def json_to_df(self, json_str):
         """Convert JSON to DataFrame."""
@@ -575,10 +661,11 @@ class CSEMDataFileManager():
         }, index=False)
         return data_str
 
-    def rx_block_to_string(self, Rx_data):
+    def rx_block_to_string(self, Rx_data, rx_type:str='CSEM'):
         """Convert the DataFrame to a string"""
         # Delete Rx column from Rx data
         # Apply MARE2DEM (DataMan) formatting to the DataFrame
+        solve_static_formatter = {"SolveStatic": "{:11.6g}".format} if rx_type == 'MT' else {}
         if 'Rx #' in Rx_data.columns:
             data_str = Rx_data.drop(columns=['Rx #']).to_string(formatters={
                 "X": "{:10.6g}".format,
@@ -588,8 +675,9 @@ class CSEMDataFileManager():
                 "Alpha": "{:9.2f}".format,
                 "Beta": "{:9.2f}".format,
                 "Length": "{:9.5g}".format,
-                    "Name": "{:>10s}".format
-                }, index=False)
+                "Name": "{:>10s}".format,
+                **solve_static_formatter,
+            }, index=False)
         else:
             data_str = Rx_data.drop(columns=['Rx']).to_string(formatters={
                 "X": "{:10.6g}".format,
@@ -599,7 +687,8 @@ class CSEMDataFileManager():
                 "Alpha": "{:9.2f}".format,
                 "Beta": "{:9.2f}".format,
                 "Length": "{:9.5g}".format,
-                "Name": "{:>10s}".format
+                "Name": "{:>10s}".format,
+                **solve_static_formatter,
             }, index=False)
         return data_str
 
@@ -660,6 +749,21 @@ class CSEMDataFileManager():
         # Return in the format: "Geometry: <values> ! <comment>"
         return f"UTM of x,y origin (UTM zone, N, E, 2D strike): {geometry_string}\n"
 
+    def update_frequency_block(self, freq_values:list[float], data_blocks:dict, data_type:str|None=None):
+        """Rewrite the frequency block using the provided frequency values."""
+        resolved_type = data_type or self.data_type
+        if resolved_type == 'CSEM':
+            pattern = re.compile(r'(CSEM Frequencies: *)(\d+)')
+        elif resolved_type == 'MT':
+            pattern = re.compile(r'(MT Frequencies: *)(\d+)')
+        else:
+            raise ValueError(f"Invalid data type for frequency update: {resolved_type}")
+        new_header = pattern.sub(r'\g<1>' + str(len(freq_values)), data_blocks['Frequencies'][0])
+        frequency_block = [new_header]
+        for freq in freq_values:
+            frequency_block.append(f'{freq}\n')
+        return frequency_block
+
     def update_data_block(self, data_filtered: pd.DataFrame, data_blocks: dict):
         """Update the Data block with the filtered data."""
         # Convert data back to string format
@@ -676,7 +780,7 @@ class CSEMDataFileManager():
     def update_rx_block(self, rx_data_filtered: pd.DataFrame, data_blocks: dict, rx_type:str='CSEM'):
         """Update the Rx block with the filtered data."""
         # Convert data back to string format
-        data_str = self.rx_block_to_string(rx_data_filtered)
+        data_str = self.rx_block_to_string(rx_data_filtered, rx_type=rx_type)
         # Regular expression to find the number
         if self.data_type == 'CSEM':
             number_pattern = re.compile(r'(CSEM Receivers: *)(\d+)')
@@ -715,7 +819,30 @@ class CSEMDataFileManager():
         return blocks_data_str.splitlines(True)
 
     def update_blocks(self, data_df, data_blocks):
-        print(data_blocks.keys())
+        resolved_type = self._infer_data_type_from_blocks(data_blocks)
+        self.data_type = resolved_type
+        if resolved_type == 'MT':
+            data, rx_data = self.split_mt_data_rx(data_df)
+            original_freq_values = (
+                data_df[['Freq_id', 'Freq']]
+                .drop_duplicates()
+                .sort_values('Freq_id')
+            )
+            data, freq_id_map, rx_id_map = self.reindex_mt_data(data)
+            rx_data['Rx #'] = rx_data['Rx #'].map(rx_id_map)
+            reindexed_freq_values = [
+                float(original_freq_values.loc[original_freq_values['Freq_id'] == old_freq_id, 'Freq'].iloc[0])
+                for old_freq_id, _ in sorted(freq_id_map.items(), key=lambda item: item[1])
+            ]
+            data_blocks['Frequencies'] = self.update_frequency_block(
+                reindexed_freq_values,
+                data_blocks,
+                data_type='MT',
+            )
+            data_blocks['Data'] = self.update_data_block(data, data_blocks)
+            data_blocks['Rx'] = self.update_rx_block(rx_data, data_blocks, rx_type='MT')
+            return data_blocks
+
         data, rx_data, tx_data = self.split_data_rx_tx(data_df)
         data = self.reindex_rx_tx_in_data(data)
         data_blocks['Data'] = self.update_data_block(data, data_blocks)
