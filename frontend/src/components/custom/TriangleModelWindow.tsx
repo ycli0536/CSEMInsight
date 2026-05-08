@@ -1,6 +1,7 @@
 import axios from 'axios';
 import {
   Check,
+  Download,
   Eye,
   LassoSelect,
   Loader2,
@@ -114,9 +115,37 @@ function getUploadErrorMessage(error: unknown): string {
   return 'Failed to load triangle model files.';
 }
 
+function getEditedResistivityFileName(fileName: string) {
+  if (fileName.endsWith('.resistivity')) {
+    return `${fileName.slice(0, -'.resistivity'.length)}.edited.resistivity`;
+  }
+
+  return `${fileName}.edited.resistivity`;
+}
+
+function isSameRhoValue(previousRho: number, nextRho: number) {
+  const tolerance = Math.max(1e-12, Math.abs(previousRho) * 1e-12);
+  return Math.abs(previousRho - nextRho) <= tolerance;
+}
+
+function buildChangedRegionRhoUpdates(
+  baseRhoByRegion: Map<number, number>,
+  rhoByRegion: Map<number, number>,
+) {
+  const updates: Record<string, number> = {};
+  rhoByRegion.forEach((rho, regionId) => {
+    const baseRho = baseRhoByRegion.get(regionId);
+    if (baseRho === undefined || !isSameRhoValue(baseRho, rho)) {
+      updates[String(regionId)] = rho;
+    }
+  });
+  return updates;
+}
+
 export function TriangleModelWindow() {
   const [polyFile, setPolyFile] = useState<File | null>(null);
   const [resistivityFile, setResistivityFile] = useState<File | null>(null);
+  const [loadedResistivityFile, setLoadedResistivityFile] = useState<File | null>(null);
   const [model, setModel] = useState<TriangleModelResponse | null>(null);
   const [mesh, setMesh] = useState<TriangleMesh | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -132,10 +161,12 @@ export function TriangleModelWindow() {
   const [isFeatherEnabled, setIsFeatherEnabled] = useState(false);
   const [featherRings, setFeatherRings] = useState(2);
   const [regionRhoById, setRegionRhoById] = useState<Map<number, number>>(new Map());
+  const [baseRegionRhoById, setBaseRegionRhoById] = useState<Map<number, number>>(new Map());
   const [undoStack, setUndoStack] = useState<TriangleRegionEditPatch[]>([]);
   const [redoStack, setRedoStack] = useState<TriangleRegionEditPatch[]>([]);
   const [lassoSelection, setLassoSelection] = useState<TriangleLassoSelection | null>(null);
   const [editStatus, setEditStatus] = useState<string | null>(null);
+  const [isExportingResistivity, setIsExportingResistivity] = useState(false);
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const viewportRef = useRef<HTMLDivElement | null>(null);
@@ -179,6 +210,12 @@ export function TriangleModelWindow() {
     mesh?.source === 'constrained' &&
     (mesh.triangleRegionIds ?? []).some((regionId) => regionId !== null) &&
     regionRhoById.size > 0;
+  const changedRegionRhoUpdates = useMemo(
+    () => buildChangedRegionRhoUpdates(baseRegionRhoById, regionRhoById),
+    [baseRegionRhoById, regionRhoById],
+  );
+  const canExportResistivity =
+    !!loadedResistivityFile && Object.keys(changedRegionRhoUpdates).length > 0;
   const targetRhoValue = Number(targetRho);
   const hasValidTargetRho = Number.isFinite(targetRhoValue) && targetRhoValue > 0;
 
@@ -209,7 +246,10 @@ export function TriangleModelWindow() {
       setHover(null);
       setViewportView(null);
       setInteractionMode('pan');
-      setRegionRhoById(buildRegionRhoMap(response.data));
+      const nextRegionRhoById = buildRegionRhoMap(response.data);
+      setRegionRhoById(nextRegionRhoById);
+      setBaseRegionRhoById(nextRegionRhoById);
+      setLoadedResistivityFile(resistivityFile);
       setUndoStack([]);
       setRedoStack([]);
       setLassoSelection(null);
@@ -221,6 +261,8 @@ export function TriangleModelWindow() {
       setHover(null);
       setViewportView(null);
       setRegionRhoById(new Map());
+      setBaseRegionRhoById(new Map());
+      setLoadedResistivityFile(null);
       setUndoStack([]);
       setRedoStack([]);
       setLassoSelection(null);
@@ -369,6 +411,51 @@ export function TriangleModelWindow() {
     setUndoStack((current) => [...current, patch]);
     pushTriangleValuesToViewer(nextRhoByRegion);
     setEditStatus('Redo applied.');
+  };
+
+  const handleExportResistivity = async () => {
+    if (!loadedResistivityFile) {
+      setEditStatus('Load a .resistivity file before exporting.');
+      return;
+    }
+    if (Object.keys(changedRegionRhoUpdates).length === 0) {
+      setEditStatus('No region rho edits are available to export.');
+      return;
+    }
+
+    setIsExportingResistivity(true);
+    setEditStatus('Exporting .resistivity...');
+
+    const formData = new FormData();
+    formData.append('resistivity_file', loadedResistivityFile);
+    formData.append(
+      'region_rho_updates',
+      new Blob([JSON.stringify(changedRegionRhoUpdates)], {
+        type: 'application/json',
+      }),
+      'region-rho-updates.json',
+    );
+
+    try {
+      const response = await axios.post<Blob>(
+        'http://127.0.0.1:3354/api/export-triangle-resistivity',
+        formData,
+        { responseType: 'blob' },
+      );
+      const downloadUrl = URL.createObjectURL(response.data);
+      const link = document.createElement('a');
+      link.href = downloadUrl;
+      link.download = getEditedResistivityFileName(loadedResistivityFile.name);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(downloadUrl);
+      setEditStatus(`Exported ${link.download}.`);
+    } catch (exportError) {
+      setEditStatus(getUploadErrorMessage(exportError));
+    } finally {
+      setIsExportingResistivity(false);
+    }
   };
 
   useEffect(() => {
@@ -804,6 +891,21 @@ export function TriangleModelWindow() {
                   >
                     <Redo2 className="h-3.5 w-3.5" />
                     Redo
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="gap-1.5"
+                    disabled={!canExportResistivity || isExportingResistivity}
+                    onClick={handleExportResistivity}
+                  >
+                    {isExportingResistivity ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <Download className="h-3.5 w-3.5" />
+                    )}
+                    Export .resistivity
                   </Button>
                 </div>
               ) : null}

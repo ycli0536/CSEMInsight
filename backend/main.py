@@ -20,6 +20,11 @@ from csem_datafile_parser import PHASE_TYPE_CODES
 from csem_datafile_parser import calculate_misfit_statistics
 from xyz_datafile_parser import XYZDataFileReader
 from bathymetry_parser import BathymetryParser
+from triangle_resistivity_export import (
+    ResistivityExportError,
+    build_exported_resistivity_text,
+    parse_region_rho_updates,
+)
 
 app = Flask(__name__)
 CORS(app)
@@ -382,6 +387,48 @@ def upload_triangle_model_file():
                 "constrainedMesh": constrained_mesh,
             }
         )
+    except Exception:
+        traceback.print_exc()
+        return jsonify({"error": traceback.format_exc()}), 500
+
+
+@app.route("/api/export-triangle-resistivity", methods=["POST"])
+def export_triangle_resistivity_file():
+    resistivity_file = request.files.get("resistivity_file")
+    if resistivity_file is None:
+        return jsonify({"error": "No .resistivity file provided"}), 400
+    if resistivity_file.filename == "":
+        return jsonify({"error": "No selected .resistivity file"}), 400
+    if not resistivity_file.filename.endswith(".resistivity"):
+        return jsonify({"error": "Invalid .resistivity file format"}), 400
+
+    raw_updates = request.form.get("region_rho_updates")
+    updates_file = request.files.get("region_rho_updates")
+    if raw_updates is None and updates_file is not None:
+        try:
+            raw_updates = updates_file.read().decode("utf-8-sig")
+        except UnicodeDecodeError:
+            return jsonify({"error": "Could not decode region rho updates as UTF-8"}), 400
+    if raw_updates is None:
+        return jsonify({"error": "No region rho updates provided"}), 400
+
+    try:
+        source_text = resistivity_file.read().decode("utf-8-sig")
+        updates = parse_region_rho_updates(raw_updates)
+        exported_text = build_exported_resistivity_text(source_text, updates)
+        original_name = secure_filename(resistivity_file.filename) or "model.resistivity"
+        stem, _ = os.path.splitext(original_name)
+        download_name = f"{stem}.edited.resistivity"
+
+        response = app.response_class(exported_text, mimetype="text/plain")
+        response.headers["Content-Disposition"] = (
+            f'attachment; filename="{download_name}"'
+        )
+        return response
+    except UnicodeDecodeError:
+        return jsonify({"error": "Could not decode .resistivity file as UTF-8"}), 400
+    except ResistivityExportError as exc:
+        return jsonify({"error": str(exc)}), 400
     except Exception:
         traceback.print_exc()
         return jsonify({"error": traceback.format_exc()}), 500

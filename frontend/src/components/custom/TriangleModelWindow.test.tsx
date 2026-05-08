@@ -26,6 +26,15 @@ const mockViewer = {
   setVerticalExaggeration: vi.fn(),
 };
 
+function readBlobText(blob: Blob) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(reader.error);
+    reader.onload = () => resolve(String(reader.result));
+    reader.readAsText(blob);
+  });
+}
+
 let latestViewerOptions:
   | {
       onHoverChange: (hover: unknown) => void;
@@ -456,6 +465,107 @@ describe('TriangleModelWindow', () => {
     });
 
     expect(mockViewer.setData).toHaveBeenCalledTimes(1);
+  });
+
+  it('exports the current region rho values using the original resistivity file', async () => {
+    const user = userEvent.setup();
+    const exportedBlob = new Blob(['edited rho'], { type: 'text/plain' });
+    const createObjectURL = vi.fn(() => 'blob:edited-resistivity');
+    const revokeObjectURL = vi.fn();
+    const originalCreateObjectURL = window.URL.createObjectURL;
+    const originalRevokeObjectURL = window.URL.revokeObjectURL;
+    const anchorClick = vi
+      .spyOn(HTMLAnchorElement.prototype, 'click')
+      .mockImplementation(() => {});
+
+    Object.defineProperty(window.URL, 'createObjectURL', {
+      configurable: true,
+      value: createObjectURL,
+    });
+    Object.defineProperty(window.URL, 'revokeObjectURL', {
+      configurable: true,
+      value: revokeObjectURL,
+    });
+
+    try {
+      vi.mocked(axios.post).mockImplementation(async (url) => {
+        if (String(url).includes('/api/export-triangle-resistivity')) {
+          return {
+            data: exportedBlob,
+          };
+        }
+
+        return {
+          data: buildEditableTriangleModelResponse(),
+        };
+      });
+
+      render(<TriangleModelWindow />);
+
+      const resistivityFile = new File(['rho'], 'editable.resistivity', {
+        type: 'text/plain',
+      });
+      await user.upload(
+        screen.getByLabelText(/poly file/i),
+        new File(['poly'], 'editable.poly', { type: 'text/plain' }),
+      );
+      await user.upload(screen.getByLabelText(/resistivity file/i), resistivityFile);
+      await user.click(screen.getByRole('button', { name: /load triangle model/i }));
+
+      await waitFor(() => {
+        expect(mockViewer.setData).toHaveBeenCalled();
+      });
+
+      await user.upload(
+        screen.getByLabelText(/resistivity file/i),
+        new File(['other'], 'other.resistivity', { type: 'text/plain' }),
+      );
+
+      act(() => {
+        latestViewerOptions?.onLassoComplete?.([
+          { x: -0.1, y: -0.1 },
+          { x: 0.6, y: -0.1 },
+          { x: 0.6, y: 0.6 },
+          { x: -0.1, y: 0.6 },
+        ]);
+      });
+
+      await user.clear(await screen.findByLabelText(/target rho/i));
+      await user.type(screen.getByLabelText(/target rho/i), '1000');
+      await user.click(screen.getByRole('button', { name: /^apply$/i }));
+      await user.click(screen.getByRole('button', { name: /export .resistivity/i }));
+
+      await waitFor(() => {
+        expect(axios.post).toHaveBeenCalledTimes(2);
+      });
+
+      const exportCall = vi.mocked(axios.post).mock.calls[1];
+      expect(exportCall[0]).toBe(
+        'http://127.0.0.1:3354/api/export-triangle-resistivity',
+      );
+      expect(exportCall[2]).toEqual({ responseType: 'blob' });
+      const exportFormData = exportCall[1] as FormData;
+      expect(exportFormData.get('resistivity_file')).toBe(resistivityFile);
+      const updatesPart = exportFormData.get('region_rho_updates');
+      expect(updatesPart).toBeInstanceOf(File);
+      expect((updatesPart as File).name).toBe('region-rho-updates.json');
+      expect(JSON.parse(await readBlobText(updatesPart as Blob))).toEqual({
+        '10': 1000,
+      });
+      expect(createObjectURL).toHaveBeenCalledWith(exportedBlob);
+      expect(revokeObjectURL).toHaveBeenCalledWith('blob:edited-resistivity');
+      expect(anchorClick).toHaveBeenCalledTimes(1);
+    } finally {
+      anchorClick.mockRestore();
+      Object.defineProperty(window.URL, 'createObjectURL', {
+        configurable: true,
+        value: originalCreateObjectURL,
+      });
+      Object.defineProperty(window.URL, 'revokeObjectURL', {
+        configurable: true,
+        value: originalRevokeObjectURL,
+      });
+    }
   });
 
   it('undoes and redoes a lasso region edit', async () => {
