@@ -111,6 +111,27 @@ describe('TriangleModelWindow', () => {
     latestViewerOptions = null;
   });
 
+  it('renders Delaunay mesh icons for the model header and empty state', () => {
+    render(<TriangleModelWindow />);
+
+    expect(screen.getByTestId('triangle-model-header-icon')).toHaveAttribute(
+      'data-icon',
+      'delaunay-mesh',
+    );
+    expect(screen.getByTestId('triangle-model-header-icon')).toHaveAttribute(
+      'aria-hidden',
+      'true',
+    );
+    expect(screen.getByTestId('triangle-model-empty-icon')).toHaveAttribute(
+      'data-icon',
+      'delaunay-mesh',
+    );
+    expect(screen.getByTestId('triangle-model-empty-icon')).toHaveAttribute(
+      'aria-hidden',
+      'true',
+    );
+  });
+
   it('renders the three.js canvas viewport after upload succeeds', async () => {
     const user = userEvent.setup();
     vi.mocked(axios.post).mockResolvedValue({

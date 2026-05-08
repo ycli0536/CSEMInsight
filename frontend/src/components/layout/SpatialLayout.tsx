@@ -1,5 +1,6 @@
-import { Activity, Settings, Waves, LineChart, BarChart3, Download, Zap, Loader2, Check, AlertCircle, Network } from "lucide-react";
+import { Activity, Settings, Waves, LineChart, BarChart3, Download, Zap, Loader2, Check, AlertCircle } from "lucide-react";
 import { useWindowStore } from "@/store/windowStore";
+import { DelaunayMeshIcon } from "@/components/icons/DelaunayMeshIcon";
 import MapSubstrate from "@/components/layout/MapSubstrate";
 import { WindowManager } from "@/components/layout/WindowManager";
 import { BottomPanel } from "@/components/layout/BottomPanel";
@@ -26,7 +27,7 @@ export default function SpatialLayout() {
     { id: "bathymetry", icon: Waves, label: "Bathymetry" },
     { id: "custom-plot", icon: LineChart, label: "Plot" },
     { id: "misfit-stats", icon: BarChart3, label: "Misfit" },
-    { id: "triangle-model", icon: Network, label: "Mesh" },
+    { id: "triangle-model", icon: DelaunayMeshIcon, iconTestId: "mesh-nav-icon", label: "Mesh" },
   ] as const;
   const visibleNavWindowIds = new Set(getVisibleNavWindowIds(isDemoMode));
   const navItems = allNavItems.filter((item) =>
@@ -129,7 +130,10 @@ export default function SpatialLayout() {
                             isOpen && "bg-secondary ring-1 ring-primary/20 shadow-sm"
                           )}
                         >
-                          <item.icon className="h-4 w-4" />
+                          <item.icon
+                            className="h-4 w-4"
+                            data-testid={"iconTestId" in item ? item.iconTestId : undefined}
+                          />
                           <span className="hidden lg:inline-block text-sm">{item.label}</span>
                         </Button>
                       </TooltipTrigger>

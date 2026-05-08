@@ -7,7 +7,6 @@ import {
   Loader2,
   MousePointer2,
   Move,
-  Network,
   Redo2,
   RotateCcw,
   Undo2,
@@ -17,6 +16,7 @@ import {
 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
+import { DelaunayMeshIcon } from '@/components/icons/DelaunayMeshIcon';
 import { Button } from '@/components/ui/button';
 import { buildRegionAdjacency, getFeatherRegionWeights } from '@/services/triangleRegionAdjacency';
 import {
@@ -620,7 +620,7 @@ export function TriangleModelWindow() {
         <div className="space-y-2">
           <div className="flex items-center gap-2">
             <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary/10 text-primary">
-              <Network className="h-4 w-4" />
+              <DelaunayMeshIcon className="h-4 w-4" data-testid="triangle-model-header-icon" />
             </div>
             <div>
               <h2 className="text-sm font-semibold tracking-tight">2D Triangle Model</h2>
@@ -1181,7 +1181,7 @@ export function TriangleModelWindow() {
             <div className="flex h-full items-center justify-center px-8 text-center">
               <div className="max-w-md space-y-3">
                 <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10 text-primary">
-                  <Network className="h-6 w-6" />
+                  <DelaunayMeshIcon className="h-6 w-6" data-testid="triangle-model-empty-icon" />
                 </div>
                 <div>
                   <h3 className="text-lg font-semibold tracking-tight">Load a 2D triangle model</h3>
