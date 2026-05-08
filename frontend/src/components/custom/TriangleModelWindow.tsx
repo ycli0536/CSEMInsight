@@ -34,8 +34,10 @@ import {
 } from '@/services/triangleRegionSelection';
 import {
   buildTriangleResistivityGradientCss,
+  buildTriangleResistivityLegendTicks,
   formatTriangleResistivityTick,
-  TRIANGLE_RESISTIVITY_LEGEND_TICKS,
+  TRIANGLE_RESISTIVITY_RANGE,
+  type TriangleResistivityColorRange,
 } from '@/services/triangleModelColorScale';
 import { formatTriangleHoverSummary } from '@/services/triangleModelHoverSummary';
 import { buildTriangleMeshFromModel } from '@/services/triangleModelMesh';
@@ -142,6 +144,17 @@ function buildChangedRegionRhoUpdates(
   return updates;
 }
 
+function parseResistivityColorRange(minInput: string, maxInput: string) {
+  const min = Number(minInput);
+  const max = Number(maxInput);
+
+  if (!Number.isFinite(min) || !Number.isFinite(max) || min <= 0 || max <= min) {
+    return null;
+  }
+
+  return { min, max };
+}
+
 export function TriangleModelWindow() {
   const [polyFile, setPolyFile] = useState<File | null>(null);
   const [resistivityFile, setResistivityFile] = useState<File | null>(null);
@@ -158,6 +171,13 @@ export function TriangleModelWindow() {
   const [verticalExaggeration, setVerticalExaggeration] = useState(1);
   const [interactionMode, setInteractionMode] = useState<'pan' | 'lasso'>('pan');
   const [targetRho, setTargetRho] = useState('100');
+  const [colorMinInput, setColorMinInput] = useState(String(TRIANGLE_RESISTIVITY_RANGE.min));
+  const [colorMaxInput, setColorMaxInput] = useState(String(TRIANGLE_RESISTIVITY_RANGE.max));
+  const [resistivityColorRange, setResistivityColorRange] =
+    useState<TriangleResistivityColorRange>({
+      min: TRIANGLE_RESISTIVITY_RANGE.min,
+      max: TRIANGLE_RESISTIVITY_RANGE.max,
+    });
   const [isFeatherEnabled, setIsFeatherEnabled] = useState(false);
   const [featherRings, setFeatherRings] = useState(2);
   const [regionRhoById, setRegionRhoById] = useState<Map<number, number>>(new Map());
@@ -188,12 +208,12 @@ export function TriangleModelWindow() {
     !!model?.resistivity &&
     (mesh.triangleResistivityValues ?? []).some((value) => value !== null);
   const colorbarGradient = useMemo(
-    () => buildTriangleResistivityGradientCss({}, 'to right'),
-    [],
+    () => buildTriangleResistivityGradientCss(resistivityColorRange, 'to right'),
+    [resistivityColorRange],
   );
   const colorbarTicks = useMemo(
-    () => Array.from(TRIANGLE_RESISTIVITY_LEGEND_TICKS).reverse(),
-    [],
+    () => buildTriangleResistivityLegendTicks(resistivityColorRange),
+    [resistivityColorRange],
   );
   const viewportAxes = useMemo(
     () =>
@@ -413,6 +433,31 @@ export function TriangleModelWindow() {
     setEditStatus('Redo applied.');
   };
 
+  const handleColorLimitChange = (nextMinInput: string, nextMaxInput: string) => {
+    setColorMinInput(nextMinInput);
+    setColorMaxInput(nextMaxInput);
+
+    const nextRange = parseResistivityColorRange(nextMinInput, nextMaxInput);
+    if (!nextRange) {
+      setEditStatus('Color limits require 0 < min < max.');
+      return;
+    }
+
+    setResistivityColorRange(nextRange);
+    setEditStatus(null);
+  };
+
+  const handleResetColorLimits = () => {
+    const defaultRange = {
+      min: TRIANGLE_RESISTIVITY_RANGE.min,
+      max: TRIANGLE_RESISTIVITY_RANGE.max,
+    };
+    setColorMinInput(String(defaultRange.min));
+    setColorMaxInput(String(defaultRange.max));
+    setResistivityColorRange(defaultRange);
+    setEditStatus('Color limits reset.');
+  };
+
   const handleExportResistivity = async () => {
     if (!loadedResistivityFile) {
       setEditStatus('Load a .resistivity file before exporting.');
@@ -511,6 +556,14 @@ export function TriangleModelWindow() {
 
     viewerRef.current.setVerticalExaggeration(verticalExaggeration);
   }, [mesh, model, verticalExaggeration]);
+
+  useEffect(() => {
+    if (!viewerRef.current || !model || !mesh) {
+      return;
+    }
+
+    viewerRef.current.setResistivityColorRange(resistivityColorRange);
+  }, [mesh, model, resistivityColorRange]);
 
   useEffect(() => {
     if ((model && mesh) || !viewerRef.current) {
@@ -783,6 +836,57 @@ export function TriangleModelWindow() {
                   {verticalExaggeration}x
                 </span>
               </div>
+              {showColorbar ? (
+                <div className="flex flex-wrap items-center gap-2 border-l border-border/40 pl-2">
+                  <label
+                    htmlFor="triangle-color-min"
+                    className="whitespace-nowrap text-xs text-muted-foreground"
+                  >
+                    Color Min
+                  </label>
+                  <input
+                    id="triangle-color-min"
+                    aria-label="Color min"
+                    type="number"
+                    min="0"
+                    step="any"
+                    value={colorMinInput}
+                    onChange={(event) =>
+                      handleColorLimitChange(event.target.value, colorMaxInput)
+                    }
+                    className="h-8 w-20 rounded-md border border-border/60 bg-background px-2 text-xs tabular-nums"
+                  />
+                  <label
+                    htmlFor="triangle-color-max"
+                    className="whitespace-nowrap text-xs text-muted-foreground"
+                  >
+                    Max
+                  </label>
+                  <input
+                    id="triangle-color-max"
+                    aria-label="Color max"
+                    type="number"
+                    min="0"
+                    step="any"
+                    value={colorMaxInput}
+                    onChange={(event) =>
+                      handleColorLimitChange(colorMinInput, event.target.value)
+                    }
+                    className="h-8 w-20 rounded-md border border-border/60 bg-background px-2 text-xs tabular-nums"
+                  />
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    aria-label="Reset color limits"
+                    className="gap-1.5"
+                    onClick={handleResetColorLimits}
+                  >
+                    <RotateCcw className="h-3.5 w-3.5" />
+                    Reset
+                  </Button>
+                </div>
+              ) : null}
               {canEditRegions ? (
                 <div className="flex flex-wrap items-center justify-end gap-2 border-l border-border/40 pl-2">
                   <Button

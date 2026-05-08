@@ -22,6 +22,7 @@ const mockViewer = {
   setInteractionMode: vi.fn(),
   setLayerVisibility: vi.fn(),
   setSelectionOverlay: vi.fn(),
+  setResistivityColorRange: vi.fn(),
   setTriangleResistivityValues: vi.fn(),
   setVerticalExaggeration: vi.fn(),
 };
@@ -566,6 +567,50 @@ describe('TriangleModelWindow', () => {
         value: originalRevokeObjectURL,
       });
     }
+  });
+
+  it('updates and resets the mesh color limits', async () => {
+    const user = userEvent.setup();
+    vi.mocked(axios.post).mockResolvedValue({
+      data: buildEditableTriangleModelResponse(),
+    });
+
+    render(<TriangleModelWindow />);
+
+    await user.upload(
+      screen.getByLabelText(/poly file/i),
+      new File(['poly'], 'editable.poly', { type: 'text/plain' }),
+    );
+    await user.upload(
+      screen.getByLabelText(/resistivity file/i),
+      new File(['rho'], 'editable.resistivity', { type: 'text/plain' }),
+    );
+    await user.click(screen.getByRole('button', { name: /load triangle model/i }));
+
+    await waitFor(() => {
+      expect(mockViewer.setData).toHaveBeenCalled();
+    });
+
+    await user.clear(screen.getByLabelText(/color min/i));
+    await user.type(screen.getByLabelText(/color min/i), '1');
+    await user.clear(screen.getByLabelText(/color max/i));
+    await user.type(screen.getByLabelText(/color max/i), '500');
+
+    await waitFor(() => {
+      expect(mockViewer.setResistivityColorRange).toHaveBeenLastCalledWith({
+        min: 1,
+        max: 500,
+      });
+    });
+
+    await user.click(screen.getByRole('button', { name: /reset color limits/i }));
+
+    await waitFor(() => {
+      expect(mockViewer.setResistivityColorRange).toHaveBeenLastCalledWith({
+        min: 0.3,
+        max: 1000,
+      });
+    });
   });
 
   it('undoes and redoes a lasso region edit', async () => {

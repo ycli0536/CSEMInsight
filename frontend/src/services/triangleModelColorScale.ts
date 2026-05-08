@@ -2,6 +2,12 @@ const DEFAULT_MIN_RESISTIVITY = 0.3;
 const DEFAULT_MAX_RESISTIVITY = 1000;
 const UNKNOWN_COLOR: [number, number, number] = [0.70, 0.78, 0.87];
 const GRADIENT_SAMPLE_STOPS = [0, 0.2, 0.4, 0.6, 0.8, 1];
+const DEFAULT_LEGEND_TICK_COUNT = 5;
+
+export interface TriangleResistivityColorRange {
+  max: number;
+  min: number;
+}
 
 export const TRIANGLE_RESISTIVITY_RANGE = {
   min: DEFAULT_MIN_RESISTIVITY,
@@ -104,6 +110,33 @@ export function buildTriangleResistivityGradientCss(
   });
 
   return `linear-gradient(${direction}, ${stops.join(', ')})`;
+}
+
+export function buildTriangleResistivityLegendTicks(
+  range: TriangleResistivityColorRange,
+  count = DEFAULT_LEGEND_TICK_COUNT,
+) {
+  if (range.min === DEFAULT_MIN_RESISTIVITY && range.max === DEFAULT_MAX_RESISTIVITY) {
+    return Array.from(TRIANGLE_RESISTIVITY_LEGEND_TICKS).reverse();
+  }
+
+  if (
+    !Number.isFinite(range.min) ||
+    !Number.isFinite(range.max) ||
+    range.min <= 0 ||
+    range.max <= range.min ||
+    count <= 1
+  ) {
+    return Array.from(TRIANGLE_RESISTIVITY_LEGEND_TICKS).reverse();
+  }
+
+  const minLog = Math.log10(range.min);
+  const maxLog = Math.log10(range.max);
+
+  return Array.from({ length: count }, (_, index) => {
+    const ratio = index / (count - 1);
+    return 10 ** (minLog + (maxLog - minLog) * ratio);
+  });
 }
 
 export function formatTriangleResistivityTick(value: number) {

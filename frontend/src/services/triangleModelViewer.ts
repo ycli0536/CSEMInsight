@@ -13,7 +13,11 @@ import {
   buildTriangleSelectionHighlightPositions,
   buildTriangleSegmentPositions,
 } from '@/services/triangleSceneBuffers';
-import { buildTriangleFillColors } from '@/services/triangleModelColorScale';
+import {
+  buildTriangleFillColors,
+  TRIANGLE_RESISTIVITY_RANGE,
+  type TriangleResistivityColorRange,
+} from '@/services/triangleModelColorScale';
 import { findNearestSegment, findNearestVertex } from '@/services/triangleViewport';
 import type {
   TriangleCameraState,
@@ -149,6 +153,7 @@ export interface TriangleModelViewer {
   setData(data: { mesh: TriangleMesh; model: TriangleModelResponse }): void;
   setInteractionMode(mode: TriangleViewerInteractionMode): void;
   setLayerVisibility(visibility: TriangleLayerVisibility): void;
+  setResistivityColorRange(range: TriangleResistivityColorRange): void;
   setSelectionOverlay(selection: TriangleSelectionOverlay | null): void;
   setTriangleResistivityValues(values: Array<number | null>): void;
   setVerticalExaggeration(factor: number): void;
@@ -188,6 +193,10 @@ export function createTriangleModelViewer(options: {
 
   const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 100);
   const raycaster = new THREE.Raycaster();
+  let resistivityColorRange: TriangleResistivityColorRange = {
+    min: TRIANGLE_RESISTIVITY_RANGE.min,
+    max: TRIANGLE_RESISTIVITY_RANGE.max,
+  };
 
   const rootGroup = new THREE.Group();
   scene.add(rootGroup);
@@ -425,7 +434,7 @@ export function createTriangleModelViewer(options: {
   const updateTriangleColorAttribute = (values: Array<number | null>) => {
     triangleFillGeometry.setAttribute(
       'color',
-      new THREE.BufferAttribute(buildTriangleFillColors(values), 3),
+      new THREE.BufferAttribute(buildTriangleFillColors(values, resistivityColorRange), 3),
     );
     triangleFillGeometry.attributes.color.needsUpdate = true;
 
@@ -839,7 +848,14 @@ export function createTriangleModelViewer(options: {
       updatePositionGeometry(triangleFillGeometry, buffers.triangleFillPositions);
       triangleFillGeometry.setAttribute(
         'color',
-        new THREE.BufferAttribute(buffers.triangleFillColors, 3),
+        new THREE.BufferAttribute(
+          buildTriangleFillColors(
+            mesh.triangleResistivityValues ??
+              Array.from({ length: mesh.triangles.length }, () => null),
+            resistivityColorRange,
+          ),
+          3,
+        ),
       );
       triangleFillGeometry.setIndex(null);
       const hasResistivityColors =
@@ -891,6 +907,22 @@ export function createTriangleModelViewer(options: {
       segmentLines.visible = visibility.segments;
       points.visible = visibility.vertices;
       renderScene();
+    },
+    setResistivityColorRange(range) {
+      if (
+        !Number.isFinite(range.min) ||
+        !Number.isFinite(range.max) ||
+        range.min <= 0 ||
+        range.max <= range.min
+      ) {
+        return;
+      }
+
+      resistivityColorRange = { ...range };
+      if (mesh?.triangleResistivityValues) {
+        updateTriangleColorAttribute(mesh.triangleResistivityValues);
+        renderScene();
+      }
     },
     setSelectionOverlay(selection) {
       if (!mesh || !selection) {

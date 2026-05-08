@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   buildTriangleFillColors,
+  buildTriangleResistivityLegendTicks,
   buildTriangleResistivityGradientCss,
   formatTriangleResistivityTick,
   normalizeTriangleResistivity,
@@ -23,12 +24,32 @@ describe('triangleModelColorScale', () => {
     expect(Array.from(colors.slice(18, 21))).toEqual(Array.from(colors.slice(21, 24)));
   });
 
+  it('applies custom resistivity limits to triangle colors', () => {
+    const defaultColors = buildTriangleFillColors([10]);
+    const customColors = buildTriangleFillColors([10], { min: 10, max: 1000 });
+
+    expect(Array.from(customColors.slice(0, 3))).not.toEqual(
+      Array.from(defaultColors.slice(0, 3)),
+    );
+    expect(normalizeTriangleResistivity(10, { min: 10, max: 1000 })).toBe(0);
+  });
+
   it('builds a CSS gradient string for the in-window colorbar', () => {
     const gradient = buildTriangleResistivityGradientCss({}, 'to right');
 
     expect(gradient).toContain('linear-gradient(to right');
     expect(gradient).toContain('0%');
     expect(gradient).toContain('100%');
+  });
+
+  it('builds log-spaced legend ticks for custom limits', () => {
+    expect(buildTriangleResistivityLegendTicks({ min: 1, max: 10000 })).toEqual([
+      1,
+      10,
+      100,
+      1000,
+      10000,
+    ]);
   });
 
   it('formats colorbar tick labels for the default log scale', () => {
