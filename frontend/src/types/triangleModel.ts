@@ -62,6 +62,44 @@ export interface TriangleModelResponse {
   constrainedMesh: TriangleConstrainedMesh | null;
 }
 
+export interface TriangleResegmentationRoi {
+  yMin: number;
+  yMax: number;
+  zMin: number;
+  zMax: number;
+}
+
+export interface TriangleResegmentationParameters {
+  roi: TriangleResegmentationRoi;
+  rhoLevels: number[];
+  onlyFreeParameters: boolean;
+  boundaryTolerance: number;
+  minimumRegionArea: number;
+}
+
+export interface TriangleResegmentationStats {
+  sourceTriangleCount: number;
+  activeTriangleCount: number;
+  outputVertexCount: number;
+  outputSegmentCount: number;
+  outputRegionCount: number;
+  mergedComponentCount: number;
+}
+
+export interface TriangleResegmentationPreviewResponse {
+  previewMesh: TriangleConstrainedMesh;
+  stats: TriangleResegmentationStats;
+  warnings: string[];
+}
+
+export interface TriangleResegmentationExportResponse
+  extends TriangleResegmentationPreviewResponse {
+  polyFileName: string;
+  polyText: string;
+  resistivityFileName: string;
+  resistivityText: string;
+}
+
 export interface TriangleMeshPoint {
   id: number;
   x: number;

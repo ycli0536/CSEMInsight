@@ -723,6 +723,86 @@ describe('TriangleModelWindow', () => {
     ]);
   });
 
+  it('previews a resegmented forward model from the loaded source files', async () => {
+    const user = userEvent.setup();
+    const polyFile = new File(['poly'], 'editable.poly', { type: 'text/plain' });
+    const resistivityFile = new File(['rho'], 'editable.resistivity', {
+      type: 'text/plain',
+    });
+
+    vi.mocked(axios.post).mockImplementation(async (url) => {
+      if (String(url).includes('/api/upload-triangle-model')) {
+        return { data: buildEditableTriangleModelResponse() };
+      }
+      return {
+        data: {
+          previewMesh: {
+            vertices: [
+              { id: 0, x: 0, y: 0 },
+              { id: 1, x: 1000, y: 0 },
+              { id: 2, x: 0, y: 1000 },
+            ],
+            triangles: [[0, 1, 2]],
+            triangleRegionIds: [1],
+            triangleResistivityValues: [10],
+            regionResistivity: [{ regionId: 1, rho: 10 }],
+          },
+          stats: {
+            sourceTriangleCount: 2,
+            activeTriangleCount: 1,
+            outputVertexCount: 3,
+            outputSegmentCount: 3,
+            outputRegionCount: 1,
+            mergedComponentCount: 0,
+          },
+          warnings: [],
+        },
+      };
+    });
+
+    render(<TriangleModelWindow />);
+
+    await user.upload(screen.getByLabelText(/poly file/i), polyFile);
+    await user.upload(screen.getByLabelText(/resistivity file/i), resistivityFile);
+    await user.click(screen.getByRole('button', { name: /load triangle model/i }));
+
+    await waitFor(() => {
+      expect(createTriangleModelViewer).toHaveBeenCalled();
+    });
+
+    await user.click(await screen.findByRole('button', { name: /^preview$/i }));
+
+    await waitFor(() => {
+      expect(axios.post).toHaveBeenCalledWith(
+        'http://127.0.0.1:3354/api/preview-triangle-resegmentation',
+        expect.any(FormData),
+      );
+    });
+    const previewCall = vi.mocked(axios.post).mock.calls.find(([url]) =>
+      String(url).includes('/api/preview-triangle-resegmentation'),
+    );
+    const formData = previewCall?.[1] as FormData;
+    expect(formData.get('poly_file')).toBe(polyFile);
+    expect(formData.get('resistivity_file')).toBe(resistivityFile);
+    expect(JSON.parse(String(formData.get('parameters')))).toEqual(
+      expect.objectContaining({
+        onlyFreeParameters: true,
+        rhoLevels: [0.3, 3, 10, 30, 100, 300, 10000000000000],
+      }),
+    );
+
+    await waitFor(() => {
+      expect(mockViewer.setData).toHaveBeenLastCalledWith({
+        mesh: expect.objectContaining({
+          triangleResistivityValues: [10],
+          points: expect.arrayContaining([expect.objectContaining({ x: 1, y: 0 })]),
+        }),
+        model: expect.any(Object),
+      });
+    });
+    expect(screen.getByText(/previewed 1 forward-model region/i)).toBeInTheDocument();
+  });
+
   it('formats hover copy as rho-only when resistivity is available', () => {
     expect(
       formatTriangleHoverSummary(

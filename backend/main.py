@@ -25,6 +25,11 @@ from triangle_resistivity_export import (
     build_exported_resistivity_text,
     parse_region_rho_updates,
 )
+from triangle_model_resegmentation import (
+    ResegmentationError,
+    build_resegmentation_result,
+    parse_resegmentation_parameters,
+)
 
 app = Flask(__name__)
 CORS(app)
@@ -387,6 +392,85 @@ def upload_triangle_model_file():
                 "constrainedMesh": constrained_mesh,
             }
         )
+    except Exception:
+        traceback.print_exc()
+        return jsonify({"error": traceback.format_exc()}), 500
+
+
+def _read_resegmentation_request(include_export_text):
+    poly_file = request.files.get("poly_file")
+    if poly_file is None:
+        raise ResegmentationError("No .poly file provided")
+    if poly_file.filename == "":
+        raise ResegmentationError("No selected .poly file")
+    if not poly_file.filename.endswith(".poly"):
+        raise ResegmentationError("Invalid .poly file format")
+
+    resistivity_file = request.files.get("resistivity_file")
+    if resistivity_file is None:
+        raise ResegmentationError("No .resistivity file provided")
+    if resistivity_file.filename == "":
+        raise ResegmentationError("No selected .resistivity file")
+    if not resistivity_file.filename.endswith(".resistivity"):
+        raise ResegmentationError("Invalid .resistivity file format")
+
+    raw_parameters = request.form.get("parameters")
+    if raw_parameters is None:
+        raise ResegmentationError("No resegmentation parameters provided")
+
+    try:
+        parameters = parse_resegmentation_parameters(json.loads(raw_parameters))
+    except json.JSONDecodeError as exc:
+        raise ResegmentationError("Invalid resegmentation parameters JSON") from exc
+
+    temp_dir = tempfile.gettempdir()
+    poly_path = _save_uploaded_file(poly_file, temp_dir)
+    resistivity_path = _save_uploaded_file(resistivity_file, temp_dir)
+
+    poly_parser = MARE2DEMPolyParser()
+    vertices, segments, holes, regions = poly_parser.read_poly_file(
+        poly_path, unit_scale_factor=1
+    )
+
+    resistivity_parser = ResistivityFileParser()
+    parsed_resistivity = resistivity_parser.parse_resistivity_file(
+        resistivity_path, rho_parse=True
+    )
+
+    original_name = secure_filename(poly_file.filename) or "model.poly"
+    stem, _ = os.path.splitext(original_name)
+    output_poly_file_name = f"{stem}.resegmented.poly"
+
+    return build_resegmentation_result(
+        poly_parser,
+        vertices,
+        segments,
+        holes,
+        regions,
+        parsed_resistivity,
+        parameters,
+        output_poly_file_name,
+        include_export_text=include_export_text,
+    )
+
+
+@app.route("/api/preview-triangle-resegmentation", methods=["POST"])
+def preview_triangle_resegmentation():
+    try:
+        return jsonify(_read_resegmentation_request(include_export_text=False))
+    except ResegmentationError as exc:
+        return jsonify({"error": str(exc)}), 400
+    except Exception:
+        traceback.print_exc()
+        return jsonify({"error": traceback.format_exc()}), 500
+
+
+@app.route("/api/export-triangle-resegmentation", methods=["POST"])
+def export_triangle_resegmentation():
+    try:
+        return jsonify(_read_resegmentation_request(include_export_text=True))
+    except ResegmentationError as exc:
+        return jsonify({"error": str(exc)}), 400
     except Exception:
         traceback.print_exc()
         return jsonify({"error": traceback.format_exc()}), 500

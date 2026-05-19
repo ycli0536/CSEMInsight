@@ -30,7 +30,7 @@ function buildTriangleMeshBounds(points: TriangleMeshPoint[]) {
   return getBounds(points);
 }
 
-function buildConstrainedTriangleMesh(
+export function buildTriangleMeshFromConstrainedMesh(
   constrainedMesh: TriangleConstrainedMesh,
 ): TriangleMesh {
   const points = constrainedMesh.vertices.map((vertex) => ({
@@ -93,7 +93,7 @@ export function buildTriangleMesh(vertices: TriangleModelVertex[]): TriangleMesh
 
 export function buildTriangleMeshFromModel(model: TriangleModelResponse): TriangleMesh {
   if (model.constrainedMesh) {
-    return buildConstrainedTriangleMesh(model.constrainedMesh);
+    return buildTriangleMeshFromConstrainedMesh(model.constrainedMesh);
   }
 
   return buildTriangleMesh(model.vertices);

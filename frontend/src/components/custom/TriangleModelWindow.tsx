@@ -17,6 +17,7 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { DelaunayMeshIcon } from '@/components/icons/DelaunayMeshIcon';
+import { TriangleResegmentPanel } from '@/components/custom/TriangleResegmentPanel';
 import { Button } from '@/components/ui/button';
 import { buildRegionAdjacency, getFeatherRegionWeights } from '@/services/triangleRegionAdjacency';
 import {
@@ -40,7 +41,14 @@ import {
   type TriangleResistivityColorRange,
 } from '@/services/triangleModelColorScale';
 import { formatTriangleHoverSummary } from '@/services/triangleModelHoverSummary';
-import { buildTriangleMeshFromModel } from '@/services/triangleModelMesh';
+import {
+  buildTriangleMeshFromConstrainedMesh,
+  buildTriangleMeshFromModel,
+} from '@/services/triangleModelMesh';
+import {
+  exportTriangleResegmentation,
+  previewTriangleResegmentation,
+} from '@/services/triangleResegmentation';
 import {
   buildTriangleViewportAxes,
   TRIANGLE_VIEWPORT_AXIS_GUTTERS,
@@ -53,8 +61,12 @@ import {
 import type {
   TriangleHoverState,
   TriangleLayerVisibility,
+  TriangleConstrainedMesh,
   TriangleMesh,
   TriangleModelResponse,
+  TriangleResegmentationExportResponse,
+  TriangleResegmentationParameters,
+  TriangleResegmentationPreviewResponse,
 } from '@/types';
 
 const DEFAULT_LAYER_VISIBILITY: TriangleLayerVisibility = {
@@ -125,6 +137,31 @@ function getEditedResistivityFileName(fileName: string) {
   return `${fileName}.edited.resistivity`;
 }
 
+function downloadTextFile(fileName: string, text: string) {
+  const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+  const downloadUrl = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = downloadUrl;
+  link.download = fileName;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(downloadUrl);
+}
+
+function scaleConstrainedMeshForDisplay(
+  constrainedMesh: TriangleConstrainedMesh,
+): TriangleConstrainedMesh {
+  return {
+    ...constrainedMesh,
+    vertices: constrainedMesh.vertices.map((vertex) => ({
+      ...vertex,
+      x: vertex.x * 1e-3,
+      y: vertex.y * 1e-3,
+    })),
+  };
+}
+
 function isSameRhoValue(previousRho: number, nextRho: number) {
   const tolerance = Math.max(1e-12, Math.abs(previousRho) * 1e-12);
   return Math.abs(previousRho - nextRho) <= tolerance;
@@ -158,6 +195,7 @@ function parseResistivityColorRange(minInput: string, maxInput: string) {
 export function TriangleModelWindow() {
   const [polyFile, setPolyFile] = useState<File | null>(null);
   const [resistivityFile, setResistivityFile] = useState<File | null>(null);
+  const [loadedPolyFile, setLoadedPolyFile] = useState<File | null>(null);
   const [loadedResistivityFile, setLoadedResistivityFile] = useState<File | null>(null);
   const [model, setModel] = useState<TriangleModelResponse | null>(null);
   const [mesh, setMesh] = useState<TriangleMesh | null>(null);
@@ -187,6 +225,11 @@ export function TriangleModelWindow() {
   const [lassoSelection, setLassoSelection] = useState<TriangleLassoSelection | null>(null);
   const [editStatus, setEditStatus] = useState<string | null>(null);
   const [isExportingResistivity, setIsExportingResistivity] = useState(false);
+  const [resegmentationPreview, setResegmentationPreview] =
+    useState<TriangleResegmentationPreviewResponse | null>(null);
+  const [resegmentationStatus, setResegmentationStatus] = useState<string | null>(null);
+  const [isPreviewingResegmentation, setIsPreviewingResegmentation] = useState(false);
+  const [isExportingResegmentation, setIsExportingResegmentation] = useState(false);
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const viewportRef = useRef<HTMLDivElement | null>(null);
@@ -227,6 +270,7 @@ export function TriangleModelWindow() {
     [viewportView, verticalExaggeration],
   );
   const canEditRegions =
+    !resegmentationPreview &&
     mesh?.source === 'constrained' &&
     (mesh.triangleRegionIds ?? []).some((regionId) => regionId !== null) &&
     regionRhoById.size > 0;
@@ -269,11 +313,14 @@ export function TriangleModelWindow() {
       const nextRegionRhoById = buildRegionRhoMap(response.data);
       setRegionRhoById(nextRegionRhoById);
       setBaseRegionRhoById(nextRegionRhoById);
+      setLoadedPolyFile(polyFile);
       setLoadedResistivityFile(resistivityFile);
       setUndoStack([]);
       setRedoStack([]);
       setLassoSelection(null);
       setEditStatus(null);
+      setResegmentationPreview(null);
+      setResegmentationStatus(null);
     } catch (uploadError) {
       setError(getUploadErrorMessage(uploadError));
       setModel(null);
@@ -282,11 +329,14 @@ export function TriangleModelWindow() {
       setViewportView(null);
       setRegionRhoById(new Map());
       setBaseRegionRhoById(new Map());
+      setLoadedPolyFile(null);
       setLoadedResistivityFile(null);
       setUndoStack([]);
       setRedoStack([]);
       setLassoSelection(null);
       setEditStatus(null);
+      setResegmentationPreview(null);
+      setResegmentationStatus(null);
     } finally {
       setIsLoading(false);
     }
@@ -500,6 +550,89 @@ export function TriangleModelWindow() {
       setEditStatus(getUploadErrorMessage(exportError));
     } finally {
       setIsExportingResistivity(false);
+    }
+  };
+
+  const applyResegmentationPreview = (
+    response: TriangleResegmentationPreviewResponse | TriangleResegmentationExportResponse,
+  ) => {
+    const previewMesh = buildTriangleMeshFromConstrainedMesh(
+      scaleConstrainedMeshForDisplay(response.previewMesh),
+    );
+    setResegmentationPreview({
+      previewMesh: response.previewMesh,
+      stats: response.stats,
+      warnings: response.warnings,
+    });
+    setMesh(previewMesh);
+    setVisibleLayers({
+      triangles: true,
+      segments: false,
+      vertices: false,
+    });
+    setInteractionMode('pan');
+    setLassoSelection(null);
+    viewerRef.current?.setSelectionOverlay(null);
+  };
+
+  const handlePreviewResegmentation = async (
+    parameters: TriangleResegmentationParameters,
+  ) => {
+    if (!loadedPolyFile || !loadedResistivityFile) {
+      setResegmentationStatus('Load a .poly and .resistivity file before previewing.');
+      return;
+    }
+
+    setIsPreviewingResegmentation(true);
+    setResegmentationStatus('Building resegmentation preview...');
+
+    try {
+      const response = await previewTriangleResegmentation({
+        polyFile: loadedPolyFile,
+        resistivityFile: loadedResistivityFile,
+        parameters,
+      });
+      applyResegmentationPreview(response);
+      setResegmentationStatus(
+        `Previewed ${response.stats.outputRegionCount} forward-model region${
+          response.stats.outputRegionCount === 1 ? '' : 's'
+        }.`,
+      );
+    } catch (previewError) {
+      setResegmentationPreview(null);
+      setResegmentationStatus(getUploadErrorMessage(previewError));
+    } finally {
+      setIsPreviewingResegmentation(false);
+    }
+  };
+
+  const handleExportResegmentation = async (
+    parameters: TriangleResegmentationParameters,
+  ) => {
+    if (!loadedPolyFile || !loadedResistivityFile) {
+      setResegmentationStatus('Load a .poly and .resistivity file before exporting.');
+      return;
+    }
+
+    setIsExportingResegmentation(true);
+    setResegmentationStatus('Exporting resegmented model...');
+
+    try {
+      const response = await exportTriangleResegmentation({
+        polyFile: loadedPolyFile,
+        resistivityFile: loadedResistivityFile,
+        parameters,
+      });
+      applyResegmentationPreview(response);
+      downloadTextFile(response.polyFileName, response.polyText);
+      downloadTextFile(response.resistivityFileName, response.resistivityText);
+      setResegmentationStatus(
+        `Exported ${response.polyFileName} and ${response.resistivityFileName}.`,
+      );
+    } catch (exportError) {
+      setResegmentationStatus(getUploadErrorMessage(exportError));
+    } finally {
+      setIsExportingResegmentation(false);
     }
   };
 
@@ -1208,8 +1341,19 @@ export function TriangleModelWindow() {
             ? 'Cells are colored from constrained region resistivity on a log scale. Segments and vertices start hidden so the fill stays legible, and you can re-enable overlays from the toolbar.'
             : mesh?.source === 'constrained'
               ? 'Constrained triangulation is active. No resistivity file is loaded, so cell colors use the neutral fallback.'
-            : 'Triangles are computed with unconstrained Delaunator. Use the black overlay to inspect the original `.poly` segment network separately from the derived mesh.'}
+              : 'Triangles are computed with unconstrained Delaunator. Use the black overlay to inspect the original `.poly` segment network separately from the derived mesh.'}
         </div>
+        {mesh && loadedResistivityFile ? (
+          <TriangleResegmentPanel
+            disabled={!loadedPolyFile || isLoading}
+            isExporting={isExportingResegmentation}
+            isPreviewing={isPreviewingResegmentation}
+            preview={resegmentationPreview}
+            status={resegmentationStatus}
+            onExport={handleExportResegmentation}
+            onPreview={handlePreviewResegmentation}
+          />
+        ) : null}
       </section>
     </div>
   );
