@@ -732,19 +732,27 @@ export function TriangleModelWindow() {
             </div>
           </div>
 
-          <div className="rounded-xl border border-border/40 bg-background/80 p-3">
+          <div className="min-w-0 rounded-xl border border-border/40 bg-background/80 p-3">
             <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
               Resistivity Summary
             </p>
             {model?.resistivity ? (
-              <div className="mt-3 space-y-2 text-sm">
-                {Object.entries(resistivityMetadata).slice(0, 5).map(([key, value]) => (
-                  <div key={key} className="flex items-start justify-between gap-3">
-                    <span className="text-muted-foreground">{key}</span>
-                    <span className="text-right font-medium">{String(value)}</span>
-                  </div>
-                ))}
-                <div className="flex items-start justify-between gap-3 border-t border-border/40 pt-2">
+              <div className="mt-3 min-w-0 space-y-2 text-sm">
+                {Object.entries(resistivityMetadata).slice(0, 5).map(([key, value]) => {
+                  const displayValue = String(value);
+                  return (
+                    <div key={key} className="flex min-w-0 items-start justify-between gap-3">
+                      <span className="shrink-0 text-muted-foreground">{key}</span>
+                      <span
+                        className="min-w-0 flex-1 truncate text-right font-medium"
+                        title={displayValue}
+                      >
+                        {displayValue}
+                      </span>
+                    </div>
+                  );
+                })}
+                <div className="flex min-w-0 items-start justify-between gap-3 border-t border-border/40 pt-2">
                   <span className="text-muted-foreground">Rows</span>
                   <span className="font-medium">{resistivityRows.length}</span>
                 </div>

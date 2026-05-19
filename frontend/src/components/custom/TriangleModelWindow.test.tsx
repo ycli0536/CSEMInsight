@@ -226,6 +226,44 @@ describe('TriangleModelWindow', () => {
     });
   });
 
+  it('truncates long resistivity metadata values and exposes the full value on hover', async () => {
+    const user = userEvent.setup();
+    const longDataFileName =
+      'line5_station_group_with_exceptionally_long_acquisition_name_and_processing_suffix.data';
+    vi.mocked(axios.post).mockResolvedValue({
+      data: {
+        ...buildEditableTriangleModelResponse(),
+        resistivity: {
+          metadata: {
+            'Data File': longDataFileName,
+            'Number of regions': 2,
+          },
+          table: [
+            { Region: 10, Rho: 10 },
+            { Region: 20, Rho: 100 },
+          ],
+        },
+      },
+    });
+
+    render(<TriangleModelWindow />);
+
+    await user.upload(
+      screen.getByLabelText(/poly file/i),
+      new File(['poly'], 'editable.poly', { type: 'text/plain' }),
+    );
+    await user.upload(
+      screen.getByLabelText(/resistivity file/i),
+      new File(['rho'], 'editable.resistivity', { type: 'text/plain' }),
+    );
+    await user.click(screen.getByRole('button', { name: /load triangle model/i }));
+
+    const summaryValue = await screen.findByTitle(longDataFileName);
+
+    expect(summaryValue).toHaveTextContent(longDataFileName);
+    expect(summaryValue).toHaveClass('min-w-0', 'flex-1', 'truncate', 'text-right');
+  });
+
   it('renders viewport axes from the current camera view and updates ticks after zooming', async () => {
     const user = userEvent.setup();
     vi.mocked(axios.post).mockResolvedValue({
