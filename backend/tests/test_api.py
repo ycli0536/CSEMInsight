@@ -314,6 +314,49 @@ class TestUploadTriangleModel:
         assert constrained_mesh["triangleResistivityValues"] == [100.0, 100.0]
         assert constrained_mesh["regionResistivity"] == [{"regionId": 1, "rho": 100.0}]
 
+    def test_upload_triangle_model_handles_large_fixture_pair(
+        self, app_client, sample_data_path
+    ):
+        """Large fixture uploads should return a fully colored constrained mesh."""
+        poly_path = os.path.join(sample_data_path, "testIC2_m_ef035of3.poly")
+        resistivity_path = os.path.join(
+            sample_data_path,
+            "testIC2_m_ef035of3.19.resistivity",
+        )
+
+        with open(poly_path, "rb") as poly_file, open(
+            resistivity_path, "rb"
+        ) as resistivity_file:
+            response = app_client.post(
+                "/api/upload-triangle-model",
+                data={
+                    "poly_file": (poly_file, "testIC2_m_ef035of3.poly"),
+                    "resistivity_file": (
+                        resistivity_file,
+                        "testIC2_m_ef035of3.19.resistivity",
+                    ),
+                },
+                content_type="multipart/form-data",
+            )
+
+        assert response.status_code == 200
+        payload = response.get_json()
+        constrained_mesh = payload["constrainedMesh"]
+
+        assert payload["polyFileName"] == "testIC2_m_ef035of3.poly"
+        assert payload["resistivityFileName"] == (
+            "testIC2_m_ef035of3.19.resistivity"
+        )
+        assert len(payload["vertices"]) == 37432
+        assert len(payload["segments"]) == 75661
+        assert len(payload["regions"]) == 38232
+        assert len(payload["resistivity"]["table"]) == 38232
+        assert len(constrained_mesh["vertices"]) == 37432
+        assert len(constrained_mesh["triangles"]) == 74849
+        assert len(constrained_mesh["triangleRegionIds"]) == 74849
+        assert len(constrained_mesh["triangleResistivityValues"]) == 74849
+        assert len(constrained_mesh["regionResistivity"]) == 38232
+
     def test_upload_triangle_model_accepts_poly_without_resistivity(self, app_client):
         """Test uploading only a .poly file."""
         data = {

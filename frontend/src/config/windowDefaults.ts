@@ -14,6 +14,21 @@ export const WINDOW_MIN_HEIGHT = 200;
 export const WINDOW_MAX_WIDTH = 2000;
 export const WINDOW_MAX_HEIGHT = 2000;
 
+const windowMinimumSizeByType: Partial<
+  Record<WindowId, { width: number; height: number }>
+> = {
+  'triangle-model': { width: 720, height: 600 },
+};
+
+export function getWindowMinimumSize(type: WindowId) {
+  return (
+    windowMinimumSizeByType[type] ?? {
+      width: WINDOW_MIN_WIDTH,
+      height: WINDOW_MIN_HEIGHT,
+    }
+  );
+}
+
 export const initialWindows: Record<WindowId, WindowState> = buildInitialWindows(
   isDemoModeEnabled(),
 );

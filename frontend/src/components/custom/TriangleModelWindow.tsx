@@ -748,8 +748,14 @@ export function TriangleModelWindow() {
   }, [mesh, model]);
 
   return (
-    <div className="grid h-full min-h-0 gap-4 p-4 xl:grid-cols-[320px_minmax(0,1fr)]">
-      <section className="flex min-h-0 flex-col gap-4 rounded-2xl border border-border/40 bg-card/80 p-4 shadow-sm">
+    <div
+      data-testid="triangle-model-root"
+      className="grid h-full min-h-[560px] gap-4 overflow-auto p-4 lg:grid-cols-[300px_minmax(0,1fr)] xl:grid-cols-[320px_minmax(0,1fr)]"
+    >
+      <section
+        data-testid="triangle-model-controls-panel"
+        className="order-2 flex min-h-0 flex-col gap-4 rounded-2xl border border-border/40 bg-card/80 p-4 shadow-sm lg:order-1"
+      >
         <div className="space-y-2">
           <div className="flex items-center gap-2">
             <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary/10 text-primary">
@@ -899,7 +905,10 @@ export function TriangleModelWindow() {
         </div>
       </section>
 
-      <section className="flex min-h-0 flex-col overflow-hidden rounded-2xl border border-border/40 bg-card/80 shadow-sm">
+      <section
+        data-testid="triangle-model-viewer-panel"
+        className="order-1 flex min-h-[520px] flex-col overflow-hidden rounded-2xl border border-border/40 bg-card/80 shadow-sm lg:order-2"
+      >
         <div className="flex items-center justify-between gap-2 border-b border-border/40 px-4 py-3">
           <div>
             <h3 className="text-sm font-semibold tracking-tight">Mesh Viewport</h3>
@@ -1174,7 +1183,7 @@ export function TriangleModelWindow() {
         <div
           ref={viewportRef}
           data-testid="triangle-model-viewport-frame"
-          className="relative min-h-0 flex-1 overflow-hidden bg-[radial-gradient(circle_at_top,_rgba(14,165,233,0.14),_transparent_42%),linear-gradient(180deg,rgba(15,23,42,0.06),rgba(15,23,42,0.02))]"
+          className="relative min-h-[360px] flex-1 overflow-hidden bg-[radial-gradient(circle_at_top,_rgba(14,165,233,0.14),_transparent_42%),linear-gradient(180deg,rgba(15,23,42,0.06),rgba(15,23,42,0.02))]"
         >
           {mesh && model ? (
             <>

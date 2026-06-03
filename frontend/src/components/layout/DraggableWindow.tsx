@@ -6,10 +6,9 @@ import { WindowShell } from "@/components/layout/WindowShell";
 import type { WindowState } from "@/types/window";
 import { useWindowStore } from "@/store/windowStore";
 import {
-  WINDOW_MIN_WIDTH,
-  WINDOW_MIN_HEIGHT,
   WINDOW_MAX_WIDTH,
   WINDOW_MAX_HEIGHT,
+  getWindowMinimumSize,
 } from "@/config/windowDefaults";
 
 interface DraggableWindowProps {
@@ -33,6 +32,10 @@ export const DraggableWindow = React.memo(function DraggableWindow({
   
   // Only allow resizing for main container windows
   const canResize = window.container === "main";
+  const minSize = useMemo(
+    () => getWindowMinimumSize(window.type),
+    [window.type]
+  );
   
   const handleResize = (size: { width: number; height: number }, position?: { x: number; y: number }) => {
     updateSize(window.id, size);
@@ -45,13 +48,13 @@ export const DraggableWindow = React.memo(function DraggableWindow({
     position: "absolute",
     left: window.position.x,
     top: window.position.y,
-    width: window.size.width,
-    height: window.size.height,
+    width: Math.max(window.size.width, minSize.width),
+    height: Math.max(window.size.height, minSize.height),
     zIndex: window.zIndex,
     transform: transform ? CSS.Translate.toString(transform) : undefined,
     pointerEvents: "auto",
     willChange: isCurrentlyDragging ? "transform" : "auto",
-  }), [window.position.x, window.position.y, window.size.width, window.size.height, window.zIndex, transform, isCurrentlyDragging]);
+  }), [window.position.x, window.position.y, window.size.width, window.size.height, window.zIndex, transform, isCurrentlyDragging, minSize.width, minSize.height]);
 
   return (
     <WindowShell
@@ -70,8 +73,8 @@ export const DraggableWindow = React.memo(function DraggableWindow({
       data-dragging={isCurrentlyDragging ? "true" : undefined}
       canResize={canResize}
       onResize={handleResize}
-      minWidth={WINDOW_MIN_WIDTH}
-      minHeight={WINDOW_MIN_HEIGHT}
+      minWidth={minSize.width}
+      minHeight={minSize.height}
       maxWidth={WINDOW_MAX_WIDTH}
       maxHeight={WINDOW_MAX_HEIGHT}
       currentPosition={window.position}
