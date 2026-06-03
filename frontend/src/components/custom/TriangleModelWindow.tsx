@@ -1,5 +1,6 @@
 import axios from 'axios';
 import {
+  ChevronDown,
   Check,
   Download,
   Eye,
@@ -19,6 +20,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { DelaunayMeshIcon } from '@/components/icons/DelaunayMeshIcon';
 import { TriangleResegmentPanel } from '@/components/custom/TriangleResegmentPanel';
 import { Button } from '@/components/ui/button';
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from '@/components/ui/collapsible';
 import { buildRegionAdjacency, getFeatherRegionWeights } from '@/services/triangleRegionAdjacency';
 import {
   applyEditPatch,
@@ -230,6 +236,7 @@ export function TriangleModelWindow() {
   const [resegmentationStatus, setResegmentationStatus] = useState<string | null>(null);
   const [isPreviewingResegmentation, setIsPreviewingResegmentation] = useState(false);
   const [isExportingResegmentation, setIsExportingResegmentation] = useState(false);
+  const [isSegmentationOpen, setIsSegmentationOpen] = useState(false);
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const viewportRef = useRef<HTMLDivElement | null>(null);
@@ -321,6 +328,7 @@ export function TriangleModelWindow() {
       setEditStatus(null);
       setResegmentationPreview(null);
       setResegmentationStatus(null);
+      setIsSegmentationOpen(false);
     } catch (uploadError) {
       setError(getUploadErrorMessage(uploadError));
       setModel(null);
@@ -337,6 +345,7 @@ export function TriangleModelWindow() {
       setEditStatus(null);
       setResegmentationPreview(null);
       setResegmentationStatus(null);
+      setIsSegmentationOpen(false);
     } finally {
       setIsLoading(false);
     }
@@ -750,11 +759,11 @@ export function TriangleModelWindow() {
   return (
     <div
       data-testid="triangle-model-root"
-      className="grid h-full min-h-[560px] gap-4 overflow-auto p-4 lg:grid-cols-[300px_minmax(0,1fr)] xl:grid-cols-[320px_minmax(0,1fr)]"
+      className="flex h-full min-h-0 flex-col gap-3 overflow-auto p-3 lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(18rem,20rem)] lg:overflow-hidden xl:grid-cols-[minmax(0,1fr)_minmax(19rem,21rem)]"
     >
       <section
         data-testid="triangle-model-controls-panel"
-        className="order-2 flex min-h-0 flex-col gap-4 rounded-2xl border border-border/40 bg-card/80 p-4 shadow-sm lg:order-1"
+        className="order-2 flex shrink-0 flex-col gap-3 rounded-2xl border border-border/40 bg-card/80 p-3 shadow-sm lg:order-2 lg:h-full lg:min-h-0 lg:overflow-y-auto"
       >
         <div className="space-y-2">
           <div className="flex items-center gap-2">
@@ -834,7 +843,7 @@ export function TriangleModelWindow() {
           </div>
         ) : null}
 
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
+        <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-1">
           <div className="rounded-xl border border-border/40 bg-background/80 p-3">
             <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
               Source Stats
@@ -903,13 +912,60 @@ export function TriangleModelWindow() {
             )}
           </div>
         </div>
+
+        {mesh && loadedResistivityFile ? (
+          // shrink-0 is required: the controls panel is a flex column, and this
+          // Collapsible's overflow-hidden makes its flex min-height resolve to 0.
+          // Without it the panel gets squashed to a sliver (clipping the expanded
+          // segmentation content and keeping it out of the panel's overflow-y-auto
+          // scroll range) once the column's content overflows.
+          <Collapsible
+            open={isSegmentationOpen}
+            onOpenChange={setIsSegmentationOpen}
+            className="shrink-0 overflow-hidden rounded-xl border border-border/40 bg-background/80"
+          >
+            <CollapsibleTrigger asChild>
+              <button
+                type="button"
+                className="flex w-full cursor-pointer items-center justify-between gap-3 px-3 py-3 text-left transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+              >
+                <span className="min-w-0">
+                  <span className="block text-sm font-semibold tracking-tight">
+                    Segmentation
+                  </span>
+                  <span className="block truncate text-xs text-muted-foreground">
+                    {resegmentationPreview
+                      ? 'Preview ready'
+                      : (resegmentationStatus ?? 'Optional forward-model simplification')}
+                  </span>
+                </span>
+                <ChevronDown
+                  className={`h-4 w-4 shrink-0 text-muted-foreground transition-transform ${
+                    isSegmentationOpen ? 'rotate-180' : ''
+                  }`}
+                />
+              </button>
+            </CollapsibleTrigger>
+            <CollapsibleContent>
+              <TriangleResegmentPanel
+                disabled={!loadedPolyFile || isLoading}
+                isExporting={isExportingResegmentation}
+                isPreviewing={isPreviewingResegmentation}
+                preview={resegmentationPreview}
+                status={resegmentationStatus}
+                onExport={handleExportResegmentation}
+                onPreview={handlePreviewResegmentation}
+              />
+            </CollapsibleContent>
+          </Collapsible>
+        ) : null}
       </section>
 
       <section
         data-testid="triangle-model-viewer-panel"
-        className="order-1 flex min-h-[520px] flex-col overflow-hidden rounded-2xl border border-border/40 bg-card/80 shadow-sm lg:order-2"
+        className="order-1 flex min-h-[420px] shrink-0 flex-col overflow-hidden rounded-2xl border border-border/40 bg-card/80 shadow-sm lg:order-1 lg:min-h-0"
       >
-        <div className="flex items-center justify-between gap-2 border-b border-border/40 px-4 py-3">
+        <div className="flex flex-col gap-3 border-b border-border/40 px-4 py-3 xl:flex-row xl:items-start xl:justify-between">
           <div>
             <h3 className="text-sm font-semibold tracking-tight">Mesh Viewport</h3>
             <p className="text-xs text-muted-foreground">
@@ -917,7 +973,7 @@ export function TriangleModelWindow() {
             </p>
           </div>
           {mesh ? (
-            <div className="flex flex-wrap items-center justify-end gap-2">
+            <div className="flex w-full flex-wrap items-center justify-start gap-2 xl:w-auto xl:justify-end">
               <div className="hidden text-right text-xs text-muted-foreground sm:block">
                 <p>{mesh.points.length} points</p>
                 <p>{mesh.triangles.length} triangles</p>
@@ -987,7 +1043,7 @@ export function TriangleModelWindow() {
                 </span>
               </div>
               {showColorbar ? (
-                <div className="flex flex-wrap items-center gap-2 border-l border-border/40 pl-2">
+                <div className="flex flex-wrap items-center gap-2 border-border/40 pl-0 sm:border-l sm:pl-2">
                   <label
                     htmlFor="triangle-color-min"
                     className="whitespace-nowrap text-xs text-muted-foreground"
@@ -1038,7 +1094,7 @@ export function TriangleModelWindow() {
                 </div>
               ) : null}
               {canEditRegions ? (
-                <div className="flex flex-wrap items-center justify-end gap-2 border-l border-border/40 pl-2">
+                <div className="flex flex-wrap items-center justify-start gap-2 border-border/40 pl-0 sm:border-l sm:pl-2">
                   <Button
                     type="button"
                     size="sm"
@@ -1167,7 +1223,7 @@ export function TriangleModelWindow() {
           ) : null}
         </div>
 
-        <div className="flex items-center justify-between gap-4 border-b border-border/40 bg-background/70 px-4 py-2 text-xs text-muted-foreground">
+        <div className="flex flex-col gap-1 border-b border-border/40 bg-background/70 px-4 py-2 text-xs text-muted-foreground sm:flex-row sm:items-center sm:justify-between sm:gap-4">
           <p>Wheel to zoom, drag to pan, double-click to reset.</p>
           <div className="min-w-0 text-right">
             {editStatus ? (
@@ -1352,17 +1408,6 @@ export function TriangleModelWindow() {
               ? 'Constrained triangulation is active. No resistivity file is loaded, so cell colors use the neutral fallback.'
               : 'Triangles are computed with unconstrained Delaunator. Use the black overlay to inspect the original `.poly` segment network separately from the derived mesh.'}
         </div>
-        {mesh && loadedResistivityFile ? (
-          <TriangleResegmentPanel
-            disabled={!loadedPolyFile || isLoading}
-            isExporting={isExportingResegmentation}
-            isPreviewing={isPreviewingResegmentation}
-            preview={resegmentationPreview}
-            status={resegmentationStatus}
-            onExport={handleExportResegmentation}
-            onPreview={handlePreviewResegmentation}
-          />
-        ) : null}
       </section>
     </div>
   );

@@ -406,23 +406,55 @@ describe('TriangleModelWindow', () => {
     });
 
     expect(screen.getByTestId('triangle-model-root')).toHaveClass(
-      'min-h-[560px]',
-      'overflow-auto',
+      'min-h-0',
+      'lg:overflow-hidden',
     );
     expect(screen.getByTestId('triangle-model-controls-panel')).toHaveClass(
       'order-2',
-      'lg:order-1',
+      'lg:order-2',
+      'lg:overflow-y-auto',
     );
     expect(screen.getByTestId('triangle-model-viewer-panel')).toHaveClass(
       'order-1',
-      'min-h-[520px]',
-      'lg:order-2',
+      'lg:order-1',
     );
     expect(screen.getByTestId('triangle-model-viewport-frame')).toHaveClass(
       'min-h-[360px]',
       'flex-1',
     );
     expect(screen.getByTestId('triangle-model-canvas')).toBeInTheDocument();
+  });
+
+  it('keeps segmentation controls collapsed behind a secondary module', async () => {
+    const user = userEvent.setup();
+    vi.mocked(axios.post).mockResolvedValue({
+      data: buildEditableTriangleModelResponse(),
+    });
+
+    render(<TriangleModelWindow />);
+
+    await user.upload(
+      screen.getByLabelText(/poly file/i),
+      new File(['poly'], 'editable.poly', { type: 'text/plain' }),
+    );
+    await user.upload(
+      screen.getByLabelText(/resistivity file/i),
+      new File(['rho'], 'editable.resistivity', { type: 'text/plain' }),
+    );
+    await user.click(screen.getByRole('button', { name: /load triangle model/i }));
+
+    expect(
+      await screen.findByRole('button', { name: /segmentation/i }),
+    ).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByRole('button', { name: /^preview$/i })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /segmentation/i }));
+
+    expect(screen.getByRole('button', { name: /segmentation/i })).toHaveAttribute(
+      'aria-expanded',
+      'true',
+    );
+    expect(screen.getByRole('button', { name: /^preview$/i })).toBeInTheDocument();
   });
 
   it('forwards layer visibility changes to the viewer after the model loads', async () => {
@@ -812,6 +844,7 @@ describe('TriangleModelWindow', () => {
       expect(createTriangleModelViewer).toHaveBeenCalled();
     });
 
+    await user.click(await screen.findByRole('button', { name: /segmentation/i }));
     await user.click(await screen.findByRole('button', { name: /^preview$/i }));
 
     await waitFor(() => {

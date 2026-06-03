@@ -145,8 +145,8 @@ export function TriangleResegmentPanel({
   };
 
   return (
-    <aside className="border-t border-border/40 bg-background/80 px-4 py-3">
-      <div className="grid gap-3 xl:grid-cols-[minmax(17rem,22rem)_1fr]">
+    <aside className="border-t border-border/40 bg-background/80 px-3 py-3">
+      <div className="grid gap-3">
         <div className="space-y-3">
           <div className="flex items-center justify-between gap-3">
             <div>
@@ -292,7 +292,7 @@ export function TriangleResegmentPanel({
           ) : null}
 
           {preview ? (
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
+            <div className="grid grid-cols-2 gap-2">
               <div>
                 <p className="text-muted-foreground">Active tris</p>
                 <p className="text-sm font-semibold">{preview.stats.activeTriangleCount}</p>
