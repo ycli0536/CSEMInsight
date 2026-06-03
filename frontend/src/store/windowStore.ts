@@ -2,11 +2,22 @@ import { create } from "zustand";
 import { arrayMove } from "@dnd-kit/sortable";
 import type { WindowContainer, WindowId, WindowState } from "@/types/window";
 import {
+  APP_HEADER_HEIGHT,
+  BOTTOM_PANEL_HEADER_HEIGHT,
   defaultGlobalZIndex,
   defaultSidebarOrder,
+  getWindowMinimumSize,
   initialWindows,
+  WINDOW_MAX_HEIGHT,
+  WINDOW_MAX_WIDTH,
 } from "@/config/windowDefaults";
-import { ensureMainPosition, getCascadedPosition } from "@/utils/windowPositioning";
+import {
+  clampWindowToViewport,
+  constrainWindowSizeToViewport,
+  ensureMainPosition,
+  getCascadedPosition,
+  getWindowWorkspaceViewport,
+} from "@/utils/windowPositioning";
 
 type WindowStore = {
   windows: Record<WindowId, WindowState>;
@@ -24,6 +35,74 @@ type WindowStore = {
   setDraggingWindow: (id: WindowId | null) => void;
 };
 
+function getBrowserViewport() {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  return getWindowWorkspaceViewport({
+    viewport: {
+      width: window.innerWidth,
+      height: window.innerHeight,
+    },
+    reservedTop: APP_HEADER_HEIGHT,
+    reservedBottom: BOTTOM_PANEL_HEADER_HEIGHT,
+  });
+}
+
+function getEffectiveWindowSize(window: WindowState, size = window.size) {
+  const minimumSize = getWindowMinimumSize(window.type);
+
+  return {
+    width: Math.max(size.width, minimumSize.width),
+    height: Math.max(size.height, minimumSize.height),
+  };
+}
+
+function getConstrainedWindowSize(window: WindowState, size = window.size) {
+  const minimumSize = getWindowMinimumSize(window.type);
+  const maximumSize = {
+    width: WINDOW_MAX_WIDTH,
+    height: WINDOW_MAX_HEIGHT,
+  };
+  const viewport = window.container === "main" ? getBrowserViewport() : null;
+
+  if (!viewport) {
+    return {
+      width: Math.min(maximumSize.width, Math.max(minimumSize.width, size.width)),
+      height: Math.min(maximumSize.height, Math.max(minimumSize.height, size.height)),
+    };
+  }
+
+  return constrainWindowSizeToViewport({
+    size,
+    minSize: minimumSize,
+    maxSize: maximumSize,
+    viewport,
+  });
+}
+
+function clampMainWindowPosition(
+  window: WindowState,
+  position: WindowState["position"],
+  size = window.size,
+) {
+  if (window.container !== "main") {
+    return position;
+  }
+
+  const viewport = getBrowserViewport();
+  if (!viewport) {
+    return position;
+  }
+
+  return clampWindowToViewport({
+    position,
+    size: getConstrainedWindowSize(window, getEffectiveWindowSize(window, size)),
+    viewport,
+  });
+}
+
 export const useWindowStore = create<WindowStore>()((set) => ({
   windows: initialWindows,
   sidebarOrder: defaultSidebarOrder,
@@ -38,7 +117,10 @@ export const useWindowStore = create<WindowStore>()((set) => ({
       const windows = { ...state.windows };
       const mainCount = Object.values(windows).filter((item) => item.container === "main")
         .length;
-      const position = getCascadedPosition(window, mainCount);
+      const position = clampMainWindowPosition(
+        window,
+        getCascadedPosition(window, mainCount),
+      );
 
       windows[window.id] = { ...window, position };
       const sidebarOrder =
@@ -54,12 +136,21 @@ export const useWindowStore = create<WindowStore>()((set) => ({
         return state;
       }
       const windows = { ...state.windows };
-      const position = ensureMainPosition(window.position, container);
-      windows[id] = { ...window, container, position };
+      const nextWindow = { ...window, container };
+      const position = clampMainWindowPosition(
+        nextWindow,
+        ensureMainPosition(window.position, container),
+      );
+      windows[id] = { ...nextWindow, position };
 
       // If moving to main container and size is 0 (e.g. Settings), set a default size
       if (container === "main" && (window.size.width === 0 || window.size.height === 0)) {
         windows[id].size = { width: 400, height: 500 };
+        windows[id].position = clampMainWindowPosition(
+          windows[id],
+          windows[id].position,
+          windows[id].size,
+        );
       }
 
       const sidebarOrder =
@@ -89,7 +180,10 @@ export const useWindowStore = create<WindowStore>()((set) => ({
         return state;
       }
       const windows = { ...state.windows };
-      windows[id] = { ...window, position };
+      windows[id] = {
+        ...window,
+        position: clampMainWindowPosition(window, position),
+      };
       return { windows };
     }),
   updateSize: (id, size) =>
@@ -99,7 +193,12 @@ export const useWindowStore = create<WindowStore>()((set) => ({
         return state;
       }
       const windows = { ...state.windows };
-      windows[id] = { ...window, size };
+      const constrainedSize = getConstrainedWindowSize(window, size);
+      windows[id] = {
+        ...window,
+        position: clampMainWindowPosition(window, window.position, constrainedSize),
+        size: constrainedSize,
+      };
       return { windows };
     }),
   bringToFront: (id) =>
@@ -135,7 +234,11 @@ export const useWindowStore = create<WindowStore>()((set) => ({
         position = { x: 60, y };
       }
 
-      windows[id] = { ...windowState, isOpen: true, zIndex: nextZ, position };
+      const nextWindow = { ...windowState, isOpen: true, zIndex: nextZ };
+      windows[id] = {
+        ...nextWindow,
+        position: clampMainWindowPosition(nextWindow, position),
+      };
       return { windows, activeWindowId: id, globalZIndex: nextZ };
     }),
   setDraggingWindow: (id) => set({ draggingWindowId: id }),

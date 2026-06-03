@@ -13,6 +13,8 @@ export const WINDOW_MIN_WIDTH = 300;
 export const WINDOW_MIN_HEIGHT = 200;
 export const WINDOW_MAX_WIDTH = 2000;
 export const WINDOW_MAX_HEIGHT = 2000;
+export const APP_HEADER_HEIGHT = 56;
+export const BOTTOM_PANEL_HEADER_HEIGHT = 36;
 
 const windowMinimumSizeByType: Partial<
   Record<WindowId, { width: number; height: number }>

@@ -14,6 +14,10 @@ import {
 import { DockingSidebar } from "@/components/layout/DockingSidebar";
 import { DraggableWindow } from "@/components/layout/DraggableWindow";
 import { MobileDrawer } from "@/components/layout/MobileDrawer";
+import {
+  APP_HEADER_HEIGHT,
+  BOTTOM_PANEL_HEADER_HEIGHT,
+} from "@/config/windowDefaults";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
 import { useWindowStore } from "@/store/windowStore";
 import type { WindowId } from "@/types/window";
@@ -122,7 +126,13 @@ export function WindowManager() {
       onDragMove={handleDragMove}
       onDragEnd={handleDragEnd}
     >
-      <div className="fixed inset-0 z-10 pointer-events-none">
+      <div
+        className="fixed left-0 right-0 z-10 pointer-events-none"
+        style={{
+          top: APP_HEADER_HEIGHT,
+          bottom: BOTTOM_PANEL_HEADER_HEIGHT,
+        }}
+      >
         <div 
             ref={setNodeRef} 
             className="absolute inset-0 w-full h-full" 

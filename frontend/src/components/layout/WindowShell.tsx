@@ -8,6 +8,8 @@ import {
 } from "@/components/ui/tooltip";
 import type { DraggableSyntheticListeners, DraggableAttributes } from "@dnd-kit/core";
 
+type ResizeDirection = "n" | "s" | "e" | "w" | "ne" | "nw" | "se" | "sw";
+
 interface WindowShellProps extends Omit<React.HTMLAttributes<HTMLDivElement>, "onResize"> {
   title: string;
   onClose?: () => void;
@@ -25,6 +27,23 @@ interface WindowShellProps extends Omit<React.HTMLAttributes<HTMLDivElement>, "o
   maxWidth?: number;
   maxHeight?: number;
   currentPosition?: { x: number; y: number };
+}
+
+const resizeDirections: ResizeDirection[] = ["n", "s", "e", "w", "ne", "nw", "se", "sw"];
+
+const resizeHandleClassNameByDirection: Record<ResizeDirection, string> = {
+  n: "left-5 right-5 top-0 h-2 cursor-ns-resize",
+  s: "bottom-0 left-5 right-5 h-2 cursor-ns-resize",
+  e: "bottom-5 right-0 top-5 w-2 cursor-ew-resize",
+  w: "bottom-5 left-0 top-5 w-2 cursor-ew-resize",
+  ne: "right-0 top-0 h-5 w-5 cursor-nesw-resize",
+  nw: "left-0 top-0 h-5 w-5 cursor-nwse-resize",
+  se: "bottom-0 right-0 h-5 w-5 cursor-nwse-resize",
+  sw: "bottom-0 left-0 h-5 w-5 cursor-nesw-resize",
+};
+
+function clampSize(value: number, min: number, max: number) {
+  return Math.min(max, Math.max(min, value));
 }
 
 export const WindowShell = React.forwardRef<HTMLDivElement, WindowShellProps>(
@@ -59,7 +78,7 @@ export const WindowShell = React.forwardRef<HTMLDivElement, WindowShellProps>(
 
     const handleResizeStart = (
       event: ReactPointerEvent<HTMLDivElement>,
-      direction: "n" | "s" | "e" | "w" | "ne" | "nw" | "se" | "sw"
+      direction: ResizeDirection
     ) => {
       if (!canResize || !onResize || !containerRef.current) return;
 
@@ -91,20 +110,16 @@ export const WindowShell = React.forwardRef<HTMLDivElement, WindowShellProps>(
         let newTop = startTop;
 
         if (direction.includes("e")) {
-          newWidth = Math.min(maxWidth, Math.max(minWidth, startWidth + deltaX));
-        }
-        if (direction.includes("w")) {
-          const widthDelta = Math.min(maxWidth, Math.max(minWidth, startWidth - deltaX)) - startWidth;
-          newWidth = startWidth - widthDelta;
-          newLeft = startLeft + deltaX;
+          newWidth = clampSize(startWidth + deltaX, minWidth, maxWidth);
+        } else if (direction.includes("w")) {
+          newWidth = clampSize(startWidth - deltaX, minWidth, maxWidth);
+          newLeft = startLeft + (startWidth - newWidth);
         }
         if (direction.includes("s")) {
-          newHeight = Math.min(maxHeight, Math.max(minHeight, startHeight + deltaY));
-        }
-        if (direction.includes("n")) {
-          const heightDelta = Math.min(maxHeight, Math.max(minHeight, startHeight - deltaY)) - startHeight;
-          newHeight = startHeight - heightDelta;
-          newTop = startTop + deltaY;
+          newHeight = clampSize(startHeight + deltaY, minHeight, maxHeight);
+        } else if (direction.includes("n")) {
+          newHeight = clampSize(startHeight - deltaY, minHeight, maxHeight);
+          newTop = startTop + (startHeight - newHeight);
         }
 
         lastWidth = newWidth;
@@ -233,23 +248,21 @@ export const WindowShell = React.forwardRef<HTMLDivElement, WindowShellProps>(
           {children}
         </div>
 
-        {canResize && (
-          <div
-            onPointerDown={(e) => handleResizeStart(e, "se")}
-            className="absolute bottom-0 right-0 h-5 w-5 cursor-nwse-resize z-50 flex items-end justify-end p-1 opacity-50 hover:opacity-100 transition-opacity"
-            role="presentation"
-          >
-            <svg
-              width="8"
-              height="8"
-              viewBox="0 0 8 8"
-              fill="none"
-              xmlns="http://www.w3.org/2000/svg"
-            >
-              <path d="M8 8L0 8L8 0L8 8Z" fill="currentColor" className="text-muted-foreground/50" />
-            </svg>
-          </div>
-        )}
+        {canResize
+          ? resizeDirections.map((direction) => (
+              <div
+                key={direction}
+                data-testid={`window-resize-handle-${direction}`}
+                onPointerDown={(e) => handleResizeStart(e, direction)}
+                className={cn(
+                  "absolute z-50 opacity-40 transition-opacity hover:opacity-100",
+                  resizeHandleClassNameByDirection[direction],
+                  direction.length === 2 && "flex items-center justify-center",
+                )}
+                role="presentation"
+              />
+            ))
+          : null}
       </div>
     );
   }
