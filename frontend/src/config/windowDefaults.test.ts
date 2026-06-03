@@ -4,6 +4,7 @@ import {
   WINDOW_MIN_HEIGHT,
   WINDOW_MIN_WIDTH,
   getWindowMinimumSize,
+  isWindowDockable,
 } from './windowDefaults';
 
 describe('windowDefaults', () => {
@@ -19,5 +20,16 @@ describe('windowDefaults', () => {
       width: WINDOW_MIN_WIDTH,
       height: WINDOW_MIN_HEIGHT,
     });
+  });
+});
+
+describe('isWindowDockable', () => {
+  it('marks the triangle model workspace window as non-dockable', () => {
+    expect(isWindowDockable('triangle-model')).toBe(false);
+  });
+
+  it('keeps regular windows dockable by default', () => {
+    expect(isWindowDockable('settings')).toBe(true);
+    expect(isWindowDockable('bathymetry')).toBe(true);
   });
 });

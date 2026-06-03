@@ -31,6 +31,16 @@ export function getWindowMinimumSize(type: WindowId) {
   );
 }
 
+// Windows that need more room than the docking sidebar can provide. These stay
+// floating in the main workspace and hide their dock affordances.
+const nonDockableWindowTypes: ReadonlySet<WindowId> = new Set<WindowId>([
+  'triangle-model',
+]);
+
+export function isWindowDockable(type: WindowId) {
+  return !nonDockableWindowTypes.has(type);
+}
+
 export const initialWindows: Record<WindowId, WindowState> = buildInitialWindows(
   isDemoModeEnabled(),
 );

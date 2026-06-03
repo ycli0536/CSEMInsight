@@ -11,6 +11,7 @@ import {
   WINDOW_MAX_WIDTH,
   WINDOW_MAX_HEIGHT,
   getWindowMinimumSize,
+  isWindowDockable,
 } from "@/config/windowDefaults";
 import {
   clampWindowToViewport,
@@ -158,7 +159,11 @@ export const DraggableWindow = React.memo(function DraggableWindow({
       headerRef={setActivatorNodeRef}
       onMouseDown={() => bringToFront(window.id)}
       onClose={() => toggleWindow(window.id)}
-      onDockToggle={() => moveWindowToContainer(window.id, "sidebar")}
+      onDockToggle={
+        isWindowDockable(window.type)
+          ? () => moveWindowToContainer(window.id, "sidebar")
+          : undefined
+      }
       isActive={activeWindowId === window.id}
       isDocked={false}
       isDragging={isCurrentlyDragging}

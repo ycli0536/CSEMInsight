@@ -24,6 +24,7 @@ import {
 } from "@/config/windowDefaults";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
 import { useWindowStore } from "@/store/windowStore";
+import { shouldDockToSidebar } from "@/utils/windowDocking";
 import type { WindowId } from "@/types/window";
 
 export function WindowManager() {
@@ -98,7 +99,7 @@ export function WindowManager() {
       return;
     }
 
-    if (activeInMain && (over?.id === "sidebar-container" || (over?.id && windows[over.id as WindowId]?.container === "sidebar"))) {
+    if (shouldDockToSidebar(activeWindow, over ? String(over.id) : null, windows)) {
       moveWindowToContainer(activeId, "sidebar");
       return;
     }

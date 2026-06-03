@@ -70,7 +70,10 @@ describe('WindowManager', () => {
   });
 
   afterEach(() => {
-    vi.restoreAllMocks();
+    // clearAllMocks (not restoreAllMocks) so the global ResizeObserver/
+    // matchMedia vi.fn mocks from setup.ts keep their implementations for the
+    // next render in this file.
+    vi.clearAllMocks();
   });
 
   it('preserves mesh viewer content state when docking and undocking', async () => {
@@ -108,5 +111,44 @@ describe('WindowManager', () => {
       'triangle-model count 1',
     );
     expect(contentMounts.triangleModel).toBe(1);
+  });
+
+  it('hides the dock control for non-dockable workspace windows', async () => {
+    render(
+      <TooltipProvider>
+        <WindowManager />
+      </TooltipProvider>,
+    );
+
+    await screen.findByTestId('content-triangle-model');
+    expect(screen.queryByLabelText('Dock window')).toBeNull();
+  });
+
+  it('keeps the dock control for dockable windows', async () => {
+    act(() => {
+      useWindowStore.setState((state) => ({
+        windows: {
+          ...state.windows,
+          'triangle-model': {
+            ...state.windows['triangle-model'],
+            isOpen: false,
+          },
+          bathymetry: {
+            ...state.windows.bathymetry,
+            container: 'main',
+            isOpen: true,
+          },
+        },
+      }));
+    });
+
+    render(
+      <TooltipProvider>
+        <WindowManager />
+      </TooltipProvider>,
+    );
+
+    await screen.findByTestId('content-bathymetry');
+    expect(screen.getByLabelText('Dock window')).toBeInTheDocument();
   });
 });
