@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useDraggable } from "@dnd-kit/core";
 import { CSS } from "@dnd-kit/utilities";
-import { WindowContentRenderer } from "@/components/layout/WindowContentRenderer";
+import { WindowContentSlot } from "@/components/layout/WindowContentHost";
 import { WindowShell } from "@/components/layout/WindowShell";
 import type { WindowState } from "@/types/window";
 import { useWindowStore } from "@/store/windowStore";
@@ -171,7 +171,7 @@ export const DraggableWindow = React.memo(function DraggableWindow({
       maxHeight={maxSize.height}
       currentPosition={displayPosition}
     >
-      <WindowContentRenderer type={window.type} />
+      <WindowContentSlot id={window.id} />
     </WindowShell>
   );
 });
