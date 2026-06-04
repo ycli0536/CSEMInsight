@@ -965,15 +965,9 @@ export function TriangleModelWindow() {
         data-testid="triangle-model-viewer-panel"
         className="order-1 flex min-h-[420px] shrink-0 flex-col overflow-hidden rounded-2xl border border-border/40 bg-card/80 shadow-sm lg:order-1 lg:min-h-0"
       >
-        <div className="flex flex-col gap-3 border-b border-border/40 px-4 py-3 xl:flex-row xl:items-start xl:justify-between">
-          <div>
-            <h3 className="text-sm font-semibold tracking-tight">Mesh Viewport</h3>
-            <p className="text-xs text-muted-foreground">
-              Original `.poly` segments can be overlaid on top of the computed mesh.
-            </p>
-          </div>
-          {mesh ? (
-            <div className="flex w-full flex-wrap items-center justify-start gap-2 xl:w-auto xl:justify-end">
+        {mesh ? (
+          <div className="border-b border-border/40 px-4 py-3">
+            <div className="flex w-full flex-wrap items-center justify-start gap-2">
               <div className="hidden text-right text-xs text-muted-foreground sm:block">
                 <p>{mesh.points.length} points</p>
                 <p>{mesh.triangles.length} triangles</p>
@@ -1220,8 +1214,8 @@ export function TriangleModelWindow() {
                 </div>
               ) : null}
             </div>
-          ) : null}
-        </div>
+          </div>
+        ) : null}
 
         <div className="flex flex-col gap-1 border-b border-border/40 bg-background/70 px-4 py-2 text-xs text-muted-foreground sm:flex-row sm:items-center sm:justify-between sm:gap-4">
           <p>Wheel to zoom, drag to pan, double-click to reset.</p>
