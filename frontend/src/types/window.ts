@@ -3,7 +3,8 @@ export type WindowId =
   | "response-plot"
   | "bathymetry"
   | "custom-plot"
-  | "misfit-stats";
+  | "misfit-stats"
+  | "triangle-model";
 
 
 export type WindowContainer = "main" | "sidebar";

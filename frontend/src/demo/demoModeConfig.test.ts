@@ -27,6 +27,7 @@ describe('demoModeConfig', () => {
     expect(windows.settings.isOpen).toBe(true);
     expect(windows['response-plot'].isOpen).toBe(false);
     expect(windows.bathymetry.isOpen).toBe(true);
+    expect(windows['triangle-model'].isOpen).toBe(false);
   });
 
   it('shows only settings and response navigation in demo mode', () => {
@@ -36,6 +37,7 @@ describe('demoModeConfig', () => {
       'bathymetry',
       'custom-plot',
       'misfit-stats',
+      'triangle-model',
     ]);
     expect(getVisibleNavWindowIds(false)).toEqual([
       'settings',
@@ -43,6 +45,7 @@ describe('demoModeConfig', () => {
       'bathymetry',
       'custom-plot',
       'misfit-stats',
+      'triangle-model',
     ]);
   });
 });

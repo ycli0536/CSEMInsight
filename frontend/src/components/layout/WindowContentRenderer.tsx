@@ -23,14 +23,20 @@ const MisfitStatsWindow = lazy(() =>
   import("@/components/custom/MisfitStatsWindow").then((mod) => ({ default: mod.MisfitStatsWindow }))
 );
 
+const TriangleModelWindow = lazy(() =>
+  import("@/components/custom/TriangleModelWindow").then((mod) => ({
+    default: mod.TriangleModelWindow,
+  }))
+);
+
 const windowContentRegistry: Record<WindowId, ComponentType> = {
   settings: SettingForm,
   "response-plot": ResponsesWithErrorBars,
   bathymetry: BathymetryWidget,
   "custom-plot": CustomPlot,
   "misfit-stats": MisfitStatsWindow,
+  "triangle-model": TriangleModelWindow,
 };
-
 
 const LoadingFallback = () => (
   <div className="flex h-full items-center justify-center p-8">

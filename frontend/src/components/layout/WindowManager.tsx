@@ -14,8 +14,17 @@ import {
 import { DockingSidebar } from "@/components/layout/DockingSidebar";
 import { DraggableWindow } from "@/components/layout/DraggableWindow";
 import { MobileDrawer } from "@/components/layout/MobileDrawer";
+import {
+  WindowContentHostProvider,
+  WindowContentLayer,
+} from "@/components/layout/WindowContentHost";
+import {
+  APP_HEADER_HEIGHT,
+  BOTTOM_PANEL_HEADER_HEIGHT,
+} from "@/config/windowDefaults";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
 import { useWindowStore } from "@/store/windowStore";
+import { shouldDockToSidebar } from "@/utils/windowDocking";
 import type { WindowId } from "@/types/window";
 
 export function WindowManager() {
@@ -90,7 +99,7 @@ export function WindowManager() {
       return;
     }
 
-    if (activeInMain && (over?.id === "sidebar-container" || (over?.id && windows[over.id as WindowId]?.container === "sidebar"))) {
+    if (shouldDockToSidebar(activeWindow, over ? String(over.id) : null, windows)) {
       moveWindowToContainer(activeId, "sidebar");
       return;
     }
@@ -102,12 +111,16 @@ export function WindowManager() {
     }
   }, [windows, updatePosition, moveWindowToContainer, reorderSidebar, setDraggingWindow]);
 
-  const mainWindows = useMemo(
+  const openWindows = useMemo(
     () =>
       Object.values(windows).filter(
-        (window) => window.container === "main" && window.isOpen
+        (window) => window.isOpen
       ),
     [windows]
+  );
+  const mainWindows = useMemo(
+    () => openWindows.filter((window) => window.container === "main"),
+    [openWindows]
   );
 
   if (isMobile) {
@@ -115,24 +128,33 @@ export function WindowManager() {
   }
 
   return (
-    <DndContext
-      sensors={sensors}
-      collisionDetection={pointerWithin}
-      onDragStart={handleDragStart}
-      onDragMove={handleDragMove}
-      onDragEnd={handleDragEnd}
-    >
-      <div className="fixed inset-0 z-10 pointer-events-none">
-        <div 
-            ref={setNodeRef} 
-            className="absolute inset-0 w-full h-full" 
-            id="main-container" 
-        />
-        {mainWindows.map((window) => (
-          <DraggableWindow key={window.id} window={window} />
-        ))}
-      </div>
-      <DockingSidebar />
-    </DndContext>
+    <WindowContentHostProvider>
+      <DndContext
+        sensors={sensors}
+        collisionDetection={pointerWithin}
+        onDragStart={handleDragStart}
+        onDragMove={handleDragMove}
+        onDragEnd={handleDragEnd}
+      >
+        <div
+          className="fixed left-0 right-0 z-10 pointer-events-none"
+          style={{
+            top: APP_HEADER_HEIGHT,
+            bottom: BOTTOM_PANEL_HEADER_HEIGHT,
+          }}
+        >
+          <div
+            ref={setNodeRef}
+            className="absolute inset-0 w-full h-full"
+            id="main-container"
+          />
+          {mainWindows.map((window) => (
+            <DraggableWindow key={window.id} window={window} />
+          ))}
+        </div>
+        <DockingSidebar />
+        <WindowContentLayer windows={openWindows} />
+      </DndContext>
+    </WindowContentHostProvider>
   );
 }

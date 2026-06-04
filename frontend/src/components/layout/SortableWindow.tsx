@@ -1,7 +1,7 @@
 import React from "react";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { WindowContentRenderer } from "@/components/layout/WindowContentRenderer";
+import { WindowContentSlot } from "@/components/layout/WindowContentHost";
 import { WindowShell } from "@/components/layout/WindowShell";
 import type { WindowState } from "@/types/window";
 import { useWindowStore } from "@/store/windowStore";
@@ -50,7 +50,7 @@ export const SortableWindow = React.memo(function SortableWindow({
       isActive={activeWindowId === window.id}
       isDocked={true}
     >
-      <WindowContentRenderer type={window.type} />
+      <WindowContentSlot id={window.id} />
     </WindowShell>
   );
 });

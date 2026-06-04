@@ -13,6 +13,33 @@ export const WINDOW_MIN_WIDTH = 300;
 export const WINDOW_MIN_HEIGHT = 200;
 export const WINDOW_MAX_WIDTH = 2000;
 export const WINDOW_MAX_HEIGHT = 2000;
+export const APP_HEADER_HEIGHT = 56;
+export const BOTTOM_PANEL_HEADER_HEIGHT = 36;
+
+const windowMinimumSizeByType: Partial<
+  Record<WindowId, { width: number; height: number }>
+> = {
+  'triangle-model': { width: 720, height: 600 },
+};
+
+export function getWindowMinimumSize(type: WindowId) {
+  return (
+    windowMinimumSizeByType[type] ?? {
+      width: WINDOW_MIN_WIDTH,
+      height: WINDOW_MIN_HEIGHT,
+    }
+  );
+}
+
+// Windows that need more room than the docking sidebar can provide. These stay
+// floating in the main workspace and hide their dock affordances.
+const nonDockableWindowTypes: ReadonlySet<WindowId> = new Set<WindowId>([
+  'triangle-model',
+]);
+
+export function isWindowDockable(type: WindowId) {
+  return !nonDockableWindowTypes.has(type);
+}
 
 export const initialWindows: Record<WindowId, WindowState> = buildInitialWindows(
   isDemoModeEnabled(),

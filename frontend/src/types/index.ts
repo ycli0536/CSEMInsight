@@ -135,3 +135,26 @@ export interface Dataset {
 }
 
 export type { WindowContainer, WindowId, WindowState } from "./window";
+export type {
+  TriangleConstrainedMesh,
+  TriangleConstrainedMeshVertex,
+  TriangleCameraState,
+  TriangleHoverState,
+  TriangleLayerVisibility,
+  TriangleMesh,
+  TriangleMeshBounds,
+  TriangleMeshPoint,
+  TriangleModelHole,
+  TriangleRegionResistivity,
+  TriangleResegmentationExportResponse,
+  TriangleResegmentationParameters,
+  TriangleResegmentationPreviewResponse,
+  TriangleResegmentationRoi,
+  TriangleResegmentationStats,
+  TriangleModelRegion,
+  TriangleModelResponse,
+  TriangleModelResistivity,
+  TriangleModelSegment,
+  TriangleModelVertex,
+  TriangleViewport,
+} from "./triangleModel";

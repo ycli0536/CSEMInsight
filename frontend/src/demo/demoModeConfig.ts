@@ -8,6 +8,7 @@ const DEFAULT_NAV_WINDOW_IDS: WindowId[] = [
   'bathymetry',
   'custom-plot',
   'misfit-stats',
+  'triangle-model',
 ];
 
 export function isDemoModeEnabled(): boolean {
@@ -75,6 +76,16 @@ export function buildInitialWindows(
       zIndex: 10,
       position: { x: 150, y: 150 },
       size: { width: 900, height: 700 },
+    },
+    'triangle-model': {
+      id: 'triangle-model',
+      type: 'triangle-model',
+      title: 'Triangle Model',
+      container: 'main',
+      isOpen: false,
+      zIndex: 10,
+      position: { x: 180, y: 180 },
+      size: { width: 1100, height: 760 },
     },
   };
 }

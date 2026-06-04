@@ -6,6 +6,7 @@ import {
     ResizableHandle,
 } from "@/components/ui/resizable";
 import { Button } from "@/components/ui/button";
+import { BOTTOM_PANEL_HEADER_HEIGHT } from "@/config/windowDefaults";
 import { cn } from "@/lib/utils";
 import type { ImperativePanelHandle } from "react-resizable-panels";
 
@@ -25,9 +26,6 @@ const LoadingFallback = () => (
 interface BottomPanelProps {
     children: React.ReactNode;
 }
-
-// Fixed header height in pixels
-const HEADER_HEIGHT = 36;
 
 export function BottomPanel({ children }: BottomPanelProps) {
     const [isCollapsed, setIsCollapsed] = useState(true);
@@ -146,7 +144,7 @@ export function BottomPanel({ children }: BottomPanelProps) {
                     "relative",
                     isRaised ? "z-20" : "z-0",
                 )}
-                style={{ height: HEADER_HEIGHT }}
+                style={{ height: BOTTOM_PANEL_HEADER_HEIGHT }}
                 onClick={toggleCollapse}
                 onDoubleClick={toggleCollapse}
                 onPointerDown={raisePanel}
