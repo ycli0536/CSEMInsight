@@ -78,6 +78,12 @@ export function getTriangleResistivityColor(
   return sampleTurbo(1 - normalizeTriangleResistivity(value, range));
 }
 
+// Convert a single sRGB color channel (0..1) to linear-light. This is the inverse of the
+// sRGB OETF that three.js applies on output (outputColorSpace = sRGB).
+function srgbChannelToLinear(channel: number) {
+  return channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4;
+}
+
 export function buildTriangleFillColors(
   triangleValues: Array<number | null | undefined>,
   range: { min?: number; max?: number } = {},
@@ -85,7 +91,13 @@ export function buildTriangleFillColors(
   const colors = new Float32Array(triangleValues.length * 9);
 
   triangleValues.forEach((value, triangleIndex) => {
-    const [r, g, b] = getTriangleResistivityColor(value, range);
+    // The colormap is authored in sRGB (matching the CSS colorbar and MATLAB). three.js
+    // treats vertex-color buffers as linear and re-encodes to sRGB on output, so upload the
+    // linear form here to cancel that encoding and render the true authored color.
+    const [sr, sg, sb] = getTriangleResistivityColor(value, range);
+    const r = srgbChannelToLinear(sr);
+    const g = srgbChannelToLinear(sg);
+    const b = srgbChannelToLinear(sb);
     const offset = triangleIndex * 9;
 
     colors.set([r, g, b, r, g, b, r, g, b], offset);

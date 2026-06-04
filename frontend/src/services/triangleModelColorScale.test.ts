@@ -5,6 +5,7 @@ import {
   buildTriangleResistivityLegendTicks,
   buildTriangleResistivityGradientCss,
   formatTriangleResistivityTick,
+  getTriangleResistivityColor,
   normalizeTriangleResistivity,
 } from './triangleModelColorScale';
 
@@ -22,6 +23,23 @@ describe('triangleModelColorScale', () => {
     expect(colors).toHaveLength(27);
     expect(Array.from(colors.slice(0, 3))).not.toEqual(Array.from(colors.slice(9, 12)));
     expect(Array.from(colors.slice(18, 21))).toEqual(Array.from(colors.slice(21, 24)));
+  });
+
+  it('uploads triangle fill colors in linear space so the WebGL sRGB output pass restores the authored color', () => {
+    // three.js renders with outputColorSpace = sRGB, which applies an sRGB OETF to the
+    // fragment output. Vertex-color buffers are treated as linear, so to make the on-screen
+    // color match the authored (sRGB) Turbo color — i.e. the CSS colorbar and MATLAB — the
+    // buffer must hold the LINEAR form of the colormap color.
+    const srgbToLinear = (channel: number) =>
+      channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4;
+
+    const value = 10;
+    const [r, g, b] = getTriangleResistivityColor(value);
+    const colors = buildTriangleFillColors([value]);
+
+    expect(colors[0]).toBeCloseTo(srgbToLinear(r), 6);
+    expect(colors[1]).toBeCloseTo(srgbToLinear(g), 6);
+    expect(colors[2]).toBeCloseTo(srgbToLinear(b), 6);
   });
 
   it('applies custom resistivity limits to triangle colors', () => {
