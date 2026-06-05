@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { useSettingFormStore } from './settingFormStore';
+import { useDataTableStore, useSettingFormStore } from './settingFormStore';
 
 describe('useSettingFormStore defaults', () => {
   it('sets default plot customization fields', () => {
@@ -15,5 +15,22 @@ describe('useSettingFormStore defaults', () => {
     const state = useSettingFormStore.getState();
 
     expect(state.applyQuickFiltersGlobally).toBe(false);
+  });
+});
+
+describe('useDataTableStore column defaults', () => {
+  it('exposes parsed offset, distance, and solve-correction columns to the UI', () => {
+    const fields = useDataTableStore
+      .getState()
+      .colDefs.map((column) => column.field);
+
+    expect(fields).toEqual(
+      expect.arrayContaining([
+        'offset',
+        'distance',
+        'SolveCorr_rx',
+        'SolveCorr_tx',
+      ]),
+    );
   });
 });

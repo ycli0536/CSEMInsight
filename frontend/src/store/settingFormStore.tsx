@@ -291,6 +291,12 @@ const defaultColDefs: ColDef[] = [
     floatingFilter: true,
   },
   {
+    headerName: "Solve Corr (tx)",
+    field: "SolveCorr_tx",
+    filter: true,
+    floatingFilter: true,
+  },
+  {
     headerName: "Name (tx)",
     field: "Name_tx",
     filter: true,
@@ -305,6 +311,24 @@ const defaultColDefs: ColDef[] = [
   {
     headerName: "Name (rx)",
     field: "Name_rx",
+    filter: true,
+    floatingFilter: true,
+  },
+  {
+    headerName: "Solve Corr (rx)",
+    field: "SolveCorr_rx",
+    filter: true,
+    floatingFilter: true,
+  },
+  {
+    headerName: "Offset",
+    field: "offset",
+    filter: true,
+    floatingFilter: true,
+  },
+  {
+    headerName: "Distance",
+    field: "distance",
     filter: true,
     floatingFilter: true,
   },

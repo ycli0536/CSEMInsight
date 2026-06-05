@@ -57,6 +57,7 @@ export interface CsemData {
   Dip: number;
   Length_tx: number;
   Type_tx: string;
+  SolveCorr_tx?: string; // Optional correction flag in some .resp files
   Name_tx: string;
   offset: number;
   distance: number;
