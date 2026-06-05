@@ -15,8 +15,15 @@ describe('windowDefaults', () => {
     });
   });
 
-  it('keeps the shared minimum size for regular windows', () => {
+  it('uses a larger minimum size for the custom plot window', () => {
     expect(getWindowMinimumSize('custom-plot')).toEqual({
+      width: 520,
+      height: 400,
+    });
+  });
+
+  it('keeps the shared minimum size for compact regular windows', () => {
+    expect(getWindowMinimumSize('bathymetry')).toEqual({
       width: WINDOW_MIN_WIDTH,
       height: WINDOW_MIN_HEIGHT,
     });

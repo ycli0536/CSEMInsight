@@ -19,6 +19,7 @@ export const BOTTOM_PANEL_HEADER_HEIGHT = 36;
 const windowMinimumSizeByType: Partial<
   Record<WindowId, { width: number; height: number }>
 > = {
+  'custom-plot': { width: 520, height: 400 },
   'triangle-model': { width: 720, height: 600 },
 };
 

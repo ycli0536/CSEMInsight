@@ -1,5 +1,5 @@
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import uPlot from 'uplot';
 import 'uplot/dist/uPlot.min.css';
 import { useDataTableStore, useSettingFormStore } from "@/store/settingFormStore";
@@ -9,9 +9,17 @@ import { CsemData } from '@/types';
 import { wheelZoomPlugin } from '@/components/custom/uplot-wheel-zoom-plugin';
 import { getPlotLabelParts } from './customPlot.utils';
 
+// uPlot excludes title and legend from opts.height; reserve room for both.
+const CUSTOM_PLOT_TITLE_LEGEND_RESERVE_PX = 112;
+
+function getCustomPlotRenderHeight(containerHeight: number) {
+    return Math.max(1, containerHeight - CUSTOM_PLOT_TITLE_LEGEND_RESERVE_PX);
+}
+
 export function CustomPlot() {
     const plotRef = useRef<HTMLDivElement>(null);
     const uPlotRef = useRef<uPlot | null>(null);
+    const [layoutRetry, setLayoutRetry] = useState(0);
 
     const { filteredData } = useDataTableStore();
     const { xAxisColumn, yAxisColumn, splitByColumn } = useSettingFormStore();
@@ -19,6 +27,26 @@ export function CustomPlot() {
     const { theme, systemTheme } = useTheme();
     const resolvedTheme = theme === "system" ? systemTheme : theme;
     const isDarkMode = resolvedTheme === "dark";
+
+    useEffect(() => {
+        const plotElement = plotRef.current;
+        if (!plotElement) return;
+
+        const resizeObserver = new ResizeObserver(() => {
+            if (
+                !uPlotRef.current
+                && plotElement.clientWidth > 0
+                && plotElement.clientHeight > 0
+            ) {
+                setLayoutRetry((current) => current + 1);
+            }
+        });
+        resizeObserver.observe(plotElement);
+
+        return () => {
+            resizeObserver.disconnect();
+        };
+    }, []);
 
     useEffect(() => {
         if (!plotRef.current || filteredData.length === 0) return;
@@ -285,7 +313,7 @@ export function CustomPlot() {
         const chartColors = getChartColors(isDarkMode);
         
         const containerWidth = plotRef.current.clientWidth;
-        const containerHeight = plotRef.current.clientHeight || 400;
+        const containerHeight = plotRef.current.clientHeight;
         
         // Guard: Don't initialize with non-positive dimensions
         if (containerWidth <= 0 || containerHeight <= 0) {
@@ -299,7 +327,7 @@ export function CustomPlot() {
         const opts: uPlot.Options = {
             title: splitByColumn ? `${yKey} vs ${xKey} by ${splitByColumn}` : `${yKey} vs ${xKey}`,
             width: containerWidth,
-            height: containerHeight,
+            height: getCustomPlotRenderHeight(containerHeight),
             mode: 2, // High Performance (XY)
             scales: {
                 x: {
@@ -363,7 +391,7 @@ export function CustomPlot() {
                 if (newWidth > 0 && newHeight > 0) {
                     uPlotRef.current.setSize({
                         width: newWidth,
-                        height: newHeight,
+                        height: getCustomPlotRenderHeight(newHeight),
                     });
                 }
             }
@@ -375,7 +403,7 @@ export function CustomPlot() {
             uPlotRef.current?.destroy();
         };
 
-    }, [filteredData, xAxisColumn, yAxisColumn, splitByColumn, isDarkMode]);
+    }, [filteredData, xAxisColumn, yAxisColumn, splitByColumn, isDarkMode, layoutRetry]);
 
     const { xLabel, yLabel, splitLabel } = getPlotLabelParts(
         xAxisColumn,
@@ -384,14 +412,14 @@ export function CustomPlot() {
     );
 
     return (
-        <div className="relative w-full h-full">
+        <div className="flex h-full min-h-0 w-full flex-col gap-2 overflow-hidden p-3">
             <div
-                className="absolute left-3 top-3 z-10 rounded-md bg-background/80 px-2 py-1 text-xs text-foreground shadow-sm backdrop-blur"
+                className="shrink-0 self-start rounded-md bg-background/80 px-2 py-1 text-xs text-foreground shadow-sm backdrop-blur"
                 aria-label={`Plot settings: X ${xLabel}, Y ${yLabel}, Split ${splitLabel}`}
             >
                 {`X: ${xLabel} · Y: ${yLabel} · Split: ${splitLabel}`}
             </div>
-            <div ref={plotRef} className="w-full h-full" />
+            <div ref={plotRef} className="min-h-0 flex-1 overflow-auto" />
         </div>
     );
 }
