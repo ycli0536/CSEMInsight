@@ -702,6 +702,106 @@ describe('TriangleModelWindow', () => {
     }
   });
 
+  it('exports the lasso selection as a self-contained JSON file', async () => {
+    const user = userEvent.setup();
+    const capturedBlobs: Blob[] = [];
+    const createObjectURL = vi.fn((blob: Blob) => {
+      capturedBlobs.push(blob);
+      return 'blob:lasso-selection';
+    });
+    const revokeObjectURL = vi.fn();
+    const originalCreateObjectURL = window.URL.createObjectURL;
+    const originalRevokeObjectURL = window.URL.revokeObjectURL;
+    const anchorClick = vi
+      .spyOn(HTMLAnchorElement.prototype, 'click')
+      .mockImplementation(() => {});
+
+    Object.defineProperty(window.URL, 'createObjectURL', {
+      configurable: true,
+      value: createObjectURL,
+    });
+    Object.defineProperty(window.URL, 'revokeObjectURL', {
+      configurable: true,
+      value: revokeObjectURL,
+    });
+
+    try {
+      vi.mocked(axios.post).mockResolvedValue({
+        data: buildEditableTriangleModelResponse(),
+      });
+
+      render(<TriangleModelWindow />);
+
+      await user.upload(
+        screen.getByLabelText(/poly file/i),
+        new File(['poly'], 'editable.poly', { type: 'text/plain' }),
+      );
+      await user.upload(
+        screen.getByLabelText(/resistivity file/i),
+        new File(['rho'], 'editable.resistivity', { type: 'text/plain' }),
+      );
+      await user.click(screen.getByRole('button', { name: /load triangle model/i }));
+
+      await waitFor(() => {
+        expect(mockViewer.setData).toHaveBeenCalled();
+      });
+
+      expect(
+        screen.getByRole('button', { name: /export selection/i }),
+      ).toBeDisabled();
+
+      act(() => {
+        latestViewerOptions?.onLassoComplete?.([
+          { x: -0.1, y: -0.1 },
+          { x: 0.6, y: -0.1 },
+          { x: 0.6, y: 0.6 },
+          { x: -0.1, y: 0.6 },
+        ]);
+      });
+
+      await waitFor(() => {
+        expect(
+          screen.getByRole('button', { name: /export selection/i }),
+        ).toBeEnabled();
+      });
+
+      await user.click(screen.getByRole('button', { name: /export selection/i }));
+
+      expect(anchorClick).toHaveBeenCalledTimes(1);
+      expect(capturedBlobs).toHaveLength(1);
+      const payload = JSON.parse(await readBlobText(capturedBlobs[0]));
+      expect(payload.schema).toBe('csem-insight/lasso-selection');
+      expect(payload.metadata.polyFileName).toBe('editable.poly');
+      expect(payload.metadata.units).toBe('km');
+      expect(payload.lassoPath).toEqual([
+        { x: -0.1, y: -0.1 },
+        { x: 0.6, y: -0.1 },
+        { x: 0.6, y: 0.6 },
+        { x: -0.1, y: 0.6 },
+      ]);
+      expect(payload.selection.selectedRegionIds).toEqual([10]);
+      expect(payload.selection.selectedTriangleIndices).toEqual([0]);
+      expect(payload.mesh.triangles).toEqual([
+        [0, 1, 2],
+        [1, 3, 2],
+      ]);
+      expect(payload.mesh.triangleResistivityValues).toEqual([10, 100]);
+      expect(screen.getByTestId('triangle-edit-status')).toHaveTextContent(
+        /exported editable\.lasso-selection\.json/i,
+      );
+    } finally {
+      anchorClick.mockRestore();
+      Object.defineProperty(window.URL, 'createObjectURL', {
+        configurable: true,
+        value: originalCreateObjectURL,
+      });
+      Object.defineProperty(window.URL, 'revokeObjectURL', {
+        configurable: true,
+        value: originalRevokeObjectURL,
+      });
+    }
+  });
+
   it('updates and resets the mesh color limits', async () => {
     const user = userEvent.setup();
     vi.mocked(axios.post).mockResolvedValue({

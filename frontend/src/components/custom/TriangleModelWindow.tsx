@@ -40,6 +40,10 @@ import {
   type TriangleModelPoint2D,
 } from '@/services/triangleRegionSelection';
 import {
+  buildLassoSelectionExport,
+  getLassoSelectionExportFileName,
+} from '@/services/triangleLassoExport';
+import {
   buildTriangleResistivityGradientCss,
   buildTriangleResistivityLegendTicks,
   formatTriangleResistivityTick,
@@ -83,6 +87,7 @@ const DEFAULT_LAYER_VISIBILITY: TriangleLayerVisibility = {
 
 interface TriangleLassoSelection {
   featherTriangleIndices: number[];
+  lassoPath: TriangleModelPoint2D[];
   regionWeights: Map<number, number>;
   selectedRegionIds: Set<number>;
   selectedTriangleIndices: number[];
@@ -416,6 +421,7 @@ export function TriangleModelWindow() {
 
       setLassoSelection({
         featherTriangleIndices,
+        lassoPath: path.map((point) => ({ x: point.x, y: point.y })),
         regionWeights,
         selectedRegionIds,
         selectedTriangleIndices,
@@ -560,6 +566,27 @@ export function TriangleModelWindow() {
     } finally {
       setIsExportingResistivity(false);
     }
+  };
+
+  const handleExportLassoSelection = () => {
+    if (!mesh || !lassoSelection) {
+      setEditStatus('Draw a lasso before exporting the selection.');
+      return;
+    }
+
+    const fileName = getLassoSelectionExportFileName(loadedPolyFile?.name ?? null);
+    const payload = buildLassoSelectionExport({
+      mesh,
+      lassoPath: lassoSelection.lassoPath,
+      selection: lassoSelection,
+      regionRhoById,
+      baseRegionRhoById,
+      polyFileName: loadedPolyFile?.name ?? null,
+      resistivityFileName: loadedResistivityFile?.name ?? null,
+      colorRange: resistivityColorRange,
+    });
+    downloadTextFile(fileName, JSON.stringify(payload, null, 2));
+    setEditStatus(`Exported ${fileName}.`);
   };
 
   const applyResegmentationPreview = (
@@ -1195,6 +1222,17 @@ export function TriangleModelWindow() {
                   >
                     <Redo2 className="h-3.5 w-3.5" />
                     Redo
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="gap-1.5"
+                    disabled={!lassoSelection}
+                    onClick={handleExportLassoSelection}
+                  >
+                    <Download className="h-3.5 w-3.5" />
+                    Export selection
                   </Button>
                   <Button
                     type="button"
