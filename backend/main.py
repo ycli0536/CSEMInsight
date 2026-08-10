@@ -23,7 +23,6 @@ from bathymetry_parser import BathymetryParser
 from triangle_resistivity_export import (
     ResistivityExportError,
     build_exported_resistivity_text,
-    parse_region_rho_updates,
 )
 from triangle_model_resegmentation import (
     ResegmentationError,
@@ -173,39 +172,87 @@ def _serialize_resistivity_model(parsed_resistivity):
     }
 
 
+# Maps a normalized rho column name to the component key used in the API
+# payload. Anisotropic (tiz) files name the horizontal component "Rho-h" or
+# "Rho-xy" depending on the MARE2DEM version; both are the same quantity.
+_RESISTIVITY_COMPONENT_KEYS = {
+    "rho": "rho",
+    "rho-z": "rhoZ",
+    "rho-h": "rhoH",
+    "rho-xy": "rhoH",
+}
+_REGION_COLUMN_NAMES = {"region", "#", "!#"}
+
+
+def _normalize_resistivity_column(column):
+    return str(column).strip().lower().replace("_", "-")
+
+
+def _detect_resistivity_components(resistivity_table):
+    """List the rho columns of a resistivity table, in file order.
+
+    Isotropic files yield a single "rho" component; anisotropic ones yield the
+    vertical and horizontal components separately.
+    """
+    components = []
+    seen_keys = set()
+
+    for column in resistivity_table.columns:
+        key = _RESISTIVITY_COMPONENT_KEYS.get(_normalize_resistivity_column(column))
+        if key is None or key in seen_keys:
+            continue
+        seen_keys.add(key)
+        components.append(
+            {
+                "key": key,
+                "label": str(column).strip(),
+                "column": str(column),
+            }
+        )
+
+    return components
+
+
 def _build_region_resistivity_lookup(parsed_resistivity):
+    """Map each region id to its rho components, e.g. {1: {"rhoZ": 8.8, "rhoH": 1.4}}."""
     if parsed_resistivity is None:
-        return {}
+        return {}, []
 
     resistivity_table = parsed_resistivity.get("table")
     if resistivity_table is None or len(resistivity_table.columns) == 0:
-        return {}
+        return {}, []
 
-    region_column = None
-    rho_column = None
+    components = _detect_resistivity_components(resistivity_table)
+    if not components:
+        return {}, []
 
-    for column in resistivity_table.columns:
-        normalized = str(column).strip().lower()
-        if normalized in {"region", "#", "!#"}:
-            region_column = column
-        if normalized in {"rho", "rho-z", "rho_h", "rho-h"}:
-            rho_column = column
-
-    if region_column is None:
-        region_column = resistivity_table.columns[0]
-    if rho_column is None:
-        return {}
+    region_column = next(
+        (
+            column
+            for column in resistivity_table.columns
+            if _normalize_resistivity_column(column) in _REGION_COLUMN_NAMES
+        ),
+        resistivity_table.columns[0],
+    )
 
     lookup = {}
     for _, row in resistivity_table.iterrows():
         try:
             region_id = int(float(row[region_column]))
-            rho_value = float(row[rho_column])
         except (TypeError, ValueError):
             continue
-        lookup[region_id] = rho_value
 
-    return lookup
+        values = {}
+        for component in components:
+            try:
+                values[component["key"]] = float(row[component["column"]])
+            except (TypeError, ValueError):
+                continue
+
+        if values:
+            lookup[region_id] = values
+
+    return lookup, components
 
 
 def _serialize_constrained_mesh(poly_parser, vertices, segments, regions, parsed_resistivity):
@@ -230,7 +277,10 @@ def _serialize_constrained_mesh(poly_parser, vertices, segments, regions, parsed
 
     triangle_region_ids = [None] * len(ordered_triangles)
     triangle_resistivity_values = [None] * len(ordered_triangles)
-    region_lookup = _build_region_resistivity_lookup(parsed_resistivity)
+    region_lookup, components = _build_region_resistivity_lookup(parsed_resistivity)
+    # The first rho column drives the initial render and is the one
+    # triangle_resistivity_export writes back to by default.
+    primary_key = components[0]["key"] if components else None
     region_resistivity = []
 
     if regions:
@@ -246,23 +296,27 @@ def _serialize_constrained_mesh(poly_parser, vertices, segments, regions, parsed
             original_region_id = original_region.get("attribute") or original_region["id"]
             original_region_id = int(original_region_id)
             triangle_region_ids[triangle_index] = original_region_id
-            rho_value = region_lookup.get(original_region_id)
-            if rho_value is not None:
-                triangle_resistivity_values[triangle_index] = float(rho_value)
-                if original_region_id not in seen_region_ids:
-                    region_resistivity.append(
-                        {
-                            "regionId": original_region_id,
-                            "rho": float(rho_value),
-                        }
-                    )
-                    seen_region_ids.add(original_region_id)
+            component_values = region_lookup.get(original_region_id)
+            if component_values is None or primary_key not in component_values:
+                continue
+
+            triangle_resistivity_values[triangle_index] = component_values[primary_key]
+            if original_region_id not in seen_region_ids:
+                region_resistivity.append(
+                    {
+                        "regionId": original_region_id,
+                        "rho": component_values[primary_key],
+                        **component_values,
+                    }
+                )
+                seen_region_ids.add(original_region_id)
 
     return {
         "vertices": ordered_vertices,
         "triangles": ordered_triangles,
         "triangleRegionIds": triangle_region_ids,
         "triangleResistivityValues": triangle_resistivity_values,
+        "resistivityComponents": components,
         "regionResistivity": sorted(
             region_resistivity, key=lambda item: item["regionId"]
         ),
@@ -504,8 +558,7 @@ def export_triangle_resistivity_file():
 
     try:
         source_text = resistivity_file.read().decode("utf-8-sig")
-        updates = parse_region_rho_updates(raw_updates)
-        exported_text = build_exported_resistivity_text(source_text, updates)
+        exported_text = build_exported_resistivity_text(source_text, raw_updates)
         original_name = secure_filename(resistivity_file.filename) or "model.resistivity"
         stem, _ = os.path.splitext(original_name)
         download_name = f"{stem}.edited.resistivity"

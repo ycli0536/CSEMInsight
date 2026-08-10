@@ -27,11 +27,17 @@ import {
 } from '@/components/ui/collapsible';
 import { buildRegionAdjacency, getFeatherRegionWeights } from '@/services/triangleRegionAdjacency';
 import {
+  ANISOTROPY_RATIO_LABEL,
+  ANISOTROPY_RATIO_VIEW,
   applyEditPatch,
   applySetRhoEdit,
-  buildRegionRhoMap,
+  buildRegionRhoMaps,
   deriveTriangleResistivityValues,
+  getDisplayedRhoByRegion,
+  getResistivityComponents,
   revertEditPatch,
+  withPatchedComponent,
+  type RegionRhoByComponent,
   type TriangleRegionEditPatch,
 } from '@/services/triangleRegionEditing';
 import {
@@ -47,6 +53,7 @@ import {
   buildTriangleResistivityGradientCss,
   buildTriangleResistivityLegendTicks,
   formatTriangleResistivityTick,
+  TRIANGLE_ANISOTROPY_RATIO_RANGE,
   TRIANGLE_RESISTIVITY_RANGE,
   type TriangleResistivityColorRange,
 } from '@/services/triangleModelColorScale';
@@ -77,6 +84,8 @@ import type {
   TriangleResegmentationExportResponse,
   TriangleResegmentationParameters,
   TriangleResegmentationPreviewResponse,
+  TriangleResistivityComponent,
+  TriangleResistivityViewKey,
 } from '@/types';
 
 const DEFAULT_LAYER_VISIBILITY: TriangleLayerVisibility = {
@@ -192,6 +201,30 @@ function buildChangedRegionRhoUpdates(
   return updates;
 }
 
+/**
+ * Group edits by the .resistivity column they belong to, so an anisotropic
+ * export updates Rho-z and Rho-h independently.
+ */
+function buildChangedRegionRhoUpdatesByColumn(
+  components: TriangleResistivityComponent[],
+  baseRhoByComponent: RegionRhoByComponent,
+  rhoByComponent: RegionRhoByComponent,
+) {
+  const updatesByColumn: Record<string, Record<string, number>> = {};
+
+  components.forEach((component) => {
+    const updates = buildChangedRegionRhoUpdates(
+      baseRhoByComponent.get(component.key) ?? new Map(),
+      rhoByComponent.get(component.key) ?? new Map(),
+    );
+    if (Object.keys(updates).length > 0) {
+      updatesByColumn[component.column] = updates;
+    }
+  });
+
+  return updatesByColumn;
+}
+
 function parseResistivityColorRange(minInput: string, maxInput: string) {
   const min = Number(minInput);
   const max = Number(maxInput);
@@ -229,8 +262,13 @@ export function TriangleModelWindow() {
     });
   const [isFeatherEnabled, setIsFeatherEnabled] = useState(false);
   const [featherRings, setFeatherRings] = useState(2);
-  const [regionRhoById, setRegionRhoById] = useState<Map<number, number>>(new Map());
-  const [baseRegionRhoById, setBaseRegionRhoById] = useState<Map<number, number>>(new Map());
+  const [regionRhoByComponent, setRegionRhoByComponent] = useState<RegionRhoByComponent>(
+    new Map(),
+  );
+  const [baseRegionRhoByComponent, setBaseRegionRhoByComponent] =
+    useState<RegionRhoByComponent>(new Map());
+  const [resistivityView, setResistivityView] =
+    useState<TriangleResistivityViewKey>('rho');
   const [undoStack, setUndoStack] = useState<TriangleRegionEditPatch[]>([]);
   const [redoStack, setRedoStack] = useState<TriangleRegionEditPatch[]>([]);
   const [lassoSelection, setLassoSelection] = useState<TriangleLassoSelection | null>(null);
@@ -248,13 +286,30 @@ export function TriangleModelWindow() {
   const viewerRef = useRef<TriangleModelViewer | null>(null);
   const lassoCompleteHandlerRef = useRef<(path: TriangleModelPoint2D[]) => void>(() => {});
 
+  const resistivityComponents = useMemo(() => getResistivityComponents(model), [model]);
+  const isAnisotropic = resistivityComponents.length > 1;
+  const isRatioView = resistivityView === ANISOTROPY_RATIO_VIEW;
+  const resistivityViewLabel = isRatioView
+    ? ANISOTROPY_RATIO_LABEL
+    : resistivityComponents.find((component) => component.key === resistivityView)
+        ?.label ?? 'Rho';
+  const regionRhoById = useMemo(
+    () => getDisplayedRhoByRegion(regionRhoByComponent, resistivityView),
+    [regionRhoByComponent, resistivityView],
+  );
+  const baseRegionRhoById = useMemo(
+    () => getDisplayedRhoByRegion(baseRegionRhoByComponent, resistivityView),
+    [baseRegionRhoByComponent, resistivityView],
+  );
+
   const hoverSummary = useMemo(
     () =>
       formatTriangleHoverSummary(hover, model ? {
         regions: model.regions,
         vertices: model.vertices,
+        resistivityLabel: resistivityViewLabel,
       } : null),
-    [hover, model],
+    [hover, model, resistivityViewLabel],
   );
   const resistivityMetadata = model?.resistivity?.metadata ?? {};
   const resistivityRows = model?.resistivity?.table ?? [];
@@ -287,8 +342,13 @@ export function TriangleModelWindow() {
     (mesh.triangleRegionIds ?? []).some((regionId) => regionId !== null) &&
     regionRhoById.size > 0;
   const changedRegionRhoUpdates = useMemo(
-    () => buildChangedRegionRhoUpdates(baseRegionRhoById, regionRhoById),
-    [baseRegionRhoById, regionRhoById],
+    () =>
+      buildChangedRegionRhoUpdatesByColumn(
+        resistivityComponents,
+        baseRegionRhoByComponent,
+        regionRhoByComponent,
+      ),
+    [baseRegionRhoByComponent, regionRhoByComponent, resistivityComponents],
   );
   const canExportResistivity =
     !!loadedResistivityFile && Object.keys(changedRegionRhoUpdates).length > 0;
@@ -322,9 +382,10 @@ export function TriangleModelWindow() {
       setHover(null);
       setViewportView(null);
       setInteractionMode('pan');
-      const nextRegionRhoById = buildRegionRhoMap(response.data);
-      setRegionRhoById(nextRegionRhoById);
-      setBaseRegionRhoById(nextRegionRhoById);
+      const nextRegionRhoByComponent = buildRegionRhoMaps(response.data);
+      setRegionRhoByComponent(nextRegionRhoByComponent);
+      setBaseRegionRhoByComponent(nextRegionRhoByComponent);
+      setResistivityView(getResistivityComponents(response.data)[0].key);
       setLoadedPolyFile(polyFile);
       setLoadedResistivityFile(resistivityFile);
       setUndoStack([]);
@@ -340,8 +401,9 @@ export function TriangleModelWindow() {
       setMesh(null);
       setHover(null);
       setViewportView(null);
-      setRegionRhoById(new Map());
-      setBaseRegionRhoById(new Map());
+      setRegionRhoByComponent(new Map());
+      setBaseRegionRhoByComponent(new Map());
+      setResistivityView('rho');
       setLoadedPolyFile(null);
       setLoadedResistivityFile(null);
       setUndoStack([]);
@@ -378,6 +440,44 @@ export function TriangleModelWindow() {
     },
     [mesh],
   );
+
+  const applyPatchToComponent = useCallback(
+    (
+      patch: TriangleRegionEditPatch,
+      mutate: (
+        rhoByRegion: Map<number, number>,
+        patch: TriangleRegionEditPatch,
+      ) => Map<number, number>,
+    ) => {
+      const nextRhoByComponent = withPatchedComponent(
+        regionRhoByComponent,
+        patch,
+        (rhoByRegion) => mutate(rhoByRegion, patch),
+      );
+      setRegionRhoByComponent(nextRhoByComponent);
+      pushTriangleValuesToViewer(
+        getDisplayedRhoByRegion(nextRhoByComponent, resistivityView),
+      );
+    },
+    [pushTriangleValuesToViewer, regionRhoByComponent, resistivityView],
+  );
+
+  const handleResistivityViewChange = (nextView: TriangleResistivityViewKey) => {
+    setResistivityView(nextView);
+    pushTriangleValuesToViewer(getDisplayedRhoByRegion(regionRhoByComponent, nextView));
+    handleCancelLasso();
+
+    // Ratios and resistivities live on different scales, so start each view from
+    // its own default limits rather than carrying the previous ones over.
+    const nextRange =
+      nextView === ANISOTROPY_RATIO_VIEW
+        ? TRIANGLE_ANISOTROPY_RATIO_RANGE
+        : TRIANGLE_RESISTIVITY_RANGE;
+    setColorMinInput(String(nextRange.min));
+    setColorMaxInput(String(nextRange.max));
+    setResistivityColorRange({ min: nextRange.min, max: nextRange.max });
+    setEditStatus(null);
+  };
 
   const handleCancelLasso = useCallback(() => {
     setLassoSelection(null);
@@ -448,25 +548,31 @@ export function TriangleModelWindow() {
       return;
     }
 
+    if (isRatioView) {
+      setEditStatus('Switch to a single rho component before editing.');
+      return;
+    }
+
     const patch = applySetRhoEdit({
       currentRhoByRegion: regionRhoById,
       regionWeights: lassoSelection.regionWeights,
       targetRho: targetRhoValue,
+      componentKey: resistivityView,
     });
     if (patch.nextRhoByRegion.size === 0) {
       setEditStatus('No selected regions have editable rho values.');
       return;
     }
 
-    const nextRhoByRegion = applyEditPatch(regionRhoById, patch);
-    setRegionRhoById(nextRhoByRegion);
+    applyPatchToComponent(patch, applyEditPatch);
     setUndoStack((current) => [...current, patch]);
     setRedoStack([]);
-    pushTriangleValuesToViewer(nextRhoByRegion);
     setEditStatus(
-      `Updated ${patch.nextRhoByRegion.size} region${
-        patch.nextRhoByRegion.size === 1 ? '' : 's'
-      }${patch.skippedRegionIds.length > 0 ? `, skipped ${patch.skippedRegionIds.length}` : ''}.`,
+      `Updated ${patch.nextRhoByRegion.size} ${
+        isAnisotropic ? `${resistivityViewLabel} ` : ''
+      }region${patch.nextRhoByRegion.size === 1 ? '' : 's'}${
+        patch.skippedRegionIds.length > 0 ? `, skipped ${patch.skippedRegionIds.length}` : ''
+      }.`,
     );
   };
 
@@ -476,11 +582,9 @@ export function TriangleModelWindow() {
       return;
     }
 
-    const nextRhoByRegion = revertEditPatch(regionRhoById, patch);
-    setRegionRhoById(nextRhoByRegion);
+    applyPatchToComponent(patch, revertEditPatch);
     setUndoStack((current) => current.slice(0, -1));
     setRedoStack((current) => [...current, patch]);
-    pushTriangleValuesToViewer(nextRhoByRegion);
     setEditStatus('Undo applied.');
   };
 
@@ -490,11 +594,9 @@ export function TriangleModelWindow() {
       return;
     }
 
-    const nextRhoByRegion = applyEditPatch(regionRhoById, patch);
-    setRegionRhoById(nextRhoByRegion);
+    applyPatchToComponent(patch, applyEditPatch);
     setRedoStack((current) => current.slice(0, -1));
     setUndoStack((current) => [...current, patch]);
-    pushTriangleValuesToViewer(nextRhoByRegion);
     setEditStatus('Redo applied.');
   };
 
@@ -513,10 +615,10 @@ export function TriangleModelWindow() {
   };
 
   const handleResetColorLimits = () => {
-    const defaultRange = {
-      min: TRIANGLE_RESISTIVITY_RANGE.min,
-      max: TRIANGLE_RESISTIVITY_RANGE.max,
-    };
+    const modeRange = isRatioView
+      ? TRIANGLE_ANISOTROPY_RATIO_RANGE
+      : TRIANGLE_RESISTIVITY_RANGE;
+    const defaultRange = { min: modeRange.min, max: modeRange.max };
     setColorMinInput(String(defaultRange.min));
     setColorMaxInput(String(defaultRange.max));
     setResistivityColorRange(defaultRange);
@@ -584,6 +686,7 @@ export function TriangleModelWindow() {
       polyFileName: loadedPolyFile?.name ?? null,
       resistivityFileName: loadedResistivityFile?.name ?? null,
       colorRange: resistivityColorRange,
+      resistivityComponent: resistivityViewLabel,
     });
     downloadTextFile(fileName, JSON.stringify(payload, null, 2));
     setEditStatus(`Exported ${fileName}.`);
@@ -1063,6 +1166,34 @@ export function TriangleModelWindow() {
                   {verticalExaggeration}x
                 </span>
               </div>
+              {showColorbar && isAnisotropic ? (
+                <div className="flex flex-wrap items-center gap-2 border-border/40 pl-0 sm:border-l sm:pl-2">
+                  <label
+                    htmlFor="triangle-resistivity-view"
+                    className="whitespace-nowrap text-xs text-muted-foreground"
+                  >
+                    Show
+                  </label>
+                  <select
+                    id="triangle-resistivity-view"
+                    aria-label="Resistivity component"
+                    value={resistivityView}
+                    onChange={(event) =>
+                      handleResistivityViewChange(
+                        event.target.value as TriangleResistivityViewKey,
+                      )
+                    }
+                    className="h-8 rounded-md border border-border/60 bg-background px-2 text-xs"
+                  >
+                    {resistivityComponents.map((component) => (
+                      <option key={component.key} value={component.key}>
+                        {component.label}
+                      </option>
+                    ))}
+                    <option value={ANISOTROPY_RATIO_VIEW}>{ANISOTROPY_RATIO_LABEL}</option>
+                  </select>
+                </div>
+              ) : null}
               {showColorbar ? (
                 <div className="flex flex-wrap items-center gap-2 border-border/40 pl-0 sm:border-l sm:pl-2">
                   <label
@@ -1141,8 +1272,13 @@ export function TriangleModelWindow() {
                   <label
                     htmlFor="triangle-target-rho"
                     className="whitespace-nowrap text-xs text-muted-foreground"
+                    title={
+                      isRatioView
+                        ? 'Select Rho-z or Rho-h to edit'
+                        : `Edits are written to the ${resistivityViewLabel} column`
+                    }
                   >
-                    Rho
+                    {isAnisotropic ? resistivityViewLabel : 'Rho'}
                   </label>
                   <input
                     id="triangle-target-rho"
@@ -1151,8 +1287,9 @@ export function TriangleModelWindow() {
                     min="0"
                     step="any"
                     value={targetRho}
+                    disabled={isRatioView}
                     onChange={(event) => setTargetRho(event.target.value)}
-                    className="h-8 w-20 rounded-md border border-border/60 bg-background px-2 text-xs tabular-nums"
+                    className="h-8 w-20 rounded-md border border-border/60 bg-background px-2 text-xs tabular-nums disabled:opacity-50"
                   />
                   <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
                     <input
@@ -1184,7 +1321,7 @@ export function TriangleModelWindow() {
                     size="sm"
                     variant="secondary"
                     className="gap-1.5"
-                    disabled={!lassoSelection || !hasValidTargetRho}
+                    disabled={!lassoSelection || !hasValidTargetRho || isRatioView}
                     onClick={handleApplyEdit}
                   >
                     <Check className="h-3.5 w-3.5" />
@@ -1383,9 +1520,11 @@ export function TriangleModelWindow() {
                   <div className="mb-2 flex items-end justify-between gap-3">
                     <div className="space-y-0.5">
                       <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-foreground/80">
-                        Resistivity
+                        {isAnisotropic || isRatioView ? resistivityViewLabel : 'Resistivity'}
                       </p>
-                      <p className="text-[10px] text-muted-foreground">Ohm-m</p>
+                      <p className="text-[10px] text-muted-foreground">
+                        {isRatioView ? 'ratio' : 'Ohm-m'}
+                      </p>
                     </div>
                     <p className="text-[10px] text-muted-foreground">log scale</p>
                   </div>

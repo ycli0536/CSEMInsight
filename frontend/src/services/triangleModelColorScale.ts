@@ -14,6 +14,12 @@ export const TRIANGLE_RESISTIVITY_RANGE = {
   max: DEFAULT_MAX_RESISTIVITY,
 } as const;
 
+/** Anisotropy ratios sit around 1, so they need their own default limits. */
+export const TRIANGLE_ANISOTROPY_RATIO_RANGE = {
+  min: 0.1,
+  max: 10,
+} as const;
+
 export const TRIANGLE_RESISTIVITY_LEGEND_TICKS = [1000, 100, 10, 1, 0.3] as const;
 
 function clamp01(value: number) {

@@ -96,3 +96,45 @@ def test_export_endpoint_accepts_large_updates_as_json_file_part(app_client):
 
     assert response.status_code == 200
     assert b"1 2.5000000000E+02 1" in response.data
+
+
+ANISOTROPIC_STYLE_RESISTIVITY = """Format:                         MARE2DEM_1.1
+Anisotropy:                     tiz
+Number of regions:              2
+!#        Rho-z        Rho-h         Param z   Param h    Lower z      Upper z
+1         8.8461       1.4373        1         2          0            0
+2         1e+12        1e+12         0         0          0            0
+"""
+
+
+def test_export_updates_vertical_rho_and_leaves_horizontal_rho_untouched():
+    text = build_exported_resistivity_text(ANISOTROPIC_STYLE_RESISTIVITY, {1: 777.0})
+
+    row = next(line for line in text.splitlines() if line.strip().startswith("1 "))
+    tokens = row.split()
+    assert tokens[0] == "1"
+    assert float(tokens[1]) == 777.0
+    assert float(tokens[2]) == 1.4373
+    assert "2         1e+12        1e+12" in text
+
+
+def test_export_updates_named_columns_of_an_anisotropic_file():
+    text = build_exported_resistivity_text(
+        ANISOTROPIC_STYLE_RESISTIVITY,
+        {"Rho-z": {1: 777.0}, "Rho-h": {1: 55.0, 2: 66.0}},
+    )
+
+    rows = {
+        line.split()[0]: line.split()
+        for line in text.splitlines()
+        if line.strip() and line.split()[0] in {"1", "2"}
+    }
+    assert float(rows["1"][1]) == 777.0
+    assert float(rows["1"][2]) == 55.0
+    assert float(rows["2"][1]) == 1e12
+    assert float(rows["2"][2]) == 66.0
+
+
+def test_export_rejects_a_column_the_file_does_not_have():
+    with pytest.raises(ResistivityExportError, match="no rho-h column"):
+        build_exported_resistivity_text(OFFICIAL_STYLE_RESISTIVITY, {"Rho-h": {1: 5.0}})

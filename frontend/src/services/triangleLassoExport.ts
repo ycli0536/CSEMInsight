@@ -20,6 +20,8 @@ export interface TriangleLassoSelectionExport {
     units: 'km';
     yAxis: 'depth-positive-down';
     colorRange: TriangleResistivityColorRange | null;
+    /** Quantity `regionRho` holds, e.g. "Rho-z" or "Rho-z / Rho-h". */
+    resistivityComponent?: string;
   };
   lassoPath: TriangleModelPoint2D[];
   selection: {
@@ -47,6 +49,7 @@ export interface BuildLassoSelectionExportOptions {
   polyFileName: string | null;
   resistivityFileName: string | null;
   colorRange: TriangleResistivityColorRange | null;
+  resistivityComponent?: string;
   exportedAt?: string;
 }
 
@@ -70,6 +73,7 @@ export function buildLassoSelectionExport(
     polyFileName,
     resistivityFileName,
     colorRange,
+    resistivityComponent,
     exportedAt = new Date().toISOString(),
   } = options;
 
@@ -83,6 +87,7 @@ export function buildLassoSelectionExport(
       units: 'km',
       yAxis: 'depth-positive-down',
       colorRange,
+      ...(resistivityComponent ? { resistivityComponent } : {}),
     },
     lassoPath: lassoPath.map((point) => ({ x: point.x, y: point.y })),
     selection: {

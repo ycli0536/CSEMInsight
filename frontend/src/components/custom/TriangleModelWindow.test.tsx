@@ -105,6 +105,42 @@ function buildEditableTriangleModelResponse() {
   };
 }
 
+function buildAnisotropicTriangleModelResponse() {
+  const model = buildEditableTriangleModelResponse();
+
+  return {
+    ...model,
+    constrainedMesh: {
+      ...model.constrainedMesh,
+      triangleResistivityValues: [10, 100],
+      resistivityComponents: [
+        { key: 'rhoZ', label: 'Rho-z', column: 'Rho-z' },
+        { key: 'rhoH', label: 'Rho-h', column: 'Rho-h' },
+      ],
+      regionResistivity: [
+        { regionId: 10, rho: 10, rhoZ: 10, rhoH: 2 },
+        { regionId: 20, rho: 100, rhoZ: 100, rhoH: 50 },
+      ],
+    },
+  };
+}
+
+async function loadTriangleModel(user: ReturnType<typeof userEvent.setup>) {
+  await user.upload(
+    screen.getByLabelText(/poly file/i),
+    new File(['poly'], 'editable.poly', { type: 'text/plain' }),
+  );
+  await user.upload(
+    screen.getByLabelText(/resistivity file/i),
+    new File(['rho'], 'editable.resistivity', { type: 'text/plain' }),
+  );
+  await user.click(screen.getByRole('button', { name: /load triangle model/i }));
+
+  await waitFor(() => {
+    expect(mockViewer.setData).toHaveBeenCalled();
+  });
+}
+
 describe('TriangleModelWindow', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -683,8 +719,10 @@ describe('TriangleModelWindow', () => {
       const updatesPart = exportFormData.get('region_rho_updates');
       expect(updatesPart).toBeInstanceOf(File);
       expect((updatesPart as File).name).toBe('region-rho-updates.json');
+      // Updates are keyed by .resistivity column so anisotropic files can
+      // carry Rho-z and Rho-h edits in one request.
       expect(JSON.parse(await readBlobText(updatesPart as Blob))).toEqual({
-        '10': 1000,
+        Rho: { '10': 1000 },
       });
       expect(createObjectURL).toHaveBeenCalledWith(exportedBlob);
       expect(revokeObjectURL).toHaveBeenCalledWith('blob:edited-resistivity');
@@ -1018,6 +1056,108 @@ describe('TriangleModelWindow', () => {
         },
       ),
     ).toBe('Rho 100.0 @ (11.90, 7.10)');
+  });
+
+  it('switches the rendered component of an anisotropic model', async () => {
+    const user = userEvent.setup();
+    vi.mocked(axios.post).mockResolvedValue({
+      data: buildAnisotropicTriangleModelResponse(),
+    });
+
+    render(<TriangleModelWindow />);
+    await loadTriangleModel(user);
+
+    const componentSelect = screen.getByLabelText(/resistivity component/i);
+    expect(componentSelect).toHaveValue('rhoZ');
+
+    await user.selectOptions(componentSelect, 'rhoH');
+    await waitFor(() => {
+      expect(mockViewer.setTriangleResistivityValues).toHaveBeenLastCalledWith([2, 50]);
+    });
+    expect(screen.getByTestId('triangle-colorbar')).toHaveTextContent('Rho-h');
+
+    await user.selectOptions(componentSelect, 'anisotropyRatio');
+    await waitFor(() => {
+      expect(mockViewer.setTriangleResistivityValues).toHaveBeenLastCalledWith([5, 2]);
+    });
+    expect(screen.getByTestId('triangle-colorbar')).toHaveTextContent('Rho-z / Rho-h');
+    // The ratio is derived from two columns, so it cannot be written back.
+    expect(screen.getByRole('button', { name: /^apply$/i })).toBeDisabled();
+
+    expect(mockViewer.setData).toHaveBeenCalledTimes(1);
+  });
+
+  it('exports an anisotropic edit under the column it was made on', async () => {
+    const user = userEvent.setup();
+    const anchorClick = vi
+      .spyOn(HTMLAnchorElement.prototype, 'click')
+      .mockImplementation(() => {});
+    const originalCreateObjectURL = window.URL.createObjectURL;
+    const originalRevokeObjectURL = window.URL.revokeObjectURL;
+    Object.defineProperty(window.URL, 'createObjectURL', {
+      configurable: true,
+      value: vi.fn(() => 'blob:edited-resistivity'),
+    });
+    Object.defineProperty(window.URL, 'revokeObjectURL', {
+      configurable: true,
+      value: vi.fn(),
+    });
+
+    try {
+      vi.mocked(axios.post).mockImplementation(async (url) => {
+        if (String(url).includes('/api/export-triangle-resistivity')) {
+          return { data: new Blob(['edited rho'], { type: 'text/plain' }) };
+        }
+        return { data: buildAnisotropicTriangleModelResponse() };
+      });
+
+      render(<TriangleModelWindow />);
+      await loadTriangleModel(user);
+
+      await user.selectOptions(screen.getByLabelText(/resistivity component/i), 'rhoH');
+      await user.click(screen.getByRole('button', { name: /lasso/i }));
+      act(() => {
+        latestViewerOptions?.onLassoComplete?.([
+          { x: -0.1, y: -0.1 },
+          { x: 0.6, y: -0.1 },
+          { x: 0.6, y: 0.6 },
+          { x: -0.1, y: 0.6 },
+        ]);
+      });
+      await waitFor(() => {
+        expect(mockViewer.setSelectionOverlay).toHaveBeenCalled();
+      });
+
+      await user.clear(screen.getByLabelText(/target rho/i));
+      await user.type(screen.getByLabelText(/target rho/i), '1000');
+      await user.click(screen.getByRole('button', { name: /^apply$/i }));
+      await waitFor(() => {
+        expect(screen.getByTestId('triangle-edit-status')).toHaveTextContent(
+          /updated 1 rho-h region/i,
+        );
+      });
+
+      await user.click(screen.getByRole('button', { name: /export .resistivity/i }));
+      await waitFor(() => {
+        expect(axios.post).toHaveBeenCalledTimes(2);
+      });
+
+      const exportFormData = vi.mocked(axios.post).mock.calls[1][1] as FormData;
+      const updates = JSON.parse(
+        await readBlobText(exportFormData.get('region_rho_updates') as Blob),
+      );
+      expect(updates).toEqual({ 'Rho-h': { '10': 1000 } });
+    } finally {
+      anchorClick.mockRestore();
+      Object.defineProperty(window.URL, 'createObjectURL', {
+        configurable: true,
+        value: originalCreateObjectURL,
+      });
+      Object.defineProperty(window.URL, 'revokeObjectURL', {
+        configurable: true,
+        value: originalRevokeObjectURL,
+      });
+    }
   });
 
   it('falls back to geometry copy when no resistivity value is available', () => {

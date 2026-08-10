@@ -5,10 +5,90 @@ import numpy as np
 import os
 from MARE2DEM_poly_parser import MARE2DEMPolyParser
 
+# Anisotropic MARE2DEM headers qualify a column name with a direction token that
+# may be separated from the name by a single space, e.g. "Param z  Param xy".
+HEADER_QUALIFIERS = {
+    "x", "y", "z", "xy", "xz", "yz", "zx", "zy", "h", "v",
+    "z/xy", "xy/z", "y/z", "z/y",
+}
+
+
 class ResistivityFileParser():
     """Class for parsing .resistivity files used in MARE2DEM."""
     def __init__(self):
         pass
+
+    @staticmethod
+    def _trailing_qualifier(column):
+        """Return the direction qualifier of a column name, if it has one."""
+        parts = str(column).rsplit(" ", 1)
+        if len(parts) == 2 and parts[1].lower() in HEADER_QUALIFIERS:
+            return parts[1]
+        return None
+
+    @classmethod
+    def _uniquify_header(cls, columns):
+        """Make column names unique.
+
+        Anisotropic files repeat "Weight" once per prejudice column, which
+        pandas tolerates but makes the table ambiguous downstream. Reuse the
+        qualifier of the preceding column ("Prej xy" -> "Weight xy") when
+        possible, otherwise fall back to a numbered suffix.
+        """
+        repeated = {column for column in columns if columns.count(column) > 1}
+        used = set()
+        unique_columns = []
+        for column in columns:
+            candidate = column
+            if column in repeated:
+                qualifier = cls._trailing_qualifier(unique_columns[-1]) if unique_columns else None
+                if qualifier:
+                    candidate = f"{column} {qualifier}"
+            suffix = 2
+            while candidate in used:
+                candidate = f"{column} ({suffix})"
+                suffix += 1
+            used.add(candidate)
+            unique_columns.append(candidate)
+        return unique_columns
+
+    @classmethod
+    def _parse_table_header(cls, line):
+        """Parse a "!#" header line into column names.
+
+        Splitting on runs of two or more spaces breaks on anisotropic headers
+        where adjacent columns are only one space apart, so split on all
+        whitespace and re-attach direction qualifiers instead.
+        """
+        columns = []
+        for token in line.lstrip("!").split():
+            if columns and token.lower() in HEADER_QUALIFIERS:
+                columns[-1] = f"{columns[-1]} {token}"
+            else:
+                columns.append(token)
+        return cls._uniquify_header(columns)
+
+    @classmethod
+    def _align_header_to_data(cls, columns, width):
+        """Reconcile the header with the real column count of the table."""
+        if len(columns) == width:
+            return columns
+        print(
+            f"Warning: resistivity table header has {len(columns)} columns "
+            f"but the data has {width}; adjusting header."
+        )
+        if len(columns) > width:
+            return columns[:width]
+        extras = [f"Column {index + 1}" for index in range(len(columns), width)]
+        return cls._uniquify_header(columns + extras)
+
+    @staticmethod
+    def _coerce_numeric(token):
+        """Convert a table cell to float when possible, keeping text as-is."""
+        try:
+            return float(token)
+        except ValueError:
+            return token
 
     def parse_resistivity_file(self, filename, rho_parse=False):
         """Reads a .resistivity file"""
@@ -49,14 +129,16 @@ class ResistivityFileParser():
                 # extract table header and data
                 if rho_parse:
                     if line.startswith("!#"):
-                        table_header = [x.strip() for x in re.split(r'\s{2,}', line[1:])]
-                        print(table_header)
+                        table_header = self._parse_table_header(line)
                     elif re.match(r'^\d+', value_part):  # If the line starts with a number, it belongs to the table
-                        row = [float(x) if re.match(r'^\d+(\.\d+|e[+-]?\d+)?$', x) else x for x in re.split(r'\s+', value_part)]
+                        row = [self._coerce_numeric(x) for x in value_part.split()]
                         table_data.append(row)
 
         # Add table data to the result if exists
         if table_header and table_data:
+            table_header = self._align_header_to_data(
+                table_header, max(len(row) for row in table_data)
+            )
             data["table"] = pd.DataFrame(table_data, columns=table_header)
         else:
             data["table"] = None
@@ -235,8 +317,13 @@ class ResistivityFileParser():
         # Look for table data first
         if data.get('table') is not None:
             df = data['table']
-            if 'Rho' in df.columns:
-                resistivity_values = df['Rho'].values
+            rho_column = next(
+                (column for column in df.columns
+                 if str(column).strip().lower() in {'rho', 'rho-z', 'rho-h'}),
+                None,
+            )
+            if rho_column is not None:
+                resistivity_values = df[rho_column].values
             elif len(df.columns) > 0:
                 # Assume first column is resistivity
                 resistivity_values = df.iloc[:, 0].values

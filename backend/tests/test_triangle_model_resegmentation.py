@@ -226,3 +226,22 @@ def test_build_poly_text_exports_boundary_segments_and_region_seeds():
     assert stats["outputRegionCount"] == 2
     assert stats["outputSegmentCount"] == 5
     assert warnings == []
+
+
+def test_build_region_metadata_lookup_masks_on_the_matching_anisotropic_param():
+    parsed = {
+        "table": pd.DataFrame(
+            [
+                [1, 8.8461, 1.4373, 1, 2],
+                [2, 1.0e12, 1.0e12, 0, 0],
+            ],
+            columns=["#", "Rho-z", "Rho-h", "Param z", "Param h"],
+        )
+    }
+
+    lookup = build_region_metadata_lookup(parsed, require_param=True)
+
+    # Rho-z is the component in use, so "Param z" is the mask, not "Param h".
+    assert lookup[1].rho == 8.8461
+    assert lookup[1].param == 1.0
+    assert lookup[2].param == 0.0

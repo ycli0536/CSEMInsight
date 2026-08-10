@@ -128,6 +128,18 @@ def parse_resegmentation_parameters(payload: Dict[str, Any]) -> ResegmentationPa
     )
 
 
+def _column_qualifier(column: Any) -> str:
+    """Return the direction suffix of a column name, e.g. "z" for "Rho-z"."""
+    if column is None:
+        return ""
+    name = str(column).strip().lower()
+    for separator in ("-", " "):
+        _, found, suffix = name.rpartition(separator)
+        if found and suffix in {"x", "y", "z", "xy", "xz", "yz", "h", "v"}:
+            return suffix
+    return ""
+
+
 def _find_table_column(columns: Iterable[Any], candidates: Sequence[str]) -> Any:
     normalized_candidates = {_normalize_column_name(candidate) for candidate in candidates}
     for column in columns:
@@ -149,8 +161,14 @@ def build_region_metadata_lookup(
         raise ResegmentationError("No resistivity table columns found")
 
     region_column = _find_table_column(table.columns, ["region", "#", "!#"])
-    rho_column = _find_table_column(table.columns, ["rho", "rho-z", "rho_h", "rho-h"])
-    param_column = _find_table_column(table.columns, ["param", "parameter"])
+    rho_column = _find_table_column(table.columns, ["rho", "rho-z", "rho-h", "rho-xy"])
+    # Anisotropic tables carry one Param column per component ("Param z",
+    # "Param h"), so mask on the one belonging to the rho column in use.
+    rho_qualifier = _column_qualifier(rho_column)
+    param_column = _find_table_column(
+        table.columns,
+        [f"param {rho_qualifier}", f"parameter {rho_qualifier}"] if rho_qualifier else [],
+    ) or _find_table_column(table.columns, ["param", "parameter"])
 
     if region_column is None:
         region_column = table.columns[0]

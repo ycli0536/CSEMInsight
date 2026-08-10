@@ -7,6 +7,8 @@ import type {
 interface TriangleHoverSummaryContext {
   regions: TriangleModelRegion[];
   vertices: TriangleModelVertex[];
+  /** Name of the displayed quantity, e.g. "Rho-z" or "Rho-z / Rho-h". */
+  resistivityLabel?: string;
 }
 
 function formatHoverCoordinate(point: { x: number; y: number }) {
@@ -71,7 +73,7 @@ export function formatTriangleHoverSummary(
   }
 
   if (hover.resistivityValue !== null) {
-    return `Rho ${hover.resistivityValue.toPrecision(4)} @ ${formatHoverCoordinate(
+    return `${context?.resistivityLabel ?? 'Rho'} ${hover.resistivityValue.toPrecision(4)} @ ${formatHoverCoordinate(
       getTriangleHoverAnchorPoint(hover, context) ?? hover.point,
     )}`;
   }

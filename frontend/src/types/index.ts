@@ -157,5 +157,8 @@ export type {
   TriangleModelResistivity,
   TriangleModelSegment,
   TriangleModelVertex,
+  TriangleResistivityComponent,
+  TriangleResistivityComponentKey,
+  TriangleResistivityViewKey,
   TriangleViewport,
 } from "./triangleModel";

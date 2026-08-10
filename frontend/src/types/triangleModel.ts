@@ -38,9 +38,27 @@ export interface TriangleConstrainedMeshVertex {
   y: number;
 }
 
+/** Isotropic files expose `rho`; anisotropic (tiz) ones expose `rhoZ` and `rhoH`. */
+export type TriangleResistivityComponentKey = 'rho' | 'rhoZ' | 'rhoH';
+
+/** Derived view showing Rho-z / Rho-h rather than a single component. */
+export type TriangleResistivityViewKey =
+  | TriangleResistivityComponentKey
+  | 'anisotropyRatio';
+
+export interface TriangleResistivityComponent {
+  key: TriangleResistivityComponentKey;
+  /** Column name as spelled in the .resistivity file, e.g. "Rho-z". */
+  label: string;
+  column: string;
+}
+
 export interface TriangleRegionResistivity {
   regionId: number;
+  /** Value of the first rho column; mirrors one of the component fields below. */
   rho: number;
+  rhoZ?: number;
+  rhoH?: number;
 }
 
 export interface TriangleConstrainedMesh {
@@ -49,6 +67,7 @@ export interface TriangleConstrainedMesh {
   triangleRegionIds: Array<number | null>;
   triangleResistivityValues: Array<number | null>;
   regionResistivity: TriangleRegionResistivity[];
+  resistivityComponents?: TriangleResistivityComponent[];
 }
 
 export interface TriangleModelResponse {
