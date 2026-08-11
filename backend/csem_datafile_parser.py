@@ -313,10 +313,21 @@ class CSEMDataFileReader():
         
         return geometry_data
 
-    def extract_freq_info(self):
-        """Extract frequency information."""
+    def extract_freq_info(self, freq_type:str='CSEM'):
+        """Extract frequency information.
+
+        A joint file carries two independent frequency lists, and Freq_id in
+        the data block indexes into whichever list matches that row's data
+        type. Pass freq_type='MT' to read the MT list; CSEM-only and MT-only
+        files have a single list and ignore the argument.
+        """
         if self.data_type == 'joint':
-            freq_info_line = self.blocks['Frequencies_CSEM']
+            if freq_type == 'MT':
+                freq_info_line = self.blocks['Frequencies_MT']
+            elif freq_type == 'CSEM':
+                freq_info_line = self.blocks['Frequencies_CSEM']
+            else:
+                raise ValueError(f"Invalid frequency type: {freq_type}")
         else:
             freq_info_line = self.blocks['Frequencies']
         # Initialize an empty dictionary to store the extracted frequencies
@@ -508,7 +519,7 @@ class CSEMDataFileReader():
         if 'Lon' in merged_df.columns:
             rename_map['Lon'] = 'Lon_rx'
         merged_df.rename(columns=rename_map, inplace=True)
-        freq_dict = self.extract_freq_info()
+        freq_dict = self.extract_freq_info(freq_type='MT')
         merged_df = self.add_freq_column(merged_df, freq_dict)
         return merged_df
 

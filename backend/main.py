@@ -6,6 +6,7 @@ import json
 from datetime import datetime
 from typing import List
 import numpy as np
+import pandas as pd
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from werkzeug.utils import secure_filename
@@ -52,6 +53,59 @@ def _save_uploaded_file(file, temp_dir: str) -> str:
     return path
 
 
+#: MARE2DEM data type codes strictly between these bounds are MT; everything
+#: below 100 is CSEM and 200-300 is DC resistivity. Same test MARE2DEM applies
+#: when it auto-groups a joint dataset (em2d.f90, set_data_groups).
+_MT_TYPE_CODE_RANGE = (100, 200)
+
+
+def _merge_joint_data(reader, blocks, data_df, geometry_info):
+    """Merge a joint CSEM+MT data block against the right tables per row.
+
+    A joint file has two receiver blocks (Rx_CSEM, Rx_MT) and two frequency
+    lists (Frequencies_CSEM, Frequencies_MT), and each data row belongs to one
+    side or the other: MT rows have no transmitter, and their Freq_id indexes
+    the MT frequency list.
+
+    Merging the whole data block against the CSEM tables -- which is what this
+    module used to do for joint files -- goes wrong in two different ways
+    depending on the file. In a .data/.emdata MT rows carry Tx# = 0, which
+    matches no transmitter, so the inner join drops every MT row silently. In
+    a .resp MARE2DEM writes Tx# = Rx# for MT rows, which matches a CSEM
+    transmitter *by accident*, so the rows survive but are attached to CSEM
+    geometry and CSEM frequencies -- silently wrong values rather than missing
+    ones. Splitting by type code and merging each part against its own blocks
+    fixes both.
+
+    Rows come back in their original file order, so any consumer keying on row
+    position (the frontend table and its edit path) is unaffected.
+    """
+    low, high = _MT_TYPE_CODE_RANGE
+    type_codes = pd.to_numeric(data_df["Type"].astype(str), errors="coerce")
+    is_mt = type_codes.gt(low) & type_codes.lt(high)
+
+    data_df = data_df.assign(_row_order=np.arange(len(data_df)))
+
+    # CSEM (and DC, which also has transmitters) keeps the Rx + Tx merge.
+    rx_csem_df = reader.ne2latlon(
+        reader.rx_data_block_init(blocks["Rx_CSEM"]), geometry_info
+    )
+    tx_data_df = reader.ne2latlon(
+        reader.tx_data_block_init(blocks["Tx"]), geometry_info
+    )
+    parts = [reader.merge_data_rx_tx(data_df[~is_mt], rx_csem_df, tx_data_df)]
+
+    if is_mt.any():
+        rx_mt_df = reader.ne2latlon(
+            reader.rx_data_block_init(blocks["Rx_MT"], "MT"), geometry_info
+        )
+        parts.append(reader.merge_mt_data_rx(data_df[is_mt], rx_mt_df))
+
+    merged_df = pd.concat(parts, ignore_index=True)
+    merged_df = merged_df.sort_values("_row_order").drop(columns="_row_order")
+    return merged_df.reset_index(drop=True)
+
+
 def _parse_csem_datafile(path):
     csem_datafile_reader = CSEMDataFileReader(path)
     # Ensure blocks are in the correct order for frontend
@@ -63,20 +117,10 @@ def _parse_csem_datafile(path):
     geometry_info = csem_datafile_reader.extract_geometry_info()
     data_df = csem_datafile_reader.data_block_init(csem_data["Data"])
     if csem_datafile_reader.data_type == "joint":
-        rx_data_df = csem_datafile_reader.rx_data_block_init(csem_data["Rx_CSEM"])
+        data_rx_tx_df = _merge_joint_data(csem_datafile_reader, csem_data, data_df, geometry_info)
     elif csem_datafile_reader.data_type == "CSEM":
         rx_data_df = csem_datafile_reader.rx_data_block_init(csem_data["Rx"])
-    elif csem_datafile_reader.data_type == "MT":
-        rx_data_df = csem_datafile_reader.rx_data_block_init(csem_data["Rx"], "MT")
-    else:
-        raise ValueError(f"Invalid data type: {csem_datafile_reader.data_type}")
-    rx_data_lonlat_df = csem_datafile_reader.ne2latlon(rx_data_df, geometry_info)
-    if csem_datafile_reader.data_type == "MT":
-        data_rx_tx_df = csem_datafile_reader.merge_mt_data_rx(
-            data_df,
-            rx_data_lonlat_df,
-        )
-    else:
+        rx_data_lonlat_df = csem_datafile_reader.ne2latlon(rx_data_df, geometry_info)
         tx_data_df = csem_datafile_reader.tx_data_block_init(csem_data["Tx"])
         tx_data_lonlat_df = csem_datafile_reader.ne2latlon(tx_data_df, geometry_info)
         data_rx_tx_df = csem_datafile_reader.merge_data_rx_tx(
@@ -84,6 +128,15 @@ def _parse_csem_datafile(path):
             rx_data_lonlat_df,
             tx_data_lonlat_df,
         )
+    elif csem_datafile_reader.data_type == "MT":
+        rx_data_df = csem_datafile_reader.rx_data_block_init(csem_data["Rx"], "MT")
+        rx_data_lonlat_df = csem_datafile_reader.ne2latlon(rx_data_df, geometry_info)
+        data_rx_tx_df = csem_datafile_reader.merge_mt_data_rx(
+            data_df,
+            rx_data_lonlat_df,
+        )
+    else:
+        raise ValueError(f"Invalid data type: {csem_datafile_reader.data_type}")
     data_js = csem_datafile_reader.df_to_json(data_rx_tx_df)
     return geometry_info, data_js, csem_data
 
