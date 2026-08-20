@@ -6,6 +6,7 @@ import { useSettingFormStore } from "@/store/settingFormStore";
 import { useAlertDialog } from "@/hooks/useAlertDialog";
 import { CustomAlertDialog } from "@/components/custom/CustomAlertDialog";
 import { getTxRxData } from "@/services/extractTxRxPlotData";
+import { getApiErrorMessage } from "@/lib/apiError";
 import { datasetColors } from "@/lib/datasetColors";
 
 const SAMPLE_DATASETS = [
@@ -121,7 +122,7 @@ export function SampleDataLoader() {
         console.error("Error loading sample data:", error);
         showAlert(
           "Sample data error",
-          `Error loading sample data: ${error.response?.data?.error ?? error.message}`,
+          getApiErrorMessage(error, "Could not load the bundled sample data."),
           "error"
         );
       });

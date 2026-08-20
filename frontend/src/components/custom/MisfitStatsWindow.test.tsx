@@ -250,6 +250,71 @@ describe('MisfitStatsWindow', () => {
     expect(container.textContent).toContain('No misfit statistics available');
   });
 
+  describe('backend failures', () => {
+    const mockStoreWithResidualData = () => {
+      const mockDataset = createMockDataset('dataset1', true);
+      const mockDatasets = new Map<string, Dataset>([['dataset1', mockDataset]]);
+
+      (useDataTableStore as ReturnType<typeof vi.fn>).mockReturnValue({
+        filteredData: mockDataset.data,
+        datasets: mockDatasets,
+        activeDatasetIds: ['dataset1'],
+      });
+    };
+
+    beforeEach(() => {
+      // Leave demo mode so the component actually calls the backend.
+      vi.stubEnv('VITE_DEMO_MODE', 'false');
+    });
+
+    it('shows the backend error and hint instead of spinning forever', async () => {
+      mockStoreWithResidualData();
+      vi.stubGlobal(
+        'fetch',
+        vi.fn().mockResolvedValue({
+          ok: false,
+          status: 500,
+          json: async () => ({
+            error: 'Could not calculate misfit statistics.',
+            hint: 'Reload the dataset and try again.',
+          }),
+        }),
+      );
+
+      const { container } = render(<MisfitStatsWindow />);
+
+      await waitFor(() => {
+        expect(container.textContent).toContain('Could not calculate misfit statistics.');
+      });
+      expect(container.textContent).toContain('Reload the dataset and try again.');
+      expect(container.textContent).not.toContain('Calculating misfit statistics...');
+    });
+
+    it('reports an unreachable backend when the request fails', async () => {
+      mockStoreWithResidualData();
+      vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('Failed to fetch')));
+
+      const { container } = render(<MisfitStatsWindow />);
+
+      await waitFor(() => {
+        expect(container.textContent).toContain('Misfit Statistics Unavailable');
+      });
+      expect(container.textContent).not.toContain('Calculating misfit statistics...');
+    });
+
+    it('stays silent when the request is aborted', async () => {
+      mockStoreWithResidualData();
+      const abortError = new Error('The operation was aborted.');
+      abortError.name = 'AbortError';
+      vi.stubGlobal('fetch', vi.fn().mockRejectedValue(abortError));
+
+      const { container, unmount } = render(<MisfitStatsWindow />);
+      unmount();
+
+      expect(container.textContent).not.toContain('Misfit Statistics Unavailable');
+    });
+  });
+
   it('does not render Recharts charts while misfit window is dragging', async () => {
     const mockDataset = createMockDataset('dataset1', true);
     const mockDatasets = new Map<string, Dataset>([['dataset1', mockDataset]]);

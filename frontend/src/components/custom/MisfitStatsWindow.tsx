@@ -8,9 +8,14 @@ import { useWindowStore } from "@/store/windowStore";
 import { useTheme } from "@/hooks/useTheme";
 import { wheelZoomPlugin } from "@/components/custom/uplot-wheel-zoom-plugin";
 import { generateMisfitStatsMockData } from "@/mocks/misfitStatsMock";
-import { Loader2, Info } from "lucide-react";
+import { Loader2, Info, AlertTriangle } from "lucide-react";
 import type { CsemData } from "@/types";
 import { orderIdsByPrimaryLast } from '@/lib/datasetOrdering';
+import {
+    BACKEND_UNREACHABLE_MESSAGE,
+    getApiErrorMessage,
+    getFetchErrorMessage,
+} from '@/lib/apiError';
 
 
 type RMSDataPoint = {
@@ -59,6 +64,7 @@ export const MisfitStatsWindow = () => {
     const [datasetStats, setDatasetStats] = useState<DatasetStat[]>([]);
     const [loading, setLoading] = useState(false);
     const [missingResidual, setMissingResidual] = useState(false);
+    const [fetchError, setFetchError] = useState<string | null>(null);
 
     const { theme, systemTheme } = useTheme();
     const resolvedTheme = theme === "system" ? systemTheme : theme;
@@ -257,6 +263,7 @@ export const MisfitStatsWindow = () => {
             if (!signal.aborted) {
                 setLoading(true);
                 setMissingResidual(false);
+                setFetchError(null);
             }
 
             if (isDemoMode) {
@@ -342,7 +349,18 @@ export const MisfitStatsWindow = () => {
                     }),
                     signal
                 });
-                if (!response.ok) return;
+                if (!response.ok) {
+                    const message = await getFetchErrorMessage(
+                        response,
+                        `The backend rejected the misfit request (HTTP ${response.status}).`,
+                    );
+                    if (!signal.aborted) {
+                        setFetchError(message);
+                        setDatasetStats([]);
+                        setLoading(false);
+                    }
+                    return;
+                }
                 const payload = await response.json() as { results?: Record<string, MisfitStatsData> };
                 const resultsMap = payload.results ?? {};
                 const fetchedResults = uncachedTargets.flatMap(target => {
@@ -372,7 +390,9 @@ export const MisfitStatsWindow = () => {
                     }
                 }
             } catch (e: unknown) {
-                if (!signal.aborted && e instanceof Error && e.name !== 'AbortError') {
+                if (!signal.aborted && !(e instanceof Error && e.name === 'AbortError')) {
+                    setFetchError(getApiErrorMessage(e, BACKEND_UNREACHABLE_MESSAGE));
+                    setDatasetStats([]);
                     setLoading(false);
                 }
             }
@@ -532,6 +552,20 @@ export const MisfitStatsWindow = () => {
                 <div className="flex flex-col items-center gap-2">
                     <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
                     <p className="text-sm text-muted-foreground">Calculating misfit statistics...</p>
+                </div>
+            </div>
+        );
+    }
+
+    if (fetchError) {
+        return (
+            <div className="flex h-full items-center justify-center p-8">
+                <div className="text-center max-w-md">
+                    <AlertTriangle className="mx-auto h-12 w-12 text-amber-500 mb-4" />
+                    <h3 className="text-lg font-semibold mb-2">Misfit Statistics Unavailable</h3>
+                    <p className="text-sm text-muted-foreground whitespace-pre-line">
+                        {fetchError}
+                    </p>
                 </div>
             </div>
         );

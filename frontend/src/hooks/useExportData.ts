@@ -1,6 +1,7 @@
 import { useState, useCallback } from "react";
 import axios from "axios";
 import { useDataTableStore } from "@/store/settingFormStore";
+import { getApiErrorMessage } from "@/lib/apiError";
 import { save } from "@tauri-apps/plugin-dialog";
 import { writeTextFile } from "@tauri-apps/plugin-fs";
 
@@ -134,14 +135,9 @@ export function useExportData() {
         message: `Exported ${exportedCount} records`,
       };
     } catch (error) {
-      let errorMessage = "Failed to save the file.";
-      
-      if (axios.isAxiosError(error) && error.response?.data?.error) {
-        errorMessage = error.response.data.error;
-      } else if (error instanceof Error) {
-        errorMessage = error.message;
-      }
-      
+      const errorMessage = getApiErrorMessage(error, "Failed to save the file.");
+
+
       if (errorMessage.includes("user aborted") || errorMessage.includes("AbortError")) {
         setStatus("idle");
         setMessage("");

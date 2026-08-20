@@ -11,6 +11,7 @@ import {
 } from "@/services/updateCsemData";
 import { useAlertDialog } from "@/hooks/useAlertDialog";
 import { CustomAlertDialog } from "@/components/custom/CustomAlertDialog";
+import { getApiErrorMessage } from "@/lib/apiError";
 
 export function BathymetryUpload() {
     const [bathymetryFile, setBathymetryFile] = useState<string | null>(null);
@@ -130,7 +131,7 @@ export function BathymetryUpload() {
             // console.error('Error uploading bathymetry file:', error);
             showAlert(
                 'Bathymetry Upload Error',
-                `Error uploading bathymetry file: ${error.response?.data?.error || error.message}`,
+                getApiErrorMessage(error, 'Could not upload the bathymetry file.'),
                 'error'
             );
         })
