@@ -19,6 +19,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { DelaunayMeshIcon } from '@/components/icons/DelaunayMeshIcon';
 import { TriangleResegmentPanel } from '@/components/custom/TriangleResegmentPanel';
+import { getApiErrorMessage } from '@/lib/apiError';
 import { Button } from '@/components/ui/button';
 import {
   Collapsible,
@@ -127,26 +128,7 @@ function getTriangleIndicesForRegionIds(mesh: TriangleMesh, regionIds: Set<numbe
 }
 
 function getUploadErrorMessage(error: unknown): string {
-  if (
-    typeof error === 'object' &&
-    error !== null &&
-    'response' in error &&
-    typeof error.response === 'object' &&
-    error.response !== null &&
-    'data' in error.response &&
-    typeof error.response.data === 'object' &&
-    error.response.data !== null &&
-    'error' in error.response.data &&
-    typeof error.response.data.error === 'string'
-  ) {
-    return error.response.data.error;
-  }
-
-  if (error instanceof Error) {
-    return error.message;
-  }
-
-  return 'Failed to load triangle model files.';
+  return getApiErrorMessage(error, 'Failed to load triangle model files.');
 }
 
 function getEditedResistivityFileName(fileName: string) {

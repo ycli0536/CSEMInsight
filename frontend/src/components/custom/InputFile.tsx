@@ -6,6 +6,7 @@ import type { CsemData, DatasetRole, GeometryData } from "@/types";
 import { useDataTableStore, useSettingFormStore } from "@/store/settingFormStore";
 import { useAlertDialog } from '@/hooks/useAlertDialog';
 import { CustomAlertDialog } from '@/components/custom/CustomAlertDialog';
+import { getApiErrorMessage } from "@/lib/apiError";
 import { getTxRxData } from "@/services/extractTxRxPlotData";
 import { datasetColors } from "@/lib/datasetColors";
 
@@ -91,10 +92,9 @@ export function InputFile() {
             })
             .catch(error => {
                 console.error('Error uploading file:', error);
-                const backendError = error.response?.data?.error;
                 showAlert(
                     'Data Upload Error',
-                    backendError || `Error uploading file: ${error.message}`,
+                    getApiErrorMessage(error, 'Could not upload the selected data file.'),
                     'error'
                 );
             });
