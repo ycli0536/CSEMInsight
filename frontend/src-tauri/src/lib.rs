@@ -62,8 +62,18 @@ fn start_backend(app: &AppHandle) {
         return;
     };
 
+    // --parent-pid lets the backend shut itself down if this process goes away.
+    // Killing the child we spawn is not enough: PyInstaller's onefile
+    // bootloader re-executes itself, so the process actually serving requests
+    // is a grandchild we hold no handle on. It also covers the cases we cannot
+    // handle from here at all, such as a crash or a force quit.
     let sidecar = match app.shell().sidecar("csemInsight") {
-        Ok(command) => command.args(["--port", &port.to_string()]),
+        Ok(command) => command.args([
+            "--port",
+            &port.to_string(),
+            "--parent-pid",
+            &std::process::id().to_string(),
+        ]),
         Err(err) => {
             error!("Could not locate the backend sidecar: {}", err);
             return;
