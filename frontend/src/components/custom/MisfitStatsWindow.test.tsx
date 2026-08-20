@@ -337,4 +337,37 @@ describe('MisfitStatsWindow', () => {
 
     expect(container.querySelector('.recharts-responsive-container')).not.toBeInTheDocument();
   });
+
+  it('rebuilds the scatter plot once dragging stops', async () => {
+    const mockDataset = createMockDataset('dataset1', true);
+    const mockDatasets = new Map<string, Dataset>([['dataset1', mockDataset]]);
+
+    (useDataTableStore as ReturnType<typeof vi.fn>).mockReturnValue({
+      filteredData: mockDataset.data,
+      datasets: mockDatasets,
+      activeDatasetIds: ['dataset1'],
+    });
+
+    // Stats arrive while the window is being dragged, so the plot is skipped.
+    (useWindowStore as ReturnType<typeof vi.fn>).mockImplementation((selector) =>
+      selector({ draggingWindowId: 'misfit-stats' })
+    );
+
+    const { container, rerender } = render(<MisfitStatsWindow />);
+
+    await waitFor(() => {
+      expect(container.textContent).toContain('RMS vs Receiver Y Position');
+    });
+    expect(uPlot).not.toHaveBeenCalled();
+
+    // Drag ends: the effect must re-run and create the plot it skipped.
+    (useWindowStore as ReturnType<typeof vi.fn>).mockImplementation((selector) =>
+      selector({ draggingWindowId: null })
+    );
+    rerender(<MisfitStatsWindow />);
+
+    await waitFor(() => {
+      expect(uPlot).toHaveBeenCalled();
+    });
+  });
 });

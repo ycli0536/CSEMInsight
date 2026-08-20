@@ -685,6 +685,7 @@ export function TxRxPosPlot() {
         isTxDepthAdjusted,
         originalTxData,
         activeDatasets,
+        primaryDatasetId,
         comparisonMode,
         isDark,
         axisStroke,

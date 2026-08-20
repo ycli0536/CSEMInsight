@@ -40,14 +40,12 @@ jobs:
 
       - name: Run linter
         run: bun run lint
-        continue-on-error: true  # Don't fail the build on lint warnings
 
       - name: Build for production
         run: bun run build
 
       - name: Run tests
         run: bun run test --run
-        continue-on-error: true  # Tests may not be fully set up yet
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
@@ -82,20 +80,18 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
           cache: 'pip'
-          cache-dependency-path: backend/requirements.txt
+          cache-dependency-path: backend/requirements-test.txt
 
       - name: Install dependencies
-        run: pip install -r requirements.txt
+        run: pip install -r requirements-test.txt
 
       - name: Validate Python syntax
         run: python -m py_compile main.py csem_datafile_parser.py
 
-      - name: Check imports work
-        run: |
-          python -c "import flask; print(f'Flask {flask.__version__}')"
-          python -c "import numpy; print(f'NumPy {numpy.__version__}')"
-          python -c "import pandas; print(f'Pandas {pandas.__version__}')"
-          python -c "import scipy; print(f'SciPy {scipy.__version__}')"
+      - name: Run tests
+        # Tests needing backend/test_data skip themselves; that directory holds
+        # real survey files and is deliberately not tracked.
+        run: python -m pytest tests -q
 
   # ============================================
   # Combined Status Check

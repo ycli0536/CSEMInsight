@@ -4,7 +4,6 @@ interface SafeResponsiveContainerProps {
   children: React.ReactNode;
   minWidth?: number;
   minHeight?: number;
-  debounce?: number;
   fallback?: React.ReactNode;
 }
 
@@ -12,7 +11,6 @@ export const SafeResponsiveContainer: React.FC<SafeResponsiveContainerProps> = (
   children,
   minWidth = 1,
   minHeight = 1,
-  debounce = 100,
   fallback = <div>Loading chart...</div>,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
