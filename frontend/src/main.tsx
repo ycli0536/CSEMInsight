@@ -1,6 +1,7 @@
 import { mountApp } from '@/app/mountApp';
 import { getDemoDatasetIds, isDemoModeEnabled } from '@/demo/demoModeConfig';
 import { loadDemoDatasets } from '@/demo/loadDemoData';
+import { initApiBaseUrl } from '@/lib/apiConfig';
 
 const rootElement = document.getElementById('root');
 
@@ -21,7 +22,11 @@ if (rootElement) {
         mountApp(rootElement);
       });
   } else {
-    mountApp(rootElement);
+    // Resolve the backend port before mounting, so the first API call from a
+    // component already targets the port the desktop shell reserved.
+    initApiBaseUrl().finally(() => {
+      mountApp(rootElement);
+    });
   }
 } else {
   console.error('Root element not found');
