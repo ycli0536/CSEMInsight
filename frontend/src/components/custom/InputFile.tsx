@@ -7,6 +7,7 @@ import { useDataTableStore, useSettingFormStore } from "@/store/settingFormStore
 import { useAlertDialog } from '@/hooks/useAlertDialog';
 import { CustomAlertDialog } from '@/components/custom/CustomAlertDialog';
 import { getApiErrorMessage } from "@/lib/apiError";
+import { apiUrl } from "@/lib/apiConfig";
 import { getTxRxData } from "@/services/extractTxRxPlotData";
 import { datasetColors } from "@/lib/datasetColors";
 
@@ -41,7 +42,7 @@ export function InputFile() {
             formData.append('files', file);
         });
 
-        axios.post('http://127.0.0.1:3354/api/upload-multiple-data', formData)
+        axios.post(apiUrl('/api/upload-multiple-data'), formData)
             .then(response => {
                 console.log('response.json: ', response)
                 const datasetsResponse = response.data as {

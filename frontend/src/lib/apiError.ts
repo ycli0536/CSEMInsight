@@ -6,8 +6,17 @@
  * keep every call site from re-implementing the same unwrapping.
  */
 
-export const BACKEND_UNREACHABLE_MESSAGE =
-  'Could not reach the CSEMInsight backend. Make sure it is running on port 3354, then try again.';
+import { getApiBaseUrl } from '@/lib/apiConfig';
+
+/**
+ * Message for a backend that never answered.
+ *
+ * Built on demand rather than fixed, because the desktop shell picks the port
+ * per window — naming the address the app actually tried is what makes this
+ * message actionable.
+ */
+export const backendUnreachableMessage = (): string =>
+  `Could not reach the CSEMInsight backend at ${getApiBaseUrl()}. Make sure it is running, then try again.`;
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null;
@@ -52,13 +61,13 @@ export const getApiErrorMessage = (error: unknown, fallback: string): string => 
   // Axios sets `request` without `response` when the server never answered —
   // in practice, the Flask sidecar is not running.
   if (isRecord(error) && 'request' in error && !isRecord(error.response)) {
-    return BACKEND_UNREACHABLE_MESSAGE;
+    return backendUnreachableMessage();
   }
 
   // `fetch` rejects with a TypeError when the connection itself fails, and
   // "Failed to fetch" tells the user nothing useful.
   if (error instanceof TypeError) {
-    return BACKEND_UNREACHABLE_MESSAGE;
+    return backendUnreachableMessage();
   }
 
   if (error instanceof Error) {

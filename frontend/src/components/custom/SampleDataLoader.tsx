@@ -7,6 +7,7 @@ import { useAlertDialog } from "@/hooks/useAlertDialog";
 import { CustomAlertDialog } from "@/components/custom/CustomAlertDialog";
 import { getTxRxData } from "@/services/extractTxRxPlotData";
 import { getApiErrorMessage } from "@/lib/apiError";
+import { apiUrl } from "@/lib/apiConfig";
 import { datasetColors } from "@/lib/datasetColors";
 
 const SAMPLE_DATASETS = [
@@ -74,7 +75,7 @@ export function SampleDataLoader() {
     }
 
     axios
-      .post("http://127.0.0.1:3354/api/load-sample-data", { files })
+      .post(apiUrl("/api/load-sample-data"), { files })
       .then((response) => {
         const datasetsResponse = response.data as {
           id: string;
