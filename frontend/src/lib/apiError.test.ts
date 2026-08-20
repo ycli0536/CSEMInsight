@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { BACKEND_UNREACHABLE_MESSAGE, formatApiError, getApiErrorMessage } from './apiError';
+import { backendUnreachableMessage, formatApiError, getApiErrorMessage } from './apiError';
 
 describe('formatApiError', () => {
   it('returns the backend error message', () => {
@@ -50,13 +50,13 @@ describe('getApiErrorMessage', () => {
       request: {},
     });
 
-    expect(getApiErrorMessage(error, 'fallback')).toBe(BACKEND_UNREACHABLE_MESSAGE);
+    expect(getApiErrorMessage(error, 'fallback')).toBe(backendUnreachableMessage());
   });
 
   it('reports an unreachable backend when fetch rejects with a TypeError', () => {
     const error = new TypeError('Failed to fetch');
 
-    expect(getApiErrorMessage(error, 'fallback')).toBe(BACKEND_UNREACHABLE_MESSAGE);
+    expect(getApiErrorMessage(error, 'fallback')).toBe(backendUnreachableMessage());
   });
 
   it('uses the message of a plain Error', () => {

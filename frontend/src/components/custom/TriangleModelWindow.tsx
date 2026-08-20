@@ -20,6 +20,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { DelaunayMeshIcon } from '@/components/icons/DelaunayMeshIcon';
 import { TriangleResegmentPanel } from '@/components/custom/TriangleResegmentPanel';
 import { getApiErrorMessage } from '@/lib/apiError';
+import { apiUrl } from '@/lib/apiConfig';
 import { Button } from '@/components/ui/button';
 import {
   Collapsible,
@@ -354,7 +355,7 @@ export function TriangleModelWindow() {
 
     try {
       const response = await axios.post<TriangleModelResponse>(
-        'http://127.0.0.1:3354/api/upload-triangle-model',
+        apiUrl('/api/upload-triangle-model'),
         formData,
       );
       const nextMesh = buildTriangleMeshFromModel(response.data);
@@ -632,7 +633,7 @@ export function TriangleModelWindow() {
 
     try {
       const response = await axios.post<Blob>(
-        'http://127.0.0.1:3354/api/export-triangle-resistivity',
+        apiUrl('/api/export-triangle-resistivity'),
         formData,
         { responseType: 'blob' },
       );

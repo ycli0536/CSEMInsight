@@ -2,6 +2,7 @@ import { useState, useCallback } from "react";
 import axios from "axios";
 import { useDataTableStore } from "@/store/settingFormStore";
 import { getApiErrorMessage } from "@/lib/apiError";
+import { apiUrl } from "@/lib/apiConfig";
 import { save } from "@tauri-apps/plugin-dialog";
 import { writeTextFile } from "@tauri-apps/plugin-fs";
 
@@ -73,7 +74,7 @@ export function useExportData() {
       const content = JSON.stringify(filteredData);
 
       const response = await axios.post(
-        "http://localhost:3354/api/write-data-file",
+        apiUrl("/api/write-data-file"),
         {
           content,
           dataBlocks,

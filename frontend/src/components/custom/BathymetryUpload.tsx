@@ -12,6 +12,7 @@ import {
 import { useAlertDialog } from "@/hooks/useAlertDialog";
 import { CustomAlertDialog } from "@/components/custom/CustomAlertDialog";
 import { getApiErrorMessage } from "@/lib/apiError";
+import { apiUrl } from "@/lib/apiConfig";
 
 export function BathymetryUpload() {
     const [bathymetryFile, setBathymetryFile] = useState<string | null>(null);
@@ -109,7 +110,7 @@ export function BathymetryUpload() {
             formData.append(`file${index}`, file);
         });
 
-        axios.post('http://127.0.0.1:3354/api/upload-bathymetry', formData)
+        axios.post(apiUrl('/api/upload-bathymetry'), formData)
         .then(response => {
             // console.log('Bathymetry response: ', response);
             const bathymetryData: BathymetryData = {

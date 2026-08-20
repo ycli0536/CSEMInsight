@@ -12,10 +12,11 @@ import { Loader2, Info, AlertTriangle } from "lucide-react";
 import type { CsemData } from "@/types";
 import { orderIdsByPrimaryLast } from '@/lib/datasetOrdering';
 import {
-    BACKEND_UNREACHABLE_MESSAGE,
+    backendUnreachableMessage,
     getApiErrorMessage,
     getFetchErrorMessage,
 } from '@/lib/apiError';
+import { apiUrl } from '@/lib/apiConfig';
 
 
 type RMSDataPoint = {
@@ -338,7 +339,7 @@ export const MisfitStatsWindow = () => {
             }
 
             try {
-                const response = await fetch("http://localhost:3354/api/misfit_stats", {
+                const response = await fetch(apiUrl("/api/misfit_stats"), {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({
@@ -391,7 +392,7 @@ export const MisfitStatsWindow = () => {
                 }
             } catch (e: unknown) {
                 if (!signal.aborted && !(e instanceof Error && e.name === 'AbortError')) {
-                    setFetchError(getApiErrorMessage(e, BACKEND_UNREACHABLE_MESSAGE));
+                    setFetchError(getApiErrorMessage(e, backendUnreachableMessage()));
                     setDatasetStats([]);
                     setLoading(false);
                 }

@@ -5,8 +5,7 @@ import type {
   TriangleResegmentationParameters,
   TriangleResegmentationPreviewResponse,
 } from '@/types';
-
-const API_BASE_URL = 'http://127.0.0.1:3354';
+import { apiUrl } from '@/lib/apiConfig';
 
 export interface TriangleResegmentationRequest {
   polyFile: File;
@@ -37,7 +36,7 @@ export async function previewTriangleResegmentation(
   request: TriangleResegmentationRequest,
 ) {
   const response = await axios.post<TriangleResegmentationPreviewResponse>(
-    `${API_BASE_URL}/api/preview-triangle-resegmentation`,
+    apiUrl('/api/preview-triangle-resegmentation'),
     buildFormData(request),
   );
   return response.data;
@@ -47,7 +46,7 @@ export async function exportTriangleResegmentation(
   request: TriangleResegmentationRequest,
 ) {
   const response = await axios.post<TriangleResegmentationExportResponse>(
-    `${API_BASE_URL}/api/export-triangle-resegmentation`,
+    apiUrl('/api/export-triangle-resegmentation'),
     buildFormData(request),
   );
   return response.data;
