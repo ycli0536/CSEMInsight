@@ -26,7 +26,6 @@ tauri-plugin-log = "2.8"
 tauri-plugin-shell = "2.3"
 tauri-plugin-fs = "2"
 reqwest = { version = "0.12", features = ["json"] }
-killport = "1.1"
 env_logger = "0.11"
 tokio = "1"
 tauri-plugin-dialog = "2.6"

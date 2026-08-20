@@ -34,6 +34,7 @@ from triangle_model_resegmentation import (
     parse_resegmentation_parameters,
 )
 
+DEFAULT_PORT = 3354
 DEFAULT_MAX_UPLOAD_MB = 512
 
 # The backend only ever serves the local frontend: the Vite dev server, the
@@ -53,6 +54,46 @@ DEFAULT_ALLOWED_ORIGINS = (
 def _get_debug_flag() -> bool:
     raw_value = os.getenv("CSEMINSIGHT_DEBUG") or os.getenv("FLASK_DEBUG") or ""
     return raw_value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _coerce_port(raw_value) -> int:
+    """Return a valid TCP port, or 0 when the value cannot be used."""
+    try:
+        port = int(str(raw_value).strip())
+    except (TypeError, ValueError):
+        return 0
+    return port if 1 <= port <= 65535 else 0
+
+
+def _get_port(argv: List[str] = None) -> int:
+    """Return the TCP port the API should listen on.
+
+    Precedence is ``--port`` (how the desktop shell passes the port it
+    reserved), then ``CSEMINSIGHT_PORT``, then the default. Invalid values
+    fall through to the next source rather than crashing at startup.
+
+    Args:
+        argv: Argument list to read; defaults to the process arguments.
+
+    Returns:
+        A port number between 1 and 65535.
+    """
+    arguments = list(sys.argv[1:] if argv is None else argv)
+
+    cli_value = None
+    for index, argument in enumerate(arguments):
+        if argument == "--port" and index + 1 < len(arguments):
+            cli_value = arguments[index + 1]
+            break
+        if argument.startswith("--port="):
+            cli_value = argument.split("=", 1)[1]
+            break
+
+    return (
+        _coerce_port(cli_value)
+        or _coerce_port(os.getenv("CSEMINSIGHT_PORT"))
+        or DEFAULT_PORT
+    )
 
 
 def _get_max_upload_bytes() -> int:
@@ -1111,4 +1152,5 @@ def calculate_misfit_stats():
 
 
 if __name__ == "__main__":
-    app.run(debug=_get_debug_flag(), port=3354)
+    # Bind to loopback only: this API is for the local frontend, not the network.
+    app.run(host="127.0.0.1", debug=_get_debug_flag(), port=_get_port())
