@@ -186,6 +186,11 @@ pip install -r requirements-dev.txt
 - Frontend runs on port 5173, backend on port 3354 (Flask default)
 - If ports are in use, kill existing processes or change ports in the configuration files
 
+### Backend Configuration (Optional)
+
+Upload size limits, allowed browser origins and debug tracebacks are controlled
+by environment variables — see [docs/configuration.md](docs/configuration.md).
+
 ### Build for production (Optional)
 
 To create an optimized production build (frontend) under `frontend/dist`:

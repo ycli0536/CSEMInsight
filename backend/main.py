@@ -1,8 +1,11 @@
 import traceback
 import os
+import shutil
+import sys
 import tempfile
 import uuid
 import json
+from contextlib import contextmanager
 from datetime import datetime
 from typing import List
 import numpy as np
@@ -10,7 +13,7 @@ import pandas as pd
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from werkzeug.utils import secure_filename
-from werkzeug.exceptions import ClientDisconnected
+from werkzeug.exceptions import ClientDisconnected, HTTPException
 from suesi_depth_reader import process_SuesiDepth_mat_file
 from MARE2DEM_poly_parser import MARE2DEMPolyParser
 from resistivity_file_parser import ResistivityFileParser
@@ -31,15 +34,142 @@ from triangle_model_resegmentation import (
     parse_resegmentation_parameters,
 )
 
-app = Flask(__name__)
-CORS(app)
-# Disable sorting of keys in JSON responses
-app.config["JSON_SORT_KEYS"] = False
+DEFAULT_MAX_UPLOAD_MB = 512
+
+# The backend only ever serves the local frontend: the Vite dev server, the
+# `vite preview` server, and the Tauri webview. The port is not pinned because
+# Vite falls back to another one when 5173 is taken. Tauri uses a custom scheme
+# on macOS/iOS and a virtual host elsewhere, so all three spellings are needed.
+# Anchored with ^...$ so an origin like http://localhost.evil.com cannot match.
+DEFAULT_ALLOWED_ORIGINS = (
+    r"^https?://localhost(:\d+)?$",
+    r"^https?://127\.0\.0\.1(:\d+)?$",
+    "tauri://localhost",
+    "http://tauri.localhost",
+    "https://tauri.localhost",
+)
 
 
 def _get_debug_flag() -> bool:
     raw_value = os.getenv("CSEMINSIGHT_DEBUG") or os.getenv("FLASK_DEBUG") or ""
     return raw_value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _get_max_upload_bytes() -> int:
+    """Return the upload size ceiling in bytes.
+
+    Returns:
+        The value of ``CSEMINSIGHT_MAX_UPLOAD_MB`` in bytes, or the default
+        when the variable is unset or not a positive integer.
+    """
+    raw_value = (os.getenv("CSEMINSIGHT_MAX_UPLOAD_MB") or "").strip()
+    try:
+        megabytes = int(raw_value)
+    except ValueError:
+        megabytes = DEFAULT_MAX_UPLOAD_MB
+    if megabytes <= 0:
+        megabytes = DEFAULT_MAX_UPLOAD_MB
+    return megabytes * 1024 * 1024
+
+
+def _get_allowed_origins() -> List[str]:
+    """Return the browser origins allowed to call this backend.
+
+    Returns:
+        The comma-separated ``CSEMINSIGHT_ALLOWED_ORIGINS`` entries, or the
+        local dev-server and Tauri origins when the variable is unset.
+    """
+    raw_value = os.getenv("CSEMINSIGHT_ALLOWED_ORIGINS") or ""
+    origins = [origin.strip() for origin in raw_value.split(",") if origin.strip()]
+    return origins or list(DEFAULT_ALLOWED_ORIGINS)
+
+
+app = Flask(__name__)
+# The backend binds to localhost only, but any page in the user's browser can
+# still reach it. Restrict CORS to the origins this app actually ships with.
+CORS(app, origins=_get_allowed_origins())
+# Disable sorting of keys in JSON responses
+app.config["JSON_SORT_KEYS"] = False
+# Reject oversized bodies before Werkzeug buffers them into memory.
+app.config["MAX_CONTENT_LENGTH"] = _get_max_upload_bytes()
+
+
+def _error_response(message: str, hint: str = "", status: int = 400):
+    """Build a JSON error response with an actionable next step.
+
+    Args:
+        message: Short description of what failed.
+        hint: What the user can do about it.
+        status: HTTP status code to return.
+
+    Returns:
+        A ``(response, status)`` tuple ready to be returned from a view.
+    """
+    payload = {"error": message}
+    if hint:
+        payload["hint"] = hint
+    return jsonify(payload), status
+
+
+def _unexpected_error(message: str, hint: str = ""):
+    """Log an in-flight exception and return a sanitized 500 response.
+
+    The full traceback is written to the server log and only echoed to the
+    client when debug mode is on, so local paths and internal structure are
+    not exposed by default.
+
+    Args:
+        message: Short description of what failed.
+        hint: What the user can do about it.
+
+    Returns:
+        A ``(response, 500)`` tuple ready to be returned from a view.
+    """
+    exc_type, exc_value, _ = sys.exc_info()
+    formatted_traceback = traceback.format_exc()
+    app.logger.error("%s\n%s", message, formatted_traceback)
+
+    payload = {"error": message}
+    if hint:
+        payload["hint"] = hint
+    if exc_type is not None:
+        # One-line summary: enough to report a bug, no stack frames.
+        payload["detail"] = f"{exc_type.__name__}: {exc_value}".replace("\n", " ")
+    if _get_debug_flag():
+        payload["traceback"] = formatted_traceback
+    return jsonify(payload), 500
+
+
+@app.errorhandler(HTTPException)
+def _handle_http_exception(exc: HTTPException):
+    """Return JSON instead of Werkzeug's HTML error pages."""
+    if exc.code == 413:
+        limit_mb = app.config["MAX_CONTENT_LENGTH"] // (1024 * 1024)
+        return _error_response(
+            f"Upload is larger than the {limit_mb} MB limit.",
+            hint=(
+                "Split the file or raise the limit with the "
+                "CSEMINSIGHT_MAX_UPLOAD_MB environment variable."
+            ),
+            status=413,
+        )
+    return _error_response(exc.description or exc.name, status=exc.code or 500)
+
+
+@contextmanager
+def _upload_workspace():
+    """Yield a private temp directory that is removed when the request ends.
+
+    Yields:
+        Path to a fresh directory for this request's uploads.
+    """
+    temp_dir = tempfile.mkdtemp(
+        dir=tempfile.gettempdir(), prefix="cseminsight_upload_"
+    )
+    try:
+        yield temp_dir
+    finally:
+        shutil.rmtree(temp_dir, ignore_errors=True)
 
 
 def _save_uploaded_file(file, temp_dir: str) -> str:
@@ -104,6 +234,39 @@ def _merge_joint_data(reader, blocks, data_df, geometry_info):
     merged_df = pd.concat(parts, ignore_index=True)
     merged_df = merged_df.sort_values("_row_order").drop(columns="_row_order")
     return merged_df.reset_index(drop=True)
+
+
+def _pick_uploaded_file(extensions):
+    """Find the single uploaded file and validate its extension.
+
+    Args:
+        extensions: Accepted file suffixes, e.g. ``(".data", ".resp")``.
+
+    Returns:
+        A ``(file, error)`` tuple. Exactly one of the two is ``None``; the
+        error is a ready-to-return ``(response, status)`` tuple.
+    """
+    accepted = "/".join(extensions)
+    file = next(
+        (request.files[key] for key in request.files if "file" in key),
+        None,
+    )
+    if file is None:
+        return None, _error_response(
+            "No file was included in the request.",
+            hint=f"Attach a {accepted} file and try again.",
+        )
+    if not file.filename:
+        return None, _error_response(
+            "The selected file has no name.",
+            hint=f"Pick a {accepted} file from disk and try again.",
+        )
+    if not file.filename.endswith(tuple(extensions)):
+        return None, _error_response(
+            f"Invalid file format: {file.filename}.",
+            hint=f"Supported formats: {accepted}.",
+        )
+    return file, None
 
 
 def _parse_csem_datafile(path):
@@ -378,80 +541,75 @@ def _serialize_constrained_mesh(poly_parser, vertices, segments, regions, parsed
 
 @app.route("/api/upload-xyz", methods=["POST"])
 def upload_xyz_file():
-    print("Start processing file...")
+    file, error = _pick_uploaded_file((".xyz",))
+    if error is not None:
+        return error
 
-    for key in request.files.keys():
-        print("request file: ", request.files[key])
-        # Check if the post request has the file part
-        if "file" not in key:
-            return "No file part"
-
-        file = request.files[key]
-        if file.filename == "":
-            return "No selected file"
-
-        if file and file.filename.endswith(".xyz"):
-            temp_dir = tempfile.gettempdir()
+    try:
+        with _upload_workspace() as temp_dir:
             path = _save_uploaded_file(file, temp_dir)
-            print(path)
             xyz_datafile_reader = XYZDataFileReader(path)
             xyz_datafile_reader.read_file()
             xyz_datafile_reader.add_distance()
-            # result_df = xyz_datafile_reader.df_for_echart_heatmap(xyz_datafile_reader.data)
             data_js = xyz_datafile_reader.df_to_json(xyz_datafile_reader.data)
             return jsonify(json.loads(data_js))
-
-    return "Invalid file format"
+    except Exception:
+        return _unexpected_error(
+            f"Could not read the .xyz file '{file.filename}'.",
+            hint=(
+                "Check that the file is whitespace-separated with the expected "
+                "column count and no stray header rows."
+            ),
+        )
 
 
 @app.route("/api/upload-data", methods=["POST"])
 def upload_data_file():
-    print("Start processing file...")
+    file, error = _pick_uploaded_file((".data", ".emdata", ".resp"))
+    if error is not None:
+        return error
 
-    for key in request.files.keys():
-        print("request file: ", request.files[key])
-        # Check if the post request has the file part
-        if "file" not in key:
-            return jsonify({"error": "No file part"}), 400
-
-        file = request.files[key]
-        if file.filename == "":
-            return jsonify({"error": "No selected file"}), 400
-
-        if file and (
-            file.filename.endswith(".data")
-            or file.filename.endswith(".emdata")
-            or file.filename.endswith(".resp")
-        ):
-            try:
-                temp_dir = tempfile.gettempdir()
-                path = _save_uploaded_file(file, temp_dir)
-                # print(path)
-                geometry_info, data_js, csem_data = _parse_csem_datafile(path)
-                # Return geometry info, data, and csem data blocks strings
-                return jsonify(
-                    {
-                        "geometryInfo": geometry_info,
-                        "data": data_js,
-                        "dataBlocks": csem_data,
-                    }
-                )
-            except Exception:
-                traceback.print_exc()
-                return jsonify({"error": traceback.format_exc()}), 500
-
-    return "Invalid file format"
+    try:
+        with _upload_workspace() as temp_dir:
+            path = _save_uploaded_file(file, temp_dir)
+            geometry_info, data_js, csem_data = _parse_csem_datafile(path)
+            # Return geometry info, data, and csem data blocks strings
+            return jsonify(
+                {
+                    "geometryInfo": geometry_info,
+                    "data": data_js,
+                    "dataBlocks": csem_data,
+                }
+            )
+    except Exception:
+        return _unexpected_error(
+            f"Could not parse '{file.filename}' as a MARE2DEM data file.",
+            hint=(
+                "Verify the file has the expected Tx/Rx/Data blocks and that "
+                "the header format matches MARE2DEM's .data/.emdata/.resp "
+                "specification."
+            ),
+        )
 
 
 @app.route("/api/upload-triangle-model", methods=["POST"])
 def upload_triangle_model_file():
     poly_file = request.files.get("poly_file")
     if poly_file is None:
-        return jsonify({"error": "No .poly file provided"}), 400
+        return _error_response(
+            "No .poly file provided",
+            hint="Attach the MARE2DEM .poly model file and try again.",
+        )
     if poly_file.filename == "":
-        return jsonify({"error": "No selected .poly file"}), 400
+        return _error_response(
+            "No selected .poly file",
+            hint="Pick a .poly file from disk and try again.",
+        )
     if not poly_file.filename.endswith(".poly"):
-        return jsonify({"error": "Invalid .poly file format"}), 400
+        return _error_response(
+            "Invalid .poly file format",
+            hint="The model geometry must be a MARE2DEM .poly file.",
+        )
 
     resistivity_file = request.files.get("resistivity_file")
     if (
@@ -459,55 +617,64 @@ def upload_triangle_model_file():
         and resistivity_file.filename != ""
         and not resistivity_file.filename.endswith(".resistivity")
     ):
-        return jsonify({"error": "Invalid .resistivity file format"}), 400
+        return _error_response(
+            "Invalid .resistivity file format",
+            hint="Resistivity values must come from a .resistivity file.",
+        )
 
     try:
-        temp_dir = tempfile.gettempdir()
-        poly_path = _save_uploaded_file(poly_file, temp_dir)
-        poly_parser = MARE2DEMPolyParser()
-        vertices, segments, holes, regions = poly_parser.read_poly_file(poly_path)
-        (
-            ordered_vertices,
-            ordered_segments,
-            ordered_holes,
-            ordered_regions,
-        ) = _serialize_poly_model(vertices, segments, holes, regions)
+        with _upload_workspace() as temp_dir:
+            poly_path = _save_uploaded_file(poly_file, temp_dir)
+            poly_parser = MARE2DEMPolyParser()
+            vertices, segments, holes, regions = poly_parser.read_poly_file(poly_path)
+            (
+                ordered_vertices,
+                ordered_segments,
+                ordered_holes,
+                ordered_regions,
+            ) = _serialize_poly_model(vertices, segments, holes, regions)
 
-        parsed_resistivity = None
-        resistivity_payload = None
-        resistivity_file_name = None
-        if resistivity_file is not None and resistivity_file.filename != "":
-            resistivity_path = _save_uploaded_file(resistivity_file, temp_dir)
-            resistivity_parser = ResistivityFileParser()
-            parsed_resistivity = resistivity_parser.parse_resistivity_file(
-                resistivity_path, rho_parse=True
+            parsed_resistivity = None
+            resistivity_payload = None
+            resistivity_file_name = None
+            if resistivity_file is not None and resistivity_file.filename != "":
+                resistivity_path = _save_uploaded_file(resistivity_file, temp_dir)
+                resistivity_parser = ResistivityFileParser()
+                parsed_resistivity = resistivity_parser.parse_resistivity_file(
+                    resistivity_path, rho_parse=True
+                )
+                resistivity_payload = _serialize_resistivity_model(parsed_resistivity)
+                resistivity_file_name = resistivity_file.filename
+
+            constrained_mesh = _serialize_constrained_mesh(
+                poly_parser,
+                vertices,
+                segments,
+                regions,
+                parsed_resistivity,
             )
-            resistivity_payload = _serialize_resistivity_model(parsed_resistivity)
-            resistivity_file_name = resistivity_file.filename
 
-        constrained_mesh = _serialize_constrained_mesh(
-            poly_parser,
-            vertices,
-            segments,
-            regions,
-            parsed_resistivity,
-        )
-
-        return jsonify(
-            {
-                "polyFileName": poly_file.filename,
-                "resistivityFileName": resistivity_file_name,
-                "vertices": ordered_vertices,
-                "segments": ordered_segments,
-                "holes": ordered_holes,
-                "regions": ordered_regions,
-                "resistivity": resistivity_payload,
-                "constrainedMesh": constrained_mesh,
-            }
-        )
+            return jsonify(
+                {
+                    "polyFileName": poly_file.filename,
+                    "resistivityFileName": resistivity_file_name,
+                    "vertices": ordered_vertices,
+                    "segments": ordered_segments,
+                    "holes": ordered_holes,
+                    "regions": ordered_regions,
+                    "resistivity": resistivity_payload,
+                    "constrainedMesh": constrained_mesh,
+                }
+            )
     except Exception:
-        traceback.print_exc()
-        return jsonify({"error": traceback.format_exc()}), 500
+        return _unexpected_error(
+            f"Could not build the triangle model from '{poly_file.filename}'.",
+            hint=(
+                "Check that the .poly vertex/segment/region counts in the "
+                "header match the rows that follow, and that the optional "
+                ".resistivity file lists the same region ids."
+            ),
+        )
 
 
 def _read_resegmentation_request(include_export_text):
@@ -536,19 +703,19 @@ def _read_resegmentation_request(include_export_text):
     except json.JSONDecodeError as exc:
         raise ResegmentationError("Invalid resegmentation parameters JSON") from exc
 
-    temp_dir = tempfile.gettempdir()
-    poly_path = _save_uploaded_file(poly_file, temp_dir)
-    resistivity_path = _save_uploaded_file(resistivity_file, temp_dir)
+    with _upload_workspace() as temp_dir:
+        poly_path = _save_uploaded_file(poly_file, temp_dir)
+        resistivity_path = _save_uploaded_file(resistivity_file, temp_dir)
 
-    poly_parser = MARE2DEMPolyParser()
-    vertices, segments, holes, regions = poly_parser.read_poly_file(
-        poly_path, unit_scale_factor=1
-    )
+        poly_parser = MARE2DEMPolyParser()
+        vertices, segments, holes, regions = poly_parser.read_poly_file(
+            poly_path, unit_scale_factor=1
+        )
 
-    resistivity_parser = ResistivityFileParser()
-    parsed_resistivity = resistivity_parser.parse_resistivity_file(
-        resistivity_path, rho_parse=True
-    )
+        resistivity_parser = ResistivityFileParser()
+        parsed_resistivity = resistivity_parser.parse_resistivity_file(
+            resistivity_path, rho_parse=True
+        )
 
     original_name = secure_filename(poly_file.filename) or "model.poly"
     stem, _ = os.path.splitext(original_name)
@@ -567,15 +734,23 @@ def _read_resegmentation_request(include_export_text):
     )
 
 
+_RESEGMENTATION_HINT = (
+    "Check that the .poly and .resistivity files come from the same model and "
+    "that the segmentation parameters are within the model's value range."
+)
+
+
 @app.route("/api/preview-triangle-resegmentation", methods=["POST"])
 def preview_triangle_resegmentation():
     try:
         return jsonify(_read_resegmentation_request(include_export_text=False))
     except ResegmentationError as exc:
-        return jsonify({"error": str(exc)}), 400
+        return _error_response(str(exc), hint=_RESEGMENTATION_HINT)
     except Exception:
-        traceback.print_exc()
-        return jsonify({"error": traceback.format_exc()}), 500
+        return _unexpected_error(
+            "Could not preview the resegmented model.",
+            hint=_RESEGMENTATION_HINT,
+        )
 
 
 @app.route("/api/export-triangle-resegmentation", methods=["POST"])
@@ -583,21 +758,32 @@ def export_triangle_resegmentation():
     try:
         return jsonify(_read_resegmentation_request(include_export_text=True))
     except ResegmentationError as exc:
-        return jsonify({"error": str(exc)}), 400
+        return _error_response(str(exc), hint=_RESEGMENTATION_HINT)
     except Exception:
-        traceback.print_exc()
-        return jsonify({"error": traceback.format_exc()}), 500
+        return _unexpected_error(
+            "Could not export the resegmented model.",
+            hint=_RESEGMENTATION_HINT,
+        )
 
 
 @app.route("/api/export-triangle-resistivity", methods=["POST"])
 def export_triangle_resistivity_file():
     resistivity_file = request.files.get("resistivity_file")
     if resistivity_file is None:
-        return jsonify({"error": "No .resistivity file provided"}), 400
+        return _error_response(
+            "No .resistivity file provided",
+            hint="Re-upload the original .resistivity file before exporting.",
+        )
     if resistivity_file.filename == "":
-        return jsonify({"error": "No selected .resistivity file"}), 400
+        return _error_response(
+            "No selected .resistivity file",
+            hint="Pick the original .resistivity file and try again.",
+        )
     if not resistivity_file.filename.endswith(".resistivity"):
-        return jsonify({"error": "Invalid .resistivity file format"}), 400
+        return _error_response(
+            "Invalid .resistivity file format",
+            hint="The export needs the original MARE2DEM .resistivity file.",
+        )
 
     raw_updates = request.form.get("region_rho_updates")
     updates_file = request.files.get("region_rho_updates")
@@ -605,9 +791,15 @@ def export_triangle_resistivity_file():
         try:
             raw_updates = updates_file.read().decode("utf-8-sig")
         except UnicodeDecodeError:
-            return jsonify({"error": "Could not decode region rho updates as UTF-8"}), 400
+            return _error_response(
+                "Could not decode region rho updates as UTF-8",
+                hint="Re-apply the edits in the viewer and export again.",
+            )
     if raw_updates is None:
-        return jsonify({"error": "No region rho updates provided"}), 400
+        return _error_response(
+            "No region rho updates provided",
+            hint="Edit at least one region's resistivity before exporting.",
+        )
 
     try:
         source_text = resistivity_file.read().decode("utf-8-sig")
@@ -622,45 +814,61 @@ def export_triangle_resistivity_file():
         )
         return response
     except UnicodeDecodeError:
-        return jsonify({"error": "Could not decode .resistivity file as UTF-8"}), 400
+        return _error_response(
+            "Could not decode .resistivity file as UTF-8",
+            hint="Re-save the file with UTF-8 encoding and try again.",
+        )
     except ResistivityExportError as exc:
-        return jsonify({"error": str(exc)}), 400
+        return _error_response(
+            str(exc),
+            hint=(
+                "Make sure the edited regions still exist in the uploaded "
+                ".resistivity file."
+            ),
+        )
     except Exception:
-        traceback.print_exc()
-        return jsonify({"error": traceback.format_exc()}), 500
+        return _unexpected_error(
+            "Could not write the edited .resistivity file.",
+            hint=(
+                "Re-upload the original .resistivity file and re-apply the "
+                "edits, then export again."
+            ),
+        )
 
 
 @app.route("/api/upload-multiple-data", methods=["POST"])
 def upload_multiple_data_files():
-    print("Start processing multiple data files...")
-
     if "files" not in request.files:
-        return jsonify({"error": "No files part"}), 400
+        return _error_response(
+            "No files part",
+            hint="Attach one or more .data/.emdata/.resp files and try again.",
+        )
 
     files = request.files.getlist("files")
     if not files:
-        return jsonify({"error": "No files selected"}), 400
+        return _error_response(
+            "No files selected",
+            hint="Pick at least one .data/.emdata/.resp file from disk.",
+        )
 
     datasets = []
     for file in files:
         if file.filename == "":
-            return jsonify({"error": "No selected file"}), 400
+            return _error_response(
+                "No selected file",
+                hint="One of the dropped items has no file name; re-add it.",
+            )
 
-        if not (
-            file.filename.endswith(".data")
-            or file.filename.endswith(".emdata")
-            or file.filename.endswith(".resp")
-        ):
-            return jsonify(
-                {
-                    "error": f"Invalid file format: {file.filename}. Supported formats: .data, .emdata, .resp"
-                }
-            ), 400
+        if not file.filename.endswith((".data", ".emdata", ".resp")):
+            return _error_response(
+                f"Invalid file format: {file.filename}.",
+                hint="Supported formats: .data, .emdata, .resp.",
+            )
 
         try:
-            temp_dir = tempfile.gettempdir()
-            path = _save_uploaded_file(file, temp_dir)
-            geometry_info, data_js, csem_data = _parse_csem_datafile(path)
+            with _upload_workspace() as temp_dir:
+                path = _save_uploaded_file(file, temp_dir)
+                geometry_info, data_js, csem_data = _parse_csem_datafile(path)
             datasets.append(
                 {
                     "id": uuid.uuid4().hex,
@@ -671,8 +879,14 @@ def upload_multiple_data_files():
                 }
             )
         except Exception:
-            traceback.print_exc()
-            return jsonify({"error": traceback.format_exc()}), 500
+            return _unexpected_error(
+                f"Could not parse '{file.filename}' as a MARE2DEM data file.",
+                hint=(
+                    "Verify the file has the expected Tx/Rx/Data blocks and "
+                    "that the header format matches MARE2DEM's "
+                    ".data/.emdata/.resp specification."
+                ),
+            )
 
     return jsonify(datasets)
 
@@ -682,30 +896,38 @@ def load_sample_data_files():
     payload = request.get_json(silent=True) or {}
     files = payload.get("files", [])
     if not isinstance(files, list) or not files:
-        return jsonify({"error": "No sample files specified"}), 400
+        return _error_response(
+            "No sample files specified",
+            hint="Pick at least one bundled sample dataset.",
+        )
 
     base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "test_data"))
     datasets = []
     for filename in files:
         if not isinstance(filename, str) or filename == "":
-            return jsonify({"error": "Invalid file name"}), 400
+            return _error_response(
+                "Invalid file name",
+                hint="Sample file names must be non-empty strings.",
+            )
 
-        if not (
-            filename.endswith(".data")
-            or filename.endswith(".emdata")
-            or filename.endswith(".resp")
-        ):
-            return jsonify(
-                {
-                    "error": f"Invalid file format: {filename}. Supported formats: .data, .emdata, .resp"
-                }
-            ), 400
+        if not filename.endswith((".data", ".emdata", ".resp")):
+            return _error_response(
+                f"Invalid file format: {filename}.",
+                hint="Supported formats: .data, .emdata, .resp.",
+            )
 
         file_path = os.path.abspath(os.path.join(base_dir, filename))
         if not file_path.startswith(base_dir + os.sep):
-            return jsonify({"error": f"Invalid file path: {filename}"}), 400
+            return _error_response(
+                f"Invalid file path: {filename}",
+                hint="Sample files must live directly in backend/test_data.",
+            )
         if not os.path.exists(file_path):
-            return jsonify({"error": f"File not found: {filename}"}), 404
+            return _error_response(
+                f"File not found: {filename}",
+                hint="Refresh the sample list; this dataset is not installed.",
+                status=404,
+            )
 
         try:
             geometry_info, data_js, csem_data = _parse_csem_datafile(file_path)
@@ -719,96 +941,107 @@ def load_sample_data_files():
                 }
             )
         except Exception:
-            traceback.print_exc()
-            return jsonify({"error": traceback.format_exc()}), 500
+            return _unexpected_error(
+                f"Could not parse the bundled sample '{filename}'.",
+                hint=(
+                    "The installed sample data may be truncated; reinstall "
+                    "the backend test_data directory."
+                ),
+            )
 
     return jsonify(datasets)
 
 
-@app.route("/api/write-data-file", methods=["POST", "OPTIONS"])
+@app.route("/api/write-data-file", methods=["POST"])
 def write_data_file():
-    if request.method == "OPTIONS":
-        response = jsonify({"message": "CORS preflight"})
-        response.headers.add("Access-Control-Allow-Origin", "*")
-        response.headers.add("Access-Control-Allow-Methods", "POST, OPTIONS")
-        response.headers.add("Access-Control-Allow-Headers", "Content-Type")
-        return response
-    elif request.method == "POST":
-        try:
-            data = request.get_json()
-            content = data.get("content")
-            csem_data = data.get("dataBlocks")
+    # Flask-CORS answers the OPTIONS preflight for the allowed origins.
+    payload = request.get_json(silent=True) or {}
+    content = payload.get("content")
+    csem_data = payload.get("dataBlocks")
 
-            csem_datafile_manager = CSEMDataFileManager()
-            data_df_from_content = csem_datafile_manager.json_to_df(content)
-            updated_blocks = csem_datafile_manager.update_blocks(
-                data_df_from_content, csem_data
-            )
-            datafile_str = csem_datafile_manager.blocks_to_str(updated_blocks)
+    if not content:
+        return _error_response(
+            "No content provided for export.",
+            hint="Load a dataset and clear filters that hide every row.",
+        )
+    if not csem_data:
+        return _error_response(
+            "No dataBlocks provided for export.",
+            hint=(
+                "The original file header is missing; re-upload the source "
+                "data file before exporting."
+            ),
+        )
 
-            return jsonify(datafile_str)
-        except Exception:
-            traceback.print_exc()
-            return jsonify({"error": traceback.format_exc()}), 500
+    try:
+        csem_datafile_manager = CSEMDataFileManager()
+        data_df_from_content = csem_datafile_manager.json_to_df(content)
+        updated_blocks = csem_datafile_manager.update_blocks(
+            data_df_from_content, csem_data
+        )
+        datafile_str = csem_datafile_manager.blocks_to_str(updated_blocks)
+
+        return jsonify(datafile_str)
+    except Exception:
+        return _unexpected_error(
+            "Could not rebuild the data file from the current table.",
+            hint=(
+                "Reset the column filters and try again; edited columns must "
+                "keep the original data types."
+            ),
+        )
 
 
 @app.route("/api/upload-mat", methods=["POST"])
 def upload_mat_file():
-    print("Start processing file...")
+    file, error = _pick_uploaded_file((".mat",))
+    if error is not None:
+        return error
 
-    for key in request.files.keys():
-        print("request file: ", request.files[key])
-        # Check if the post request has the file part
-        if "file" not in key:
-            return "No file part"
-
-        file = request.files[key]
-        if file.filename == "":
-            return "No selected file"
-
-        if file and file.filename.endswith(".mat"):
-            temp_dir = tempfile.gettempdir()
+    try:
+        with _upload_workspace() as temp_dir:
             path = _save_uploaded_file(file, temp_dir)
-            print(path)
             return process_SuesiDepth_mat_file(path)
-
-    return "Invalid file format"
+    except Exception:
+        return _unexpected_error(
+            f"Could not read the SUESI depth file '{file.filename}'.",
+            hint=(
+                "The .mat file must be a SUESI depth log containing the "
+                "expected time and depth variables."
+            ),
+        )
 
 
 @app.route("/api/upload-bathymetry", methods=["POST"])
 def upload_bathymetry_file():
-    print("Start processing bathymetry file...")
+    file, error = _pick_uploaded_file((".txt",))
+    if error is not None:
+        return error
 
-    for key in request.files.keys():
-        print("request file: ", request.files[key])
-        # Check if the post request has the file part
-        if "file" not in key:
-            return jsonify({"error": "No file part"}), 400
+    try:
+        with _upload_workspace() as temp_dir:
+            path = _save_uploaded_file(file, temp_dir)
 
-        file = request.files[key]
-        if file.filename == "":
-            return jsonify({"error": "No selected file"}), 400
+            bathymetry_parser = BathymetryParser()
+            result = bathymetry_parser.parse_file(path)
 
-        if file and file.filename.endswith(".txt"):
-            try:
-                temp_dir = tempfile.gettempdir()
-                path = _save_uploaded_file(file, temp_dir)
-                print(path)
-
-                bathymetry_parser = BathymetryParser()
-                result = bathymetry_parser.parse_file(path)
-
-                if result["success"]:
-                    return jsonify(result)
-                else:
-                    return jsonify({"error": result["message"]}), 400
-
-            except Exception as e:
-                return jsonify(
-                    {"error": f"Error processing bathymetry file: {str(e)}"}
-                ), 500
-
-    return jsonify({"error": "Invalid file format. Please upload a .txt file."}), 400
+            if result["success"]:
+                return jsonify(result)
+            return _error_response(
+                result["message"],
+                hint=(
+                    "The file should contain two numeric columns: inline "
+                    "distance and depth."
+                ),
+            )
+    except Exception:
+        return _unexpected_error(
+            f"Could not read the bathymetry file '{file.filename}'.",
+            hint=(
+                "The file should contain two numeric columns: inline distance "
+                "and depth."
+            ),
+        )
 
 
 @app.route("/api/misfit_stats", methods=["POST"])
@@ -827,7 +1060,10 @@ def calculate_misfit_stats():
         if "datasets" in payload:
             datasets = payload.get("datasets", [])
             if not datasets:
-                return jsonify({"error": "No data provided"}), 400
+                return _error_response(
+                    "No data provided",
+                    hint="Make at least one dataset visible to compute misfits.",
+                )
 
             results = {}
             errors = {}
@@ -851,16 +1087,27 @@ def calculate_misfit_stats():
 
         data_array = payload.get("data", [])
         if not data_array:
-            return jsonify({"error": "No data provided"}), 400
+            return _error_response(
+                "No data provided",
+                hint="Load a .resp dataset that contains residual values.",
+            )
 
         result = calculate_misfit_statistics(data_array)
         return jsonify(result)
 
     except ValueError as e:
-        return jsonify({"error": str(e)}), 400
-    except Exception as e:
-        traceback.print_exc()
-        return jsonify({"error": str(e)}), 500
+        return _error_response(
+            str(e),
+            hint=(
+                "Misfit statistics need Type, Residual, Freq and Rx/Tx "
+                "position columns; load a .resp file from an inversion."
+            ),
+        )
+    except Exception:
+        return _unexpected_error(
+            "Could not calculate misfit statistics.",
+            hint="Reload the dataset and try again.",
+        )
 
 
 if __name__ == "__main__":
