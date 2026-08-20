@@ -11,6 +11,7 @@ import pandas as pd
 import pytest
 
 import main as backend_main
+from conftest import requires_sample_files
 
 
 @pytest.fixture()
@@ -34,6 +35,7 @@ def sample_data_path():
 class TestLoadSampleData:
     """Tests for the /api/load-sample-data endpoint."""
 
+    @requires_sample_files("EMAGE_LINE2_s4IC_m_ef3_test.data")
     def test_load_sample_data_returns_dataset(self, app_client):
         """Test loading a single sample file."""
         payload = {"files": ["EMAGE_LINE2_s4IC_m_ef3_test.data"]}
@@ -55,6 +57,10 @@ class TestLoadSampleData:
         assert "data" in dataset
         assert "dataBlocks" in dataset
 
+    @requires_sample_files(
+        "EMAGE_LINE2_s4IC_m_ef3_test.data",
+        "EMAGE_LINE2_s4IC_m_ef3.data",
+    )
     def test_load_multiple_sample_files(self, app_client):
         """Test loading multiple sample files at once."""
         payload = {
@@ -139,6 +145,7 @@ class TestLoadSampleData:
         assert response.status_code == 400
         assert "Invalid" in response.get_json()["error"]
 
+    @requires_sample_files("testIC2_m_ef3of3.19.resp")
     def test_load_resp_file_format(self, app_client):
         """Test loading a .resp file format."""
         payload = {"files": ["testIC2_m_ef3of3.19.resp"]}
@@ -158,6 +165,7 @@ class TestLoadSampleData:
 class TestUploadData:
     """Tests for the /api/upload-data endpoint."""
 
+    @requires_sample_files("EMAGE_LINE2_s4IC_m_ef3_test.data")
     def test_upload_data_returns_object(self, app_client, sample_data_path):
         """Test uploading a valid data file."""
         file_path = os.path.join(sample_data_path, "EMAGE_LINE2_s4IC_m_ef3_test.data")
@@ -314,6 +322,10 @@ class TestUploadTriangleModel:
         assert constrained_mesh["triangleResistivityValues"] == [100.0, 100.0]
         assert constrained_mesh["regionResistivity"] == [{"regionId": 1, "rho": 100.0}]
 
+    @requires_sample_files(
+        "testIC2_m_ef035of3.poly",
+        "testIC2_m_ef035of3.19.resistivity",
+    )
     def test_upload_triangle_model_handles_large_fixture_pair(
         self, app_client, sample_data_path
     ):

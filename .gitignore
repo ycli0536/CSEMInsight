@@ -17,9 +17,11 @@ conductor/
 .sisyphus/
 .agent/
 .gemini/
-.github/skills/
+.github/skills
 .agents/
-.github/
+
+# Node
+node_modules/
 
 # Python
 __pycache__/

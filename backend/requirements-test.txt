@@ -1,0 +1,5 @@
+# Test dependencies for CSEMInsight backend.
+# Kept separate from requirements-dev.txt so CI does not install the JupyterLab
+# stack just to run pytest.
+-r requirements.txt
+pytest==8.3.3

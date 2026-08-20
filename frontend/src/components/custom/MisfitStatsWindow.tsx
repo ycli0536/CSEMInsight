@@ -403,7 +403,7 @@ export const MisfitStatsWindow = () => {
         return () => {
             controller.abort();
         };
-    }, [filteredData, orderedDatasetIds, datasets]);
+    }, [filteredData, orderedDatasetIds, datasets, isDemoMode]);
 
     // Initialize and update plots
     // Initialize and update plots (Scatter only, as others are Recharts)
@@ -503,7 +503,7 @@ export const MisfitStatsWindow = () => {
             scatterPlotRef.current?.destroy();
             scatterPlotRef.current = null;
         };
-    }, [datasetStats, loading, missingResidual, isDarkMode]);
+    }, [datasetStats, loading, missingResidual, isDarkMode, isDraggingMisfit]);
 
     // Handle window resize with debounce
     useEffect(() => {
