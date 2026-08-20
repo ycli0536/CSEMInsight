@@ -570,8 +570,14 @@ class TestWriteDataFile:
     """Tests for the /api/write-data-file endpoint."""
 
     def test_write_data_file_options_returns_cors_headers(self, app_client):
-        """Test that OPTIONS request returns CORS headers."""
-        response = app_client.options("/api/write-data-file")
+        """Test that a preflight from the app origin returns CORS headers."""
+        response = app_client.options(
+            "/api/write-data-file",
+            headers={
+                "Origin": "http://localhost:5173",
+                "Access-Control-Request-Method": "POST",
+            },
+        )
 
         assert response.status_code == 200
         # Check CORS headers
