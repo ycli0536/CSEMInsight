@@ -3,6 +3,8 @@ import os
 import shutil
 import sys
 import tempfile
+import threading
+import time
 import uuid
 import json
 from contextlib import contextmanager
@@ -10,6 +12,7 @@ from datetime import datetime
 from typing import List
 import numpy as np
 import pandas as pd
+import psutil
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from werkzeug.utils import secure_filename
@@ -36,6 +39,8 @@ from triangle_model_resegmentation import (
 
 DEFAULT_PORT = 3354
 DEFAULT_MAX_UPLOAD_MB = 512
+#: How often the watchdog checks that the process that started us is alive.
+PARENT_POLL_SECONDS = 2.0
 
 # The backend only ever serves the local frontend: the Vite dev server, the
 # `vite preview` server, and the Tauri webview. The port is not pinned because
@@ -65,6 +70,17 @@ def _coerce_port(raw_value) -> int:
     return port if 1 <= port <= 65535 else 0
 
 
+def _read_cli_value(arguments: List[str], flag: str):
+    """Return the value of ``--flag value`` or ``--flag=value``, else None."""
+    prefix = f"{flag}="
+    for index, argument in enumerate(arguments):
+        if argument == flag and index + 1 < len(arguments):
+            return arguments[index + 1]
+        if argument.startswith(prefix):
+            return argument[len(prefix):]
+    return None
+
+
 def _get_port(argv: List[str] = None) -> int:
     """Return the TCP port the API should listen on.
 
@@ -80,20 +96,109 @@ def _get_port(argv: List[str] = None) -> int:
     """
     arguments = list(sys.argv[1:] if argv is None else argv)
 
-    cli_value = None
-    for index, argument in enumerate(arguments):
-        if argument == "--port" and index + 1 < len(arguments):
-            cli_value = arguments[index + 1]
-            break
-        if argument.startswith("--port="):
-            cli_value = argument.split("=", 1)[1]
-            break
-
     return (
-        _coerce_port(cli_value)
+        _coerce_port(_read_cli_value(arguments, "--port"))
         or _coerce_port(os.getenv("CSEMINSIGHT_PORT"))
         or DEFAULT_PORT
     )
+
+
+def _get_parent_pid(argv: List[str] = None) -> int:
+    """Return the PID this backend should shut down with.
+
+    Args:
+        argv: Argument list to read; defaults to the process arguments.
+
+    Returns:
+        The ``--parent-pid`` value, or 0 to run unsupervised.
+    """
+    arguments = list(sys.argv[1:] if argv is None else argv)
+    try:
+        parent_pid = int(str(_read_cli_value(arguments, "--parent-pid")).strip())
+    except (TypeError, ValueError):
+        return 0
+    return parent_pid if parent_pid > 0 else 0
+
+
+def _parent_is_gone(parent) -> bool:
+    """Whether the watched process has exited.
+
+    A zombie counts as gone: on POSIX the process has exited and is only
+    waiting to be reaped, so it is never coming back. Errors that are not
+    "no such process" -- an ``AccessDenied`` blip, say -- are treated as still
+    alive, so a transient failure cannot take the backend down with it.
+    """
+    try:
+        if not parent.is_running():
+            return True
+        return parent.status() == psutil.STATUS_ZOMBIE
+    except psutil.NoSuchProcess:
+        return True
+    except psutil.Error:
+        return False
+
+
+def _watch_parent(parent_pid: int, poll_seconds: float, exit_process=None) -> None:
+    """Block until the watched process is gone, then end this one.
+
+    Args:
+        parent_pid: PID to watch.
+        poll_seconds: Delay between liveness checks.
+        exit_process: Called instead of exiting; for tests.
+    """
+    if exit_process is None:
+        # os._exit rather than sys.exit: this runs on a daemon thread, where
+        # sys.exit ends only the thread and leaves the server serving.
+        exit_process = lambda: os._exit(0)  # noqa: E731
+
+    try:
+        parent = psutil.Process(parent_pid)
+    except psutil.NoSuchProcess:
+        exit_process()
+        return
+    except psutil.Error:
+        # Cannot supervise this process; keep serving rather than quit on a
+        # permissions problem.
+        return
+
+    while not _parent_is_gone(parent):
+        time.sleep(poll_seconds)
+
+    exit_process()
+
+
+def _start_parent_watchdog(
+    parent_pid: int,
+    poll_seconds: float = PARENT_POLL_SECONDS,
+    exit_process=None,
+):
+    """Exit this process once the process that started it is gone.
+
+    The desktop shell kills the sidecar it spawned, but PyInstaller's onefile
+    bootloader re-executes itself, so the process actually serving requests is
+    a grandchild the shell has no handle on. Without this, quitting the app
+    leaves the backend running and holding its port. Watching the parent also
+    covers what the shell cannot handle at all: a crash or a force quit.
+
+    Args:
+        parent_pid: PID to watch; 0 disables supervision.
+        poll_seconds: Delay between liveness checks.
+        exit_process: Called instead of exiting; for tests.
+
+    Returns:
+        The watchdog thread, or None when running unsupervised.
+    """
+    if parent_pid <= 0:
+        return None
+
+    thread = threading.Thread(
+        target=_watch_parent,
+        args=(parent_pid, poll_seconds, exit_process),
+        name="parent-watchdog",
+        daemon=True,
+    )
+    thread.start()
+    return thread
 
 
 def _get_max_upload_bytes() -> int:
@@ -1152,5 +1257,6 @@ def calculate_misfit_stats():
 
 
 if __name__ == "__main__":
+    _start_parent_watchdog(_get_parent_pid())
     # Bind to loopback only: this API is for the local frontend, not the network.
     app.run(host="127.0.0.1", debug=_get_debug_flag(), port=_get_port())
