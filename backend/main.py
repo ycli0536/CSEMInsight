@@ -31,6 +31,14 @@ from triangle_resistivity_export import (
     ResistivityExportError,
     build_exported_resistivity_text,
 )
+from penalty_cut_service import (
+    PenaltyCutError,
+    apply_penalty_cut,
+    parse_interface,
+    parse_model_bounds,
+    parse_penalty_cut_parameters,
+)
+from poly_region_inheritance import RegionInheritanceError
 from triangle_model_resegmentation import (
     ResegmentationError,
     build_resegmentation_result,
@@ -1254,6 +1262,223 @@ def calculate_misfit_stats():
             "Could not calculate misfit statistics.",
             hint="Reload the dataset and try again.",
         )
+
+
+#: /api/upload-triangle-model reads a .poly with read_poly_file's default
+#: unit_scale_factor of 1e-3, so every model the viewer holds is in kilometres.
+#: The penalty cut merge has to run in metres -- that is the unit the .poly and
+#: the interface file are written in -- so the display payload is converted
+#: afterwards. The exported text stays in metres.
+_DISPLAY_UNIT_SCALE = 1e-3
+
+
+def _scale_model_for_display(vertices, segments, regions, scale=_DISPLAY_UNIT_SCALE):
+    """Copy a parsed model with coordinates scaled, leaving the original alone."""
+    scaled_vertices = {
+        vertex_id: {**vertex, "hCoor": vertex["hCoor"] * scale, "vCoor": vertex["vCoor"] * scale}
+        for vertex_id, vertex in vertices.items()
+    }
+    scaled_regions = [
+        {**region, "hCoor": region["hCoor"] * scale, "vCoor": region["vCoor"] * scale}
+        for region in (regions or [])
+    ]
+    return scaled_vertices, list(segments), scaled_regions
+
+
+_PENALTY_CUT_HINT = (
+    "The interface file must hold two columns 'y z' (whitespace or comma "
+    "separated, '#' comments allowed), in the same along-line/depth frame as "
+    "the model. Check the units setting if the line lands in the wrong place."
+)
+
+
+@app.route("/api/parse-interface", methods=["POST"])
+def parse_interface_file():
+    """Parse an interface file and say where it would land, without merging.
+
+    Deliberately cheap: this runs when the user drops a file, so a unit mistake
+    shows up as a line drawn in the wrong place rather than after a multi-second
+    merge. The model itself is not uploaded -- the client already has it, and
+    sends only its bounding box for the sanity checks.
+    """
+    cut_file = request.files.get("cut_file")
+    if cut_file is None or cut_file.filename == "":
+        return _error_response(
+            "No interface file provided",
+            hint=_PENALTY_CUT_HINT,
+        )
+
+    try:
+        raw_parameters = request.form.get("parameters") or "{}"
+        payload = json.loads(raw_parameters)
+        parameters = parse_penalty_cut_parameters(payload)
+        bounds = (
+            parse_model_bounds(payload["modelBounds"])
+            if isinstance(payload, dict) and payload.get("modelBounds")
+            else None
+        )
+        text = cut_file.read().decode("utf-8", errors="replace")
+        result = parse_interface(text, parameters, bounds)
+    except json.JSONDecodeError:
+        return _error_response(
+            "Invalid penalty cut parameters JSON", hint=_PENALTY_CUT_HINT
+        )
+    except PenaltyCutError as exc:
+        return _error_response(str(exc), hint=_PENALTY_CUT_HINT)
+    except Exception:
+        return _unexpected_error(
+            f"Could not read the interface file '{cut_file.filename}'.",
+            hint=_PENALTY_CUT_HINT,
+        )
+
+    result["cutFileName"] = cut_file.filename
+    return jsonify(result)
+
+
+@app.route("/api/apply-penalty-cut", methods=["POST"])
+def apply_penalty_cut_to_model():
+    """Merge an interface into a model as penalty cuts and rebuild its resistivity.
+
+    Returns the merged model in the same shape as ``/api/upload-triangle-model``
+    so the viewer can swap it in directly, plus the text of both output files
+    for download.
+    """
+    poly_file = request.files.get("poly_file")
+    resistivity_file = request.files.get("resistivity_file")
+    cut_file = request.files.get("cut_file")
+
+    for label, uploaded, suffix in (
+        (".poly model", poly_file, ".poly"),
+        (".resistivity file", resistivity_file, ".resistivity"),
+        ("interface file", cut_file, None),
+    ):
+        if uploaded is None or uploaded.filename == "":
+            return _error_response(
+                f"No {label} provided", hint=_PENALTY_CUT_HINT
+            )
+        if suffix and not uploaded.filename.endswith(suffix):
+            return _error_response(
+                f"Invalid {label} format; expected a {suffix} file",
+                hint=_PENALTY_CUT_HINT,
+            )
+
+    try:
+        parameters = parse_penalty_cut_parameters(
+            json.loads(request.form.get("parameters") or "{}")
+        )
+    except json.JSONDecodeError:
+        return _error_response(
+            "Invalid penalty cut parameters JSON", hint=_PENALTY_CUT_HINT
+        )
+    except PenaltyCutError as exc:
+        return _error_response(str(exc), hint=_PENALTY_CUT_HINT)
+
+    stem, _ = os.path.splitext(secure_filename(poly_file.filename) or "model.poly")
+    output_poly_name = f"{stem}.cut.poly"
+    output_resistivity_name = f"{stem}.cut.0.resistivity"
+
+    try:
+        with _upload_workspace() as temp_dir:
+            poly_path = _save_uploaded_file(poly_file, temp_dir)
+            resistivity_path = _save_uploaded_file(resistivity_file, temp_dir)
+
+            poly_parser = MARE2DEMPolyParser()
+            vertices, segments, holes, regions = poly_parser.read_poly_file(
+                poly_path, unit_scale_factor=1
+            )
+
+            resistivity_parser = ResistivityFileParser()
+            parsed_resistivity = resistivity_parser.parse_resistivity_file(
+                resistivity_path, rho_parse=True
+            )
+
+            with open(resistivity_path, "r", encoding="utf-8") as handle:
+                resistivity_text = handle.read()
+
+            cut_text = cut_file.read().decode("utf-8", errors="replace")
+
+        result = apply_penalty_cut(
+            vertices,
+            segments,
+            holes,
+            regions,
+            parsed_resistivity.get("table"),
+            resistivity_text,
+            cut_text,
+            parameters,
+            output_poly_name,
+        )
+    except PenaltyCutError as exc:
+        return _error_response(str(exc), hint=_PENALTY_CUT_HINT)
+    except RegionInheritanceError as exc:
+        return _error_response(str(exc), hint=_PENALTY_CUT_HINT)
+    except Exception:
+        return _unexpected_error(
+            "Could not apply the penalty cut to this model.",
+            hint=_PENALTY_CUT_HINT,
+        )
+
+    try:
+        # The merge ran in metres; the viewer speaks kilometres.
+        display_vertices, display_segments, display_regions = _scale_model_for_display(
+            result["vertices"], result["segments"], result["regions"]
+        )
+        display_holes = [
+            {**hole, "hCoor": hole["hCoor"] * _DISPLAY_UNIT_SCALE,
+             "vCoor": hole["vCoor"] * _DISPLAY_UNIT_SCALE}
+            for hole in (result["holes"] or [])
+        ]
+        (
+            ordered_vertices,
+            ordered_segments,
+            ordered_holes,
+            ordered_regions,
+        ) = _serialize_poly_model(
+            display_vertices, display_segments, display_holes, display_regions
+        )
+
+        # Parse the resistivity text we just generated rather than reusing the
+        # in-memory table: what the viewer colours by is then exactly what the
+        # user downloads, and a formatting bug shows up here instead of in an
+        # inversion run.
+        with _upload_workspace() as temp_dir:
+            derived_path = os.path.join(temp_dir, output_resistivity_name)
+            with open(derived_path, "w", encoding="utf-8") as handle:
+                handle.write(result["resistivityText"])
+            merged_resistivity = resistivity_parser.parse_resistivity_file(
+                derived_path, rho_parse=True
+            )
+
+        constrained_mesh = _serialize_constrained_mesh(
+            MARE2DEMPolyParser(),
+            display_vertices,
+            display_segments,
+            display_regions,
+            merged_resistivity,
+        )
+    except Exception:
+        return _unexpected_error(
+            "The penalty cut was applied but the merged mesh could not be built "
+            "for display.",
+            hint=_PENALTY_CUT_HINT,
+        )
+
+    return jsonify(
+        {
+            "polyFileName": output_poly_name,
+            "resistivityFileName": output_resistivity_name,
+            "vertices": ordered_vertices,
+            "segments": ordered_segments,
+            "holes": ordered_holes,
+            "regions": ordered_regions,
+            "resistivity": _serialize_resistivity_model(merged_resistivity),
+            "constrainedMesh": constrained_mesh,
+            "polyText": result["polyText"],
+            "resistivityText": result["resistivityText"],
+            "stats": result["stats"],
+            "warnings": result["warnings"],
+        }
+    )
 
 
 if __name__ == "__main__":
