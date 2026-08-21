@@ -434,14 +434,19 @@ class MARE2DEMPolyParser():
         
         # 2. Validate segment endpoints
         segment_issues = 0
-        boundary_markers = 0
+        penalty_cuts = 0
         for segment in segments:
             if segment['endpoint_1'] not in vertices or segment['endpoint_2'] not in vertices:
                 segment_issues += 1
-            
-            # Count boundary markers (penalty cuts)
-            if segment.get('boundary_marker') is not None and segment.get('boundary_marker') != 0:
-                boundary_markers += 1
+
+            # Count penalty cuts. MARE2DEM treats a segment as a cut only when its
+            # marker is negative -- see mare2dem_penaltymatrix.f90:187,
+            # `if (inmodel%segmentmarkerlist(i) < 0)`. The magnitude is unrelated:
+            # it controls mesh coarsening (abs(marker) < 2 is never coarsened away,
+            # see mare2dem_worker.f90:682), so markers 1 and 2 are NOT cuts.
+            marker = segment.get('boundary_marker')
+            if marker is not None and marker < 0:
+                penalty_cuts += 1
         
         if segment_issues > 0:
             issues.append(f"Found {segment_issues} segments with invalid vertex references")
@@ -461,7 +466,7 @@ class MARE2DEMPolyParser():
         # Report results
         print(f"  ✓ Vertices: {len(vertices)} (all with valid coordinates)")
         print(f"  ✓ Segments: {len(segments)} (all with valid endpoints)")
-        print(f"  ✓ Boundary markers: {boundary_markers} segments with penalty cuts")
+        print(f"  ✓ Penalty cuts: {penalty_cuts} segments with negative boundary markers")
         print(f"  ✓ Regions: {len(regions) if regions else 0} (all with interior points)")
         
         if issues:
