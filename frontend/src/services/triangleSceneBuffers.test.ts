@@ -4,8 +4,10 @@ import {
   buildTriangleRegionHighlightPositions,
   buildTriangleSceneBuffers,
   buildTriangleSelectionHighlightPositions,
+  buildTriangleSegmentBuffers,
   buildTriangleSegmentPositions,
 } from './triangleSceneBuffers';
+import { TRIANGLE_SEGMENT_MARKER_COLORS } from './triangleSegmentMarkers';
 
 describe('triangleSceneBuffers', () => {
   it('builds triangle fill, color, edge, and point buffers for constrained mesh rendering', () => {
@@ -72,6 +74,57 @@ describe('triangleSceneBuffers', () => {
       2, 0, 0,
       0, 1, 0,
     ]);
+  });
+
+  it('colours segments magenta for penalty cuts and black otherwise', () => {
+    const { positions, colors } = buildTriangleSegmentBuffers(
+      [
+        { id: 1, x: 0, y: 0 },
+        { id: 2, x: 2, y: 0 },
+        { id: 3, x: 0, y: 1 },
+        { id: 4, x: 2, y: 1 },
+      ],
+      [
+        { id: 1, endpoint_1: 1, endpoint_2: 2, boundary_marker: 1 },
+        { id: 2, endpoint_1: 2, endpoint_2: 3, boundary_marker: -2 },
+        { id: 3, endpoint_1: 3, endpoint_2: 4, boundary_marker: 2 },
+        { id: 4, endpoint_1: 4, endpoint_2: 1, boundary_marker: null },
+      ],
+    );
+
+    const [cutR, cutG, cutB] = TRIANGLE_SEGMENT_MARKER_COLORS.cut;
+
+    expect(colors).toHaveLength(positions.length);
+    // Round-trip the expectation through Float32Array so the comparison is not
+    // tripped up by float32 rounding of 240/255.
+    expect(Array.from(colors)).toEqual(
+      Array.from(
+        new Float32Array([
+          0, 0, 0, 0, 0, 0, // marker 1 -> ordinary
+          cutR, cutG, cutB, cutR, cutG, cutB, // marker -2 -> penalty cut
+          0, 0, 0, 0, 0, 0, // marker 2 -> ordinary
+          0, 0, 0, 0, 0, 0, // no marker -> ordinary
+        ]),
+      ),
+    );
+  });
+
+  it('keeps positions and colours aligned when an endpoint is missing', () => {
+    const { positions, colors } = buildTriangleSegmentBuffers(
+      [
+        { id: 1, x: 0, y: 0 },
+        { id: 2, x: 2, y: 0 },
+      ],
+      [
+        { id: 1, endpoint_1: 1, endpoint_2: 99, boundary_marker: -1 },
+        { id: 2, endpoint_1: 1, endpoint_2: 2, boundary_marker: -1 },
+      ],
+    );
+
+    const [r, g, b] = TRIANGLE_SEGMENT_MARKER_COLORS.cut;
+
+    expect(Array.from(positions)).toEqual([0, 0, 0, 2, 0, 0]);
+    expect(Array.from(colors)).toEqual(Array.from(new Float32Array([r, g, b, r, g, b])));
   });
 
   it('builds region highlight positions for every triangle that shares the hovered region id', () => {

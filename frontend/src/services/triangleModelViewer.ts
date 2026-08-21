@@ -11,7 +11,8 @@ import {
   buildTriangleRegionHighlightPositions,
   buildTriangleSceneBuffers,
   buildTriangleSelectionHighlightPositions,
-  buildTriangleSegmentPositions,
+  buildTriangleSegmentBuffers,
+  type TriangleSegmentBuffers,
 } from '@/services/triangleSceneBuffers';
 import {
   buildTriangleFillColors,
@@ -85,6 +86,14 @@ function updatePositionGeometry(
 ) {
   geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
   geometry.computeBoundingSphere();
+}
+
+function updateSegmentGeometry(
+  geometry: THREE.BufferGeometry,
+  buffers: TriangleSegmentBuffers,
+) {
+  updatePositionGeometry(geometry, buffers.positions);
+  geometry.setAttribute('color', new THREE.BufferAttribute(buffers.colors, 3));
 }
 
 function updateLineHighlight(
@@ -230,8 +239,10 @@ export function createTriangleModelViewer(options: {
   rootGroup.add(triangleGroup);
 
   const segmentGeometry = new THREE.BufferGeometry();
+  // Colour comes from the per-vertex buffer, keyed on each segment's boundary
+  // marker -- see buildTriangleSegmentBuffers / triangleSegmentMarkers.
   const segmentMaterial = new THREE.LineBasicMaterial({
-    color: 0x000000,
+    vertexColors: true,
     opacity: 0.95,
     transparent: true,
   });
@@ -868,9 +879,9 @@ export function createTriangleModelViewer(options: {
       segmentMaterial.opacity = hasResistivityColors ? 0.72 : 0.95;
 
       updatePositionGeometry(triangleEdgeGeometry, buffers.triangleEdgePositions);
-      updatePositionGeometry(
+      updateSegmentGeometry(
         segmentGeometry,
-        buildTriangleSegmentPositions(sourcePoints, model.segments),
+        buildTriangleSegmentBuffers(sourcePoints, model.segments),
       );
       updatePositionGeometry(pointGeometry, buffers.pointPositions);
 

@@ -3,6 +3,7 @@ import type {
   TriangleModelRegion,
   TriangleModelVertex,
 } from '@/types';
+import { describeTriangleSegmentMarker } from '@/services/triangleSegmentMarkers';
 
 interface TriangleHoverSummaryContext {
   regions: TriangleModelRegion[];
@@ -83,7 +84,8 @@ export function formatTriangleHoverSummary(
   }
 
   if (hover.segment) {
-    return `Segment ${hover.segment.id}: ${hover.segment.endpoint_1} -> ${hover.segment.endpoint_2}`;
+    const marker = describeTriangleSegmentMarker(hover.segment.boundary_marker);
+    return `Segment ${hover.segment.id}: ${hover.segment.endpoint_1} -> ${hover.segment.endpoint_2}, ${marker}`;
   }
 
   if (hover.triangleIndex !== null) {

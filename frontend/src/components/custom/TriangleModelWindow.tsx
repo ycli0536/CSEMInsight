@@ -60,6 +60,7 @@ import {
   type TriangleResistivityColorRange,
 } from '@/services/triangleModelColorScale';
 import { formatTriangleHoverSummary } from '@/services/triangleModelHoverSummary';
+import { TRIANGLE_SEGMENT_MARKER_LEGEND } from '@/services/triangleSegmentMarkers';
 import {
   buildTriangleMeshFromConstrainedMesh,
   buildTriangleMeshFromModel,
@@ -1107,6 +1108,23 @@ export function TriangleModelWindow() {
                 <Move className="h-3.5 w-3.5" />
                 Segments
               </Button>
+              {visibleLayers.segments ? (
+                <span
+                  className="flex items-center gap-2 px-1 text-xs text-muted-foreground"
+                  data-testid="triangle-segment-marker-legend"
+                >
+                  {TRIANGLE_SEGMENT_MARKER_LEGEND.map((entry) => (
+                    <span key={entry.markerClass} className="flex items-center gap-1">
+                      <span
+                        aria-hidden
+                        className="inline-block h-0 w-4 rounded-full border-2 border-slate-400"
+                        style={{ borderColor: entry.css }}
+                      />
+                      {entry.label}
+                    </span>
+                  ))}
+                </span>
+              ) : null}
               <Button
                 type="button"
                 size="sm"

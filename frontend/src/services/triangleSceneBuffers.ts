@@ -1,5 +1,9 @@
 import { buildTriangleFillColors } from '@/services/triangleModelColorScale';
 import type { TriangleMesh, TriangleMeshPoint, TriangleModelSegment } from '@/types';
+import {
+  classifyTriangleSegmentMarker,
+  TRIANGLE_SEGMENT_MARKER_COLORS,
+} from '@/services/triangleSegmentMarkers';
 
 export interface TriangleSceneBuffers {
   pointPositions: Float32Array;
@@ -82,12 +86,25 @@ export function buildTriangleSceneBuffers(mesh: TriangleMesh): TriangleSceneBuff
   };
 }
 
-export function buildTriangleSegmentPositions(
+export interface TriangleSegmentBuffers {
+  positions: Float32Array;
+  /** Per-vertex RGB, coloured by boundary marker. Aligned with `positions`. */
+  colors: Float32Array;
+}
+
+/**
+ * Build the line buffers for the original `.poly` segments, colouring each one by
+ * its boundary marker (see `triangleSegmentMarkers`). Positions and colours are
+ * produced together so the two arrays can never drift out of alignment when a
+ * segment is skipped for a missing endpoint.
+ */
+export function buildTriangleSegmentBuffers(
   points: TriangleMeshPoint[],
   segments: TriangleModelSegment[],
-) {
+): TriangleSegmentBuffers {
   const pointById = new Map(points.map((point) => [point.id, point]));
   const segmentValues: number[] = [];
+  const colorValues: number[] = [];
 
   for (const segment of segments) {
     const start = pointById.get(segment.endpoint_1);
@@ -98,9 +115,24 @@ export function buildTriangleSegmentPositions(
     }
 
     segmentValues.push(start.x, start.y, 0, end.x, end.y, 0);
+
+    const [r, g, b] =
+      TRIANGLE_SEGMENT_MARKER_COLORS[classifyTriangleSegmentMarker(segment.boundary_marker)];
+    // Both endpoints of a segment share the marker, so both get the same colour.
+    colorValues.push(r, g, b, r, g, b);
   }
 
-  return new Float32Array(segmentValues);
+  return {
+    positions: new Float32Array(segmentValues),
+    colors: new Float32Array(colorValues),
+  };
+}
+
+export function buildTriangleSegmentPositions(
+  points: TriangleMeshPoint[],
+  segments: TriangleModelSegment[],
+) {
+  return buildTriangleSegmentBuffers(points, segments).positions;
 }
 
 export function buildTriangleRegionHighlightPositions(

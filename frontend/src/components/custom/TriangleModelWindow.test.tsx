@@ -1175,6 +1175,22 @@ describe('TriangleModelWindow', () => {
           boundary_marker: null,
         },
       }),
-    ).toBe('Segment 3: 7 -> 8');
+    ).toBe('Segment 3: 7 -> 8, marker none');
+  });
+
+  it('reports the boundary marker and what MARE2DEM does with it', () => {
+    const hoverSegment = (boundary_marker: number | null) =>
+      formatTriangleHoverSummary({
+        point: { x: 1, y: 2 },
+        triangleIndex: null,
+        regionId: null,
+        resistivityValue: null,
+        vertex: null,
+        segment: { id: 3, endpoint_1: 7, endpoint_2: 8, boundary_marker },
+      });
+
+    expect(hoverSegment(-2)).toBe('Segment 3: 7 -> 8, marker -2 (cut · coarsenable)');
+    expect(hoverSegment(1)).toBe('Segment 3: 7 -> 8, marker 1 (fixed)');
+    expect(hoverSegment(2)).toBe('Segment 3: 7 -> 8, marker 2 (coarsenable)');
   });
 });
