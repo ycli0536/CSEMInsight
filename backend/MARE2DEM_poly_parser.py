@@ -1334,13 +1334,21 @@ class MARE2DEMPolyManager():
             hCoor, vCoor, attribute, max_area = 0, 0, new_region_id, -1
 
             if contained_original_regions:
-                # An original point lies in this new region. Use its properties.
+                # An original point lies in this new region. Reuse its seed point,
+                # which is known to be interior.
                 # If multiple original points end up in the same new region, we use the first one.
                 first_orig_region = contained_original_regions[0]
                 # print(f"  ✓ Mapping new region {new_region_id} to original region {first_orig_region['id']}.")
                 hCoor = first_orig_region['hCoor']
                 vCoor = first_orig_region['vCoor']
-                attribute = first_orig_region.get('attribute', first_orig_region['id'])
+                # The attribute stays new_region_id and is NOT inherited. A region's
+                # attribute is its region number: read_poly_file sets it to the
+                # region's position on load, and everything that consumes it --
+                # main.py's mesh serialisation, triangle_model_resegmentation --
+                # uses it to index the .resistivity table by that position.
+                # Inheriting the source region's attribute made merged regions
+                # index the wrong row, which showed up as fixed regions such as
+                # air rendering with a neighbouring sediment's resistivity.
             else:
                 # This is a new region (e.g., an intersection). We must generate a new seed point.
                 # The centroid of the first triangle in the region is a safe choice.
