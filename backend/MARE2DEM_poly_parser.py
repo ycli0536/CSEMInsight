@@ -926,6 +926,26 @@ class MARE2DEMPolyManager():
 
         return merged_vertices, merged_segments, merged_holes, merged_regions
     
+    def merge_parsed(self, vertices1, segments1, holes1, regions1,
+                     vertices2, segments2, holes2, regions2):
+        """Merge two already-parsed models.
+
+        Same geometry as :meth:`merge_poly`, minus the file I/O -- callers that
+        already hold parsed models (an API request, say) should use this rather
+        than writing the model back out just to read it in again.
+
+        Args:
+            vertices1, segments1, holes1, regions1: First parsed model.
+            vertices2, segments2, holes2, regions2: Second parsed model.
+
+        Returns:
+            tuple: (merged_vertices, merged_segments, merged_holes, merged_regions)
+        """
+        return self._correct_merge(
+            vertices1, segments1, holes1, regions1,
+            vertices2, segments2, holes2, regions2,
+        )
+
     def _correct_merge(self, vertices1, segments1, holes1, regions1, vertices2, segments2, holes2, regions2, output_file_without_regions=None):
         """
         Geometrically correct merge implementation with optimized intersection handling.
