@@ -175,3 +175,60 @@ export interface TriangleMesh {
   triangleRegionIds?: Array<number | null>;
   triangleResistivityValues?: Array<number | null>;
 }
+
+/** Units an interface file's two columns are written in. */
+export type PenaltyCutUnits = 'm' | 'km';
+
+/**
+ * Boundary marker for the inserted segments. Negative makes MARE2DEM treat the
+ * segment as a penalty cut; the magnitude decides whether mesh coarsening may
+ * drop it (`abs(marker) < 2` is kept, see `mare2dem_worker.f90:682`).
+ */
+export type PenaltyCutMarker = -1 | -2;
+
+export interface PenaltyCutParameters {
+  units: PenaltyCutUnits;
+  marker: PenaltyCutMarker;
+  /** Resistivity for regions the merge creates that match nothing in the source. */
+  defaultRho: number;
+}
+
+export interface PenaltyCutParseResponse {
+  /** Interface points as `[y, z]` pairs, in metres. */
+  points: [number, number][];
+  bounds: {
+    yMin: number;
+    yMax: number;
+    zMin: number;
+    zMax: number;
+  };
+  warnings: string[];
+  cutFileName: string;
+}
+
+export interface PenaltyCutStats {
+  interfacePointCount: number;
+  sourceSegmentCount: number;
+  mergedSegmentCount: number;
+  sourceRegionCount: number;
+  mergedRegionCount: number;
+  cutSegmentsBefore: number;
+  cutSegmentsAfter: number;
+  cutSegmentsAdded: number;
+  inheritedRegionCount: number;
+  unmatchedRegionCount: number;
+  fixedRegionCount: number;
+  freeParameterCount: number;
+}
+
+/**
+ * The merged model, in the same shape `/api/upload-triangle-model` returns so
+ * the viewer can swap it in without a special case, plus the text of both
+ * output files and what changed.
+ */
+export interface PenaltyCutApplyResponse extends TriangleModelResponse {
+  polyText: string;
+  resistivityText: string;
+  stats: PenaltyCutStats;
+  warnings: string[];
+}

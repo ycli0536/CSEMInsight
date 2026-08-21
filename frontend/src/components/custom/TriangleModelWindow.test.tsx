@@ -20,6 +20,7 @@ const mockViewer = {
   resize: vi.fn(),
   setData: vi.fn(),
   setInteractionMode: vi.fn(),
+  setInterfacePreview: vi.fn(),
   setLayerVisibility: vi.fn(),
   setSelectionOverlay: vi.fn(),
   setResistivityColorRange: vi.fn(),
@@ -1192,5 +1193,173 @@ describe('TriangleModelWindow', () => {
     expect(hoverSegment(-2)).toBe('Segment 3: 7 -> 8, marker -2 (cut · coarsenable)');
     expect(hoverSegment(1)).toBe('Segment 3: 7 -> 8, marker 1 (fixed)');
     expect(hoverSegment(2)).toBe('Segment 3: 7 -> 8, marker 2 (coarsenable)');
+  });
+});
+
+describe('TriangleModelWindow penalty cut', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  function mockUploadThen(handler: (url: string) => unknown) {
+    vi.mocked(axios.post).mockImplementation(async (url) => {
+      if (String(url).includes('/api/upload-triangle-model')) {
+        return { data: buildEditableTriangleModelResponse() };
+      }
+      return { data: handler(String(url)) };
+    });
+  }
+
+  async function dropInterface(user: ReturnType<typeof userEvent.setup>) {
+    await user.upload(
+      screen.getByLabelText(/interface file/i),
+      new File(['10 2\n90 3\n'], 'basement.txt', { type: 'text/plain' }),
+    );
+  }
+
+  it('draws the interface as an overlay before anything is merged', async () => {
+    const user = userEvent.setup();
+    mockUploadThen(() => ({
+      points: [
+        [10_000, 2_000],
+        [90_000, 3_000],
+      ],
+      bounds: { yMin: 10_000, yMax: 90_000, zMin: 2_000, zMax: 3_000 },
+      warnings: [],
+      cutFileName: 'basement.txt',
+    }));
+
+    render(<TriangleModelWindow />);
+    await loadTriangleModel(user);
+    await dropInterface(user);
+
+    await waitFor(() => {
+      // Metres from the server, kilometres in the viewer.
+      expect(mockViewer.setInterfacePreview).toHaveBeenCalledWith([
+        [10, 2],
+        [90, 3],
+      ]);
+    });
+    expect(await screen.findByTestId('penalty-cut-status')).toHaveTextContent(
+      '2 interface points',
+    );
+  });
+
+  it('shows the unit warning the server returns', async () => {
+    const user = userEvent.setup();
+    mockUploadThen(() => ({
+      points: [
+        [10, 2],
+        [90, 3],
+      ],
+      bounds: { yMin: 10, yMax: 90, zMin: 2, zMax: 3 },
+      warnings: ['The interface spans 80 m, only 0.008% of the model width.'],
+      cutFileName: 'basement.txt',
+    }));
+
+    render(<TriangleModelWindow />);
+    await loadTriangleModel(user);
+    await dropInterface(user);
+
+    expect(await screen.findByText(/only 0.008% of the model width/)).toBeVisible();
+  });
+
+  it('swaps the merged model into the viewer and offers both downloads', async () => {
+    const user = userEvent.setup();
+    const merged = {
+      ...buildEditableTriangleModelResponse(),
+      polyFileName: 'editable.cut.poly',
+      resistivityFileName: 'editable.cut.0.resistivity',
+      polyText: '4 2 0 0\n',
+      resistivityText: 'Format: mare2dem_1.1\n',
+      warnings: [],
+      stats: {
+        interfacePointCount: 2,
+        sourceSegmentCount: 4,
+        mergedSegmentCount: 6,
+        sourceRegionCount: 2,
+        mergedRegionCount: 3,
+        cutSegmentsBefore: 0,
+        cutSegmentsAfter: 2,
+        cutSegmentsAdded: 2,
+        inheritedRegionCount: 3,
+        unmatchedRegionCount: 0,
+        fixedRegionCount: 1,
+        freeParameterCount: 2,
+      },
+    };
+
+    mockUploadThen((url) =>
+      url.includes('/api/apply-penalty-cut')
+        ? merged
+        : {
+            points: [
+              [10_000, 2_000],
+              [90_000, 3_000],
+            ],
+            bounds: { yMin: 10_000, yMax: 90_000, zMin: 2_000, zMax: 3_000 },
+            warnings: [],
+            cutFileName: 'basement.txt',
+          },
+    );
+
+    render(<TriangleModelWindow />);
+    await loadTriangleModel(user);
+    await dropInterface(user);
+
+    mockViewer.setData.mockClear();
+    await user.click(screen.getByRole('button', { name: /apply to model/i }));
+
+    await waitFor(() => {
+      expect(mockViewer.setData).toHaveBeenCalled();
+    });
+    expect(await screen.findByTestId('penalty-cut-status')).toHaveTextContent(
+      'Added 2 cut segments',
+    );
+    // Scope to the panel: the window has other .resistivity download buttons.
+    const panel = within(screen.getByTestId('penalty-cut-panel'));
+    expect(panel.getByRole('button', { name: /\.poly/i })).toBeVisible();
+    expect(panel.getByRole('button', { name: /\.resistivity/i })).toBeVisible();
+    // The merged model carries the cut; keeping the candidate overlay would
+    // draw the line twice.
+    expect(mockViewer.setInterfacePreview).toHaveBeenLastCalledWith(null);
+  });
+
+  it('reports a server error without leaving the model changed', async () => {
+    const user = userEvent.setup();
+    vi.mocked(axios.post).mockImplementation(async (url) => {
+      if (String(url).includes('/api/upload-triangle-model')) {
+        return { data: buildEditableTriangleModelResponse() };
+      }
+      if (String(url).includes('/api/parse-interface')) {
+        return {
+          data: {
+            points: [
+              [10_000, 2_000],
+              [90_000, 3_000],
+            ],
+            bounds: { yMin: 10_000, yMax: 90_000, zMin: 2_000, zMax: 3_000 },
+            warnings: [],
+            cutFileName: 'basement.txt',
+          },
+        };
+      }
+      throw Object.assign(new Error('rejected'), {
+        isAxiosError: true,
+        response: { data: { error: 'Merging dropped 3 structural segments.' } },
+      });
+    });
+
+    render(<TriangleModelWindow />);
+    await loadTriangleModel(user);
+    await dropInterface(user);
+
+    mockViewer.setData.mockClear();
+    await user.click(screen.getByRole('button', { name: /apply to model/i }));
+
+    expect(await screen.findByTestId('penalty-cut-status')).toHaveTextContent(
+      'Merging dropped 3 structural segments.',
+    );
+    expect(mockViewer.setData).not.toHaveBeenCalled();
   });
 });

@@ -162,6 +162,8 @@ export interface TriangleModelViewer {
   setData(data: { mesh: TriangleMesh; model: TriangleModelResponse }): void;
   setInteractionMode(mode: TriangleViewerInteractionMode): void;
   setLayerVisibility(visibility: TriangleLayerVisibility): void;
+  /** Draw a candidate interface before it is merged, in model coordinates. */
+  setInterfacePreview(points: Array<[number, number]> | null): void;
   setResistivityColorRange(range: TriangleResistivityColorRange): void;
   setSelectionOverlay(selection: TriangleSelectionOverlay | null): void;
   setTriangleResistivityValues(values: Array<number | null>): void;
@@ -249,6 +251,21 @@ export function createTriangleModelViewer(options: {
   const segmentLines = new THREE.LineSegments(segmentGeometry, segmentMaterial);
   segmentLines.renderOrder = 3;
   rootGroup.add(segmentLines);
+
+  // A candidate interface, drawn before anything is merged. Same magenta as a
+  // real penalty cut so the preview reads as "this is what you are adding",
+  // but dashed to keep it distinct from segments that are actually in the model.
+  const interfaceGeometry = new THREE.BufferGeometry();
+  const interfaceMaterial = new THREE.LineDashedMaterial({
+    color: 0xf000f0,
+    dashSize: 1200,
+    gapSize: 700,
+    linewidth: 2,
+  });
+  const interfaceLine = new THREE.Line(interfaceGeometry, interfaceMaterial);
+  interfaceLine.renderOrder = 8;
+  interfaceLine.visible = false;
+  rootGroup.add(interfaceLine);
 
   const pointGeometry = new THREE.BufferGeometry();
   const pointMaterial = new THREE.PointsMaterial({
@@ -789,6 +806,8 @@ export function createTriangleModelViewer(options: {
       triangleEdgeMaterial.dispose();
       segmentGeometry.dispose();
       segmentMaterial.dispose();
+      interfaceGeometry.dispose();
+      interfaceMaterial.dispose();
       pointGeometry.dispose();
       pointMaterial.dispose();
       hoverTriangleGeometry.dispose();
@@ -913,6 +932,26 @@ export function createTriangleModelViewer(options: {
       interactionTarget.style.cursor = mode === 'lasso' ? 'crosshair' : 'grab';
       renderScene();
     },
+    setInterfacePreview(points: Array<[number, number]> | null) {
+      if (!points || points.length < 2) {
+        interfaceLine.visible = false;
+        renderScene();
+        return;
+      }
+
+      const positions = new Float32Array(points.length * 3);
+      points.forEach(([y, z], index) => {
+        positions[index * 3] = y;
+        positions[index * 3 + 1] = z;
+        positions[index * 3 + 2] = 0;
+      });
+      updatePositionGeometry(interfaceGeometry, positions);
+      // LineDashedMaterial needs per-vertex distances or no dashes appear.
+      interfaceLine.computeLineDistances();
+      interfaceLine.visible = true;
+      renderScene();
+    },
+
     setLayerVisibility(visibility) {
       triangleGroup.visible = visibility.triangles;
       segmentLines.visible = visibility.segments;

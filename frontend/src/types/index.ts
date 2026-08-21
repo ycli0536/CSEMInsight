@@ -137,6 +137,12 @@ export interface Dataset {
 
 export type { WindowContainer, WindowId, WindowState } from "./window";
 export type {
+  PenaltyCutApplyResponse,
+  PenaltyCutMarker,
+  PenaltyCutParameters,
+  PenaltyCutParseResponse,
+  PenaltyCutStats,
+  PenaltyCutUnits,
   TriangleConstrainedMesh,
   TriangleConstrainedMeshVertex,
   TriangleCameraState,

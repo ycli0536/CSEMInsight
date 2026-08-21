@@ -61,6 +61,7 @@ import {
 } from '@/services/triangleModelColorScale';
 import { formatTriangleHoverSummary } from '@/services/triangleModelHoverSummary';
 import { TRIANGLE_SEGMENT_MARKER_LEGEND } from '@/services/triangleSegmentMarkers';
+import { applyPenaltyCut, parseInterfaceFile } from '@/services/penaltyCut';
 import {
   buildTriangleMeshFromConstrainedMesh,
   buildTriangleMeshFromModel,
@@ -79,6 +80,10 @@ import {
   type TriangleViewportView,
 } from '@/services/triangleModelViewer';
 import type {
+  PenaltyCutApplyResponse,
+  PenaltyCutMarker,
+  PenaltyCutStats,
+  PenaltyCutUnits,
   TriangleHoverState,
   TriangleLayerVisibility,
   TriangleConstrainedMesh,
@@ -225,6 +230,17 @@ export function TriangleModelWindow() {
   const [resistivityFile, setResistivityFile] = useState<File | null>(null);
   const [loadedPolyFile, setLoadedPolyFile] = useState<File | null>(null);
   const [loadedResistivityFile, setLoadedResistivityFile] = useState<File | null>(null);
+  // Penalty cut: an interface file is parsed server-side and drawn as a dashed
+  // overlay first, so a unit mistake is visible before anyone waits on a merge.
+  const [cutFile, setCutFile] = useState<File | null>(null);
+  const [cutUnits, setCutUnits] = useState<PenaltyCutUnits>('km');
+  const [cutMarker, setCutMarker] = useState<PenaltyCutMarker>(-1);
+  const [cutPreview, setCutPreview] = useState<[number, number][] | null>(null);
+  const [cutWarnings, setCutWarnings] = useState<string[]>([]);
+  const [cutStats, setCutStats] = useState<PenaltyCutStats | null>(null);
+  const [cutResult, setCutResult] = useState<PenaltyCutApplyResponse | null>(null);
+  const [cutStatus, setCutStatus] = useState<string | null>(null);
+  const [isApplyingCut, setIsApplyingCut] = useState(false);
   const [model, setModel] = useState<TriangleModelResponse | null>(null);
   const [mesh, setMesh] = useState<TriangleMesh | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -379,6 +395,9 @@ export function TriangleModelWindow() {
       setResegmentationPreview(null);
       setResegmentationStatus(null);
       setIsSegmentationOpen(false);
+      // A cut belongs to the model it was applied to.
+      setCutFile(null);
+      resetCutState();
     } catch (uploadError) {
       setError(getUploadErrorMessage(uploadError));
       setModel(null);
@@ -674,6 +693,108 @@ export function TriangleModelWindow() {
     });
     downloadTextFile(fileName, JSON.stringify(payload, null, 2));
     setEditStatus(`Exported ${fileName}.`);
+  };
+
+  // The backend returns interface points in metres, the unit the .poly and the
+  // interface file are written in. The viewer holds kilometres, same as every
+  // model that comes through /api/upload-triangle-model.
+  const cutPreviewForViewer = useMemo(
+    () =>
+      cutPreview?.map(
+        ([y, z]) => [y * 1e-3, z * 1e-3] as [number, number],
+      ) ?? null,
+    [cutPreview],
+  );
+
+  useEffect(() => {
+    viewerRef.current?.setInterfacePreview(cutPreviewForViewer);
+  }, [cutPreviewForViewer, mesh]);
+
+  const resetCutState = () => {
+    setCutPreview(null);
+    setCutWarnings([]);
+    setCutStats(null);
+    setCutResult(null);
+    setCutStatus(null);
+  };
+
+  const handleCutFileChange = async (file: File | null, units = cutUnits) => {
+    setCutFile(file);
+    setCutStats(null);
+    setCutResult(null);
+
+    if (!file) {
+      setCutPreview(null);
+      setCutWarnings([]);
+      setCutStatus(null);
+      return;
+    }
+
+    try {
+      const response = await parseInterfaceFile(
+        file,
+        { units, marker: cutMarker, defaultRho: 10 },
+        mesh?.bounds,
+      );
+      setCutPreview(response.points);
+      setCutWarnings(response.warnings);
+      setCutStatus(
+        `${response.points.length} interface points read from ${response.cutFileName}.`,
+      );
+    } catch (parseError) {
+      setCutPreview(null);
+      setCutWarnings([]);
+      setCutStatus(getUploadErrorMessage(parseError));
+    }
+  };
+
+  const handleApplyPenaltyCut = async () => {
+    if (!loadedPolyFile || !loadedResistivityFile || !cutFile) {
+      setCutStatus(
+        'Load a .poly and .resistivity pair and pick an interface file first.',
+      );
+      return;
+    }
+
+    setIsApplyingCut(true);
+    setCutStatus('Merging the interface into the model...');
+
+    try {
+      const response = await applyPenaltyCut({
+        polyFile: loadedPolyFile,
+        resistivityFile: loadedResistivityFile,
+        cutFile,
+        parameters: { units: cutUnits, marker: cutMarker, defaultRho: 10 },
+      });
+
+      const nextMesh = buildTriangleMeshFromModel(response);
+      setModel(response);
+      setMesh(nextMesh);
+      setVisibleLayers({ triangles: true, segments: true, vertices: false });
+      setHover(null);
+      setInteractionMode('pan');
+      const nextRegionRho = buildRegionRhoMaps(response);
+      setRegionRhoByComponent(nextRegionRho);
+      setBaseRegionRhoByComponent(nextRegionRho);
+      setUndoStack([]);
+      setRedoStack([]);
+      setLassoSelection(null);
+      viewerRef.current?.setSelectionOverlay(null);
+      // The merged model already carries the cut; the candidate overlay would
+      // just double the line.
+      setCutPreview(null);
+      setCutStats(response.stats);
+      setCutWarnings(response.warnings);
+      setCutResult(response);
+      setCutStatus(
+        `Added ${response.stats.cutSegmentsAdded} cut segments; ` +
+          `${response.stats.sourceRegionCount} -> ${response.stats.mergedRegionCount} regions.`,
+      );
+    } catch (applyError) {
+      setCutStatus(getUploadErrorMessage(applyError));
+    } finally {
+      setIsApplyingCut(false);
+    }
   };
 
   const applyResegmentationPreview = (
@@ -1072,6 +1193,158 @@ export function TriangleModelWindow() {
               />
             </CollapsibleContent>
           </Collapsible>
+        ) : null}
+
+        {model ? (
+          <div
+            className="space-y-3 rounded-xl border border-border/40 bg-background/60 p-3"
+            data-testid="penalty-cut-panel"
+          >
+            <div className="flex items-baseline justify-between">
+              <h3 className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                Penalty Cut
+              </h3>
+              <span className="text-[11px] text-muted-foreground">
+                two columns: y z
+              </span>
+            </div>
+
+            <input
+              aria-label="Interface file"
+              type="file"
+              accept=".txt,.csv,.dat"
+              disabled={isApplyingCut}
+              onChange={(event) => {
+                void handleCutFileChange(event.target.files?.[0] ?? null);
+              }}
+              className="block w-full rounded-lg border border-border/50 bg-background px-3 py-2 text-sm file:mr-3 file:rounded-md file:border-0 file:bg-secondary file:px-3 file:py-1.5 file:text-xs file:font-medium"
+            />
+
+            <div className="flex flex-wrap items-center gap-3 text-xs">
+              <label className="flex items-center gap-1.5">
+                <span className="text-muted-foreground">Units</span>
+                <select
+                  aria-label="Interface units"
+                  value={cutUnits}
+                  disabled={isApplyingCut}
+                  onChange={(event) => {
+                    const units = event.target.value as PenaltyCutUnits;
+                    setCutUnits(units);
+                    if (cutFile) void handleCutFileChange(cutFile, units);
+                  }}
+                  className="rounded-md border border-border/50 bg-background px-2 py-1"
+                >
+                  <option value="km">km</option>
+                  <option value="m">m</option>
+                </select>
+              </label>
+
+              <label className="flex items-center gap-1.5">
+                <span className="text-muted-foreground">Marker</span>
+                <select
+                  aria-label="Penalty cut marker"
+                  value={cutMarker}
+                  disabled={isApplyingCut}
+                  onChange={(event) => {
+                    setCutMarker(Number(event.target.value) as PenaltyCutMarker);
+                  }}
+                  className="rounded-md border border-border/50 bg-background px-2 py-1"
+                >
+                  <option value={-1}>-1 (never coarsened)</option>
+                  <option value={-2}>-2 (coarsenable)</option>
+                </select>
+              </label>
+            </div>
+
+            <Button
+              type="button"
+              size="sm"
+              className="w-full gap-1.5"
+              disabled={!cutFile || !loadedResistivityFile || isApplyingCut}
+              onClick={() => {
+                void handleApplyPenaltyCut();
+              }}
+            >
+              {isApplyingCut ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Check className="h-3.5 w-3.5" />
+              )}
+              Apply to model
+            </Button>
+
+            {!loadedResistivityFile ? (
+              <p className="text-xs text-amber-600">
+                A .resistivity file is required: region values and which regions
+                stay fixed are inherited from it.
+              </p>
+            ) : null}
+
+            {cutStatus ? (
+              <p className="text-xs text-muted-foreground" data-testid="penalty-cut-status">
+                {cutStatus}
+              </p>
+            ) : null}
+
+            {cutWarnings.map((warning) => (
+              <p key={warning} className="text-xs text-amber-600">
+                {warning}
+              </p>
+            ))}
+
+            {cutStats ? (
+              <dl className="grid grid-cols-2 gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
+                <dt>Cut segments</dt>
+                <dd className="text-right font-medium text-foreground">
+                  {cutStats.cutSegmentsBefore} &rarr; {cutStats.cutSegmentsAfter}
+                </dd>
+                <dt>Regions</dt>
+                <dd className="text-right font-medium text-foreground">
+                  {cutStats.sourceRegionCount} &rarr; {cutStats.mergedRegionCount}
+                </dd>
+                <dt>Fixed regions</dt>
+                <dd className="text-right font-medium text-foreground">
+                  {cutStats.fixedRegionCount}
+                </dd>
+                <dt>Free parameters</dt>
+                <dd className="text-right font-medium text-foreground">
+                  {cutStats.freeParameterCount}
+                </dd>
+              </dl>
+            ) : null}
+
+            {cutResult ? (
+              <div className="flex gap-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="flex-1 gap-1.5"
+                  onClick={() => {
+                    downloadTextFile(cutResult.polyFileName, cutResult.polyText);
+                  }}
+                >
+                  <Download className="h-3.5 w-3.5" />
+                  .poly
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="flex-1 gap-1.5"
+                  onClick={() => {
+                    downloadTextFile(
+                      cutResult.resistivityFileName ?? 'model.cut.0.resistivity',
+                      cutResult.resistivityText,
+                    );
+                  }}
+                >
+                  <Download className="h-3.5 w-3.5" />
+                  .resistivity
+                </Button>
+              </div>
+            ) : null}
+          </div>
         ) : null}
       </section>
 
