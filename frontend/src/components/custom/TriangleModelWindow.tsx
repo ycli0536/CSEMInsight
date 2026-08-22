@@ -240,6 +240,11 @@ export function TriangleModelWindow() {
   const [cutStats, setCutStats] = useState<PenaltyCutStats | null>(null);
   const [cutResult, setCutResult] = useState<PenaltyCutApplyResponse | null>(null);
   const [cutStatus, setCutStatus] = useState<string | null>(null);
+  // A file input fires no change event when the same file is picked twice, so
+  // clearing cutFile in state is not enough: after a model reload the input
+  // still holds the old interface, and re-picking it looks like nothing
+  // happened. Bumping this key remounts the input, which empties it.
+  const [cutInputKey, setCutInputKey] = useState(0);
   const [isApplyingCut, setIsApplyingCut] = useState(false);
   const [model, setModel] = useState<TriangleModelResponse | null>(null);
   const [mesh, setMesh] = useState<TriangleMesh | null>(null);
@@ -416,6 +421,8 @@ export function TriangleModelWindow() {
       setResegmentationPreview(null);
       setResegmentationStatus(null);
       setIsSegmentationOpen(false);
+      setCutFile(null);
+      resetCutState();
     } finally {
       setIsLoading(false);
     }
@@ -716,6 +723,7 @@ export function TriangleModelWindow() {
     setCutStats(null);
     setCutResult(null);
     setCutStatus(null);
+    setCutInputKey((key) => key + 1);
   };
 
   const handleCutFileChange = async (file: File | null, units = cutUnits) => {
@@ -1210,6 +1218,7 @@ export function TriangleModelWindow() {
             </div>
 
             <input
+              key={cutInputKey}
               aria-label="Interface file"
               type="file"
               accept=".txt,.csv,.dat"

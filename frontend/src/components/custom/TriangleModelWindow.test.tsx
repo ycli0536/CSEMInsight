@@ -1341,6 +1341,41 @@ describe('TriangleModelWindow penalty cut', () => {
     expect(mockViewer.setInterfacePreview).toHaveBeenLastCalledWith(null);
   });
 
+  it('empties the interface input when a model is reloaded', async () => {
+    // A file input fires no change event when the same file is picked twice.
+    // Reloading the model drops the cut, so unless the input is emptied too,
+    // re-picking that same interface silently does nothing and the app looks
+    // like the server stopped answering.
+    const user = userEvent.setup();
+    mockUploadThen(() => ({
+      points: [
+        [10_000, 2_000],
+        [90_000, 3_000],
+      ],
+      bounds: { yMin: 10_000, yMax: 90_000, zMin: 2_000, zMax: 3_000 },
+      warnings: [],
+      cutFileName: 'basement.txt',
+    }));
+
+    render(<TriangleModelWindow />);
+    await loadTriangleModel(user);
+    await dropInterface(user);
+
+    const interfaceInput = screen.getByLabelText(/interface file/i) as HTMLInputElement;
+    expect(interfaceInput.files).toHaveLength(1);
+    expect(screen.getByRole('button', { name: /apply to model/i })).toBeEnabled();
+
+    await user.click(screen.getByRole('button', { name: /load triangle model/i }));
+
+    await waitFor(() => {
+      expect(
+        (screen.getByLabelText(/interface file/i) as HTMLInputElement).files,
+      ).toHaveLength(0);
+    });
+    expect(screen.getByRole('button', { name: /apply to model/i })).toBeDisabled();
+    expect(screen.queryByTestId('penalty-cut-status')).not.toBeInTheDocument();
+  });
+
   it('reports a server error without leaving the model changed', async () => {
     const user = userEvent.setup();
     vi.mocked(axios.post).mockImplementation(async (url) => {
