@@ -73,6 +73,19 @@ export function formatTriangleHoverSummary(
     return null;
   }
 
+  // A segment hit outranks the cell's resistivity. The viewer only reports one
+  // when the cursor is within tolerance of a segment, and it highlights that
+  // segment -- a readout showing rho instead would contradict what is drawn.
+  // Nearly every model carries resistivity, so without this the marker would
+  // be unreachable in practice.
+  if (hover.segment) {
+    const marker = describeTriangleSegmentMarker(hover.segment.boundary_marker);
+    return `Segment ${hover.segment.id}: ${hover.segment.endpoint_1} -> ${hover.segment.endpoint_2}, ${marker}`;
+  }
+
+  // A vertex does not outrank it: the rho readout uses the nearest vertex as
+  // its anchor point, so vertex-plus-rho is one coherent answer rather than two
+  // competing ones.
   if (hover.resistivityValue !== null) {
     return `${context?.resistivityLabel ?? 'Rho'} ${hover.resistivityValue.toPrecision(4)} @ ${formatHoverCoordinate(
       getTriangleHoverAnchorPoint(hover, context) ?? hover.point,
@@ -81,11 +94,6 @@ export function formatTriangleHoverSummary(
 
   if (hover.vertex) {
     return `Vertex ${hover.vertex.id} @ ${formatHoverCoordinate(hover.vertex)}`;
-  }
-
-  if (hover.segment) {
-    const marker = describeTriangleSegmentMarker(hover.segment.boundary_marker);
-    return `Segment ${hover.segment.id}: ${hover.segment.endpoint_1} -> ${hover.segment.endpoint_2}, ${marker}`;
   }
 
   if (hover.triangleIndex !== null) {

@@ -1194,6 +1194,22 @@ describe('TriangleModelWindow', () => {
     expect(hoverSegment(1)).toBe('Segment 3: 7 -> 8, marker 1 (fixed)');
     expect(hoverSegment(2)).toBe('Segment 3: 7 -> 8, marker 2 (coarsenable)');
   });
+
+  it('still reports the segment when the cell under it has a resistivity', () => {
+    // Nearly every model carries resistivity, so if rho won here the marker
+    // would be unreachable in practice -- and the viewer is highlighting the
+    // segment, so a rho readout would contradict what is drawn.
+    expect(
+      formatTriangleHoverSummary({
+        point: { x: 1, y: 2 },
+        triangleIndex: 1,
+        regionId: 8,
+        resistivityValue: 100,
+        vertex: null,
+        segment: { id: 3, endpoint_1: 7, endpoint_2: 8, boundary_marker: -1 },
+      }),
+    ).toBe('Segment 3: 7 -> 8, marker -1 (cut · fixed)');
+  });
 });
 
 describe('TriangleModelWindow penalty cut', () => {
