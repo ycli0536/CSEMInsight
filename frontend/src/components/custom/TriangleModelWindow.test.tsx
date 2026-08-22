@@ -1341,6 +1341,86 @@ describe('TriangleModelWindow penalty cut', () => {
     expect(mockViewer.setInterfacePreview).toHaveBeenLastCalledWith(null);
   });
 
+  it('cuts the merged model when a second interface is applied', async () => {
+    // The merged model is what the viewer shows, so it has to be what the
+    // server sees. Uploading the source .poly again would drop the first cut
+    // instead of stacking the second on top of it, and the giveaway is subtle:
+    // the region count reads 2 -> 3 a second time rather than 3 -> 4.
+    const user = userEvent.setup();
+    const merged = {
+      ...buildEditableTriangleModelResponse(),
+      polyFileName: 'editable.cut.poly',
+      resistivityFileName: 'editable.cut.0.resistivity',
+      polyText: '4 2 0 0\n',
+      resistivityText: 'Format: mare2dem_1.1\n',
+      warnings: [],
+      stats: {
+        interfacePointCount: 2,
+        sourceSegmentCount: 4,
+        mergedSegmentCount: 6,
+        sourceRegionCount: 2,
+        mergedRegionCount: 3,
+        cutSegmentsBefore: 0,
+        cutSegmentsAfter: 2,
+        cutSegmentsAdded: 2,
+        inheritedRegionCount: 3,
+        unmatchedRegionCount: 0,
+        fixedRegionCount: 1,
+        freeParameterCount: 2,
+      },
+    };
+
+    mockUploadThen((url) =>
+      url.includes('/api/apply-penalty-cut')
+        ? merged
+        : {
+            points: [
+              [10_000, 2_000],
+              [90_000, 3_000],
+            ],
+            bounds: { yMin: 10_000, yMax: 90_000, zMin: 2_000, zMax: 3_000 },
+            warnings: [],
+            cutFileName: 'basement.txt',
+          },
+    );
+
+    render(<TriangleModelWindow />);
+    await loadTriangleModel(user);
+    await dropInterface(user);
+    await user.click(screen.getByRole('button', { name: /apply to model/i }));
+
+    // The applied interface leaves the picker with the model, so a second one
+    // can be dropped -- including the same file, which needs an empty input.
+    await waitFor(() => {
+      expect(
+        (screen.getByLabelText(/interface file/i) as HTMLInputElement).files,
+      ).toHaveLength(0);
+    });
+
+    await user.upload(
+      screen.getByLabelText(/interface file/i),
+      new File(['20 4\n80 5\n'], 'salt-top.txt', { type: 'text/plain' }),
+    );
+    await user.click(screen.getByRole('button', { name: /apply to model/i }));
+
+    await waitFor(() => {
+      expect(
+        vi.mocked(axios.post).mock.calls.filter(([url]) =>
+          String(url).includes('/api/apply-penalty-cut'),
+        ),
+      ).toHaveLength(2);
+    });
+
+    const secondApply = vi
+      .mocked(axios.post)
+      .mock.calls.filter(([url]) => String(url).includes('/api/apply-penalty-cut'))[1][1] as FormData;
+    expect((secondApply.get('poly_file') as File).name).toBe('editable.cut.poly');
+    expect((secondApply.get('resistivity_file') as File).name).toBe(
+      'editable.cut.0.resistivity',
+    );
+    expect((secondApply.get('cut_file') as File).name).toBe('salt-top.txt');
+  });
+
   it('empties the interface input when a model is reloaded', async () => {
     // A file input fires no change event when the same file is picked twice.
     // Reloading the model drops the cut, so unless the input is emptied too,

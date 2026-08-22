@@ -788,6 +788,25 @@ export function TriangleModelWindow() {
       setRedoStack([]);
       setLassoSelection(null);
       viewerRef.current?.setSelectionOverlay(null);
+      // The merged model is what the viewer shows, so it has to be what the
+      // server sees as well. Everything downstream -- a second cut, a rho
+      // export, a resegmentation -- uploads these two files, and leaving them
+      // pointing at the source model made those operate on a model the user
+      // was no longer looking at: a second cut silently dropped the first, and
+      // rho edits carried merged region numbers into the source .resistivity,
+      // where the same number is a different region.
+      setLoadedPolyFile(
+        new File([response.polyText], response.polyFileName, { type: 'text/plain' }),
+      );
+      setLoadedResistivityFile(
+        new File([response.resistivityText], response.resistivityFileName, {
+          type: 'text/plain',
+        }),
+      );
+      // The interface is part of the model now. Leaving it in the picker
+      // invites an apply that would cut the same line a second time.
+      setCutFile(null);
+      setCutInputKey((key) => key + 1);
       // The merged model already carries the cut; the candidate overlay would
       // just double the line.
       setCutPreview(null);

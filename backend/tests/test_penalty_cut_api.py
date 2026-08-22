@@ -159,6 +159,35 @@ class TestApplyPenaltyCutEndpoint:
         assert stats["fixedRegionCount"] == 1
         assert stats["unmatchedRegionCount"] == 0
 
+    def test_stacks_a_second_cut_on_its_own_output(self, app_client, model_files):
+        # The viewer treats a merged model as the loaded one, so a second
+        # interface arrives as this endpoint's own output fed back in.
+        first = self.post(app_client, model_files).get_json()
+
+        second = app_client.post(
+            "/api/apply-penalty-cut",
+            data={
+                "poly_file": upload(
+                    first["polyFileName"], first["polyText"].encode()
+                ),
+                "resistivity_file": upload(
+                    first["resistivityFileName"], first["resistivityText"].encode()
+                ),
+                "cut_file": upload("salt-top.txt", b"0 16\n100 17\n"),
+                "parameters": json.dumps({"units": "km"}),
+            },
+            content_type="multipart/form-data",
+        ).get_json()
+
+        # The name marks a model as cut once, not once per interface.
+        assert second["polyFileName"] == "box.cut.poly"
+        assert second["resistivityFileName"] == "box.cut.0.resistivity"
+        # The second cut lands on top of the first rather than replacing it.
+        assert second["stats"]["cutSegmentsBefore"] == first["stats"]["cutSegmentsAfter"]
+        assert second["stats"]["cutSegmentsAfter"] > first["stats"]["cutSegmentsAfter"]
+        assert second["stats"]["sourceRegionCount"] == first["stats"]["mergedRegionCount"]
+        assert second["stats"]["mergedRegionCount"] > first["stats"]["mergedRegionCount"]
+
     def test_resistivity_payload_matches_the_merged_region_count(
         self, app_client, model_files
     ):

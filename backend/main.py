@@ -1374,8 +1374,13 @@ def apply_penalty_cut_to_model():
         return _error_response(str(exc), hint=_PENALTY_CUT_HINT)
 
     stem, _ = os.path.splitext(secure_filename(poly_file.filename) or "model.poly")
-    output_poly_name = f"{stem}.cut.poly"
-    output_resistivity_name = f"{stem}.cut.0.resistivity"
+    # Cuts stack: the viewer feeds a merged model straight back in to add a
+    # second interface. Marking an already-cut model again would grow the name
+    # a suffix per interface -- line1.cut.cut.cut.poly -- for no added meaning.
+    if not stem.endswith(".cut"):
+        stem = f"{stem}.cut"
+    output_poly_name = f"{stem}.poly"
+    output_resistivity_name = f"{stem}.0.resistivity"
 
     try:
         with _upload_workspace() as temp_dir:

@@ -228,6 +228,10 @@ export interface PenaltyCutStats {
  */
 export interface PenaltyCutApplyResponse extends TriangleModelResponse {
   polyText: string;
+  // A model can be uploaded without a .resistivity, but a cut cannot be
+  // applied without one -- region values and which regions stay fixed are
+  // inherited from it -- so the merged model always names one.
+  resistivityFileName: string;
   resistivityText: string;
   stats: PenaltyCutStats;
   warnings: string[];
