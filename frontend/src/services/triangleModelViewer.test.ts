@@ -1,6 +1,11 @@
-import { describe, expect, it } from 'vitest';
+import * as THREE from 'three';
+import { describe, expect, it, vi } from 'vitest';
 
-import { buildTriangleHoverState, shouldStartLassoDrag } from './triangleModelViewer';
+import {
+  buildTriangleHoverState,
+  setGeometryAttribute,
+  shouldStartLassoDrag,
+} from './triangleModelViewer';
 
 describe('buildTriangleHoverState', () => {
   it('keeps region rho when a vertex wins the visible hover state', () => {
@@ -73,6 +78,49 @@ describe('buildTriangleHoverState', () => {
       vertex: null,
       segment: null,
     });
+  });
+});
+
+describe('setGeometryAttribute', () => {
+  it('overwrites the existing buffer when the size has not changed', () => {
+    // Hover highlights redraw on every pointer move. three.js only frees a GPU
+    // buffer when its geometry is disposed, so a new BufferAttribute per move
+    // would strand one buffer per move for the life of the window.
+    const geometry = new THREE.BufferGeometry();
+    setGeometryAttribute(geometry, 'position', new Float32Array([0, 0, 0]), 3);
+    const attribute = geometry.getAttribute('position') as THREE.BufferAttribute;
+    const versionBefore = attribute.version;
+    const dispose = vi.spyOn(geometry, 'dispose');
+
+    setGeometryAttribute(geometry, 'position', new Float32Array([1, 2, 3]), 3);
+
+    expect(geometry.getAttribute('position')).toBe(attribute);
+    expect(Array.from(attribute.array)).toEqual([1, 2, 3]);
+    // needsUpdate is write-only; the version bump is what tells the renderer
+    // to re-upload the buffer it already has.
+    expect(attribute.version).toBe(versionBefore + 1);
+    expect(dispose).not.toHaveBeenCalled();
+  });
+
+  it('disposes the geometry before swapping in a differently sized buffer', () => {
+    const geometry = new THREE.BufferGeometry();
+    setGeometryAttribute(geometry, 'position', new Float32Array([0, 0, 0]), 3);
+    const dispose = vi.spyOn(geometry, 'dispose');
+
+    setGeometryAttribute(geometry, 'position', new Float32Array([1, 2, 3, 4, 5, 6]), 3);
+
+    expect(dispose).toHaveBeenCalledTimes(1);
+    expect(Array.from(geometry.getAttribute('position').array)).toEqual([1, 2, 3, 4, 5, 6]);
+  });
+
+  it('does not dispose when the attribute is set for the first time', () => {
+    const geometry = new THREE.BufferGeometry();
+    const dispose = vi.spyOn(geometry, 'dispose');
+
+    setGeometryAttribute(geometry, 'color', new Float32Array([1, 1, 1]), 3);
+
+    expect(dispose).not.toHaveBeenCalled();
+    expect(geometry.getAttribute('color').itemSize).toBe(3);
   });
 });
 

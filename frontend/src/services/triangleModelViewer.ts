@@ -32,6 +32,9 @@ import type {
 
 const CAMERA_Z = 10;
 const MAX_PIXEL_RATIO = 2;
+// Points a lasso preview can hold before its buffer has to grow. A drag of any
+// normal length fits, so the buffer is allocated once per session.
+const LASSO_MIN_CAPACITY = 512;
 
 export type TriangleViewerInteractionMode = 'pan' | 'lasso';
 
@@ -80,11 +83,42 @@ function applyTriangleCamera(
   camera.updateProjectionMatrix();
 }
 
+/**
+ * Write `values` into a geometry attribute, reusing its buffer where possible.
+ *
+ * three.js frees a GPU buffer only when the geometry owning it is disposed, so
+ * handing setAttribute a fresh BufferAttribute strands the old buffer for the
+ * life of the WebGL context. Hover highlights redraw on every pointer move, so
+ * replacing attributes there leaks steadily for as long as the window is open.
+ * Same-sized updates therefore overwrite the existing array in place, and a
+ * resize disposes first so the outgoing buffers are actually released -- the
+ * next render re-uploads what is left.
+ */
+export function setGeometryAttribute(
+  geometry: THREE.BufferGeometry,
+  name: string,
+  values: Float32Array,
+  itemSize: number,
+) {
+  const existing = geometry.getAttribute(name);
+
+  if (existing && existing.array.length === values.length) {
+    (existing.array as Float32Array).set(values);
+    existing.needsUpdate = true;
+    return;
+  }
+
+  if (existing) {
+    geometry.dispose();
+  }
+  geometry.setAttribute(name, new THREE.BufferAttribute(values, itemSize));
+}
+
 function updatePositionGeometry(
   geometry: THREE.BufferGeometry,
   positions: Float32Array,
 ) {
-  geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+  setGeometryAttribute(geometry, 'position', positions, 3);
   geometry.computeBoundingSphere();
 }
 
@@ -93,7 +127,7 @@ function updateSegmentGeometry(
   buffers: TriangleSegmentBuffers,
 ) {
   updatePositionGeometry(geometry, buffers.positions);
-  geometry.setAttribute('color', new THREE.BufferAttribute(buffers.colors, 3));
+  setGeometryAttribute(geometry, 'color', buffers.colors, 3);
 }
 
 function updateLineHighlight(
@@ -112,10 +146,7 @@ function updatePointHighlight(geometry: THREE.BufferGeometry, point: TriangleMes
 }
 
 function updateTriangleHighlight(geometry: THREE.BufferGeometry, positions: Float32Array) {
-  geometry.setAttribute(
-    'position',
-    new THREE.BufferAttribute(positions, 3),
-  );
+  setGeometryAttribute(geometry, 'position', positions, 3);
   geometry.setIndex(null);
   geometry.computeBoundingSphere();
 }
@@ -350,7 +381,11 @@ export function createTriangleModelViewer(options: {
   const lassoLine = new THREE.Line(lassoGeometry, lassoMaterial);
   lassoLine.visible = false;
   lassoLine.renderOrder = 10;
+  // The lasso buffer holds more points than are drawn, so its bounding sphere
+  // would be wrong; the line is a screen-space overlay and always in view.
+  lassoLine.frustumCulled = false;
   rootGroup.add(lassoLine);
+  let lassoCapacity = 0;
 
   let canvasSize = getCanvasSize(canvas);
   let cameraState: TriangleCameraState = {
@@ -446,10 +481,28 @@ export function createTriangleModelViewer(options: {
       return;
     }
 
-    updatePositionGeometry(
-      lassoGeometry,
-      new Float32Array(path.flatMap((point) => [point.x, point.y, 0.06])),
-    );
+    // The path grows by a point per pointer move, so a right-sized buffer would
+    // mean a new attribute -- and a stranded GPU buffer -- on every move. Keep
+    // one over-allocated buffer and draw only the part that is filled.
+    const pointCount = path.length;
+    if (pointCount > lassoCapacity) {
+      lassoCapacity = Math.max(LASSO_MIN_CAPACITY, pointCount * 2);
+      lassoGeometry.dispose();
+      lassoGeometry.setAttribute(
+        'position',
+        new THREE.BufferAttribute(new Float32Array(lassoCapacity * 3), 3),
+      );
+    }
+
+    const lassoPositions = lassoGeometry.getAttribute('position');
+    const lassoArray = lassoPositions.array as Float32Array;
+    path.forEach((point, index) => {
+      lassoArray[index * 3] = point.x;
+      lassoArray[index * 3 + 1] = point.y;
+      lassoArray[index * 3 + 2] = 0.06;
+    });
+    lassoPositions.needsUpdate = true;
+    lassoGeometry.setDrawRange(0, pointCount);
     lassoLine.visible = true;
     renderScene();
   };
@@ -460,11 +513,12 @@ export function createTriangleModelViewer(options: {
   };
 
   const updateTriangleColorAttribute = (values: Array<number | null>) => {
-    triangleFillGeometry.setAttribute(
+    setGeometryAttribute(
+      triangleFillGeometry,
       'color',
-      new THREE.BufferAttribute(buildTriangleFillColors(values, resistivityColorRange), 3),
+      buildTriangleFillColors(values, resistivityColorRange),
+      3,
     );
-    triangleFillGeometry.attributes.color.needsUpdate = true;
 
     const hasResistivityColors =
       mesh?.source === 'constrained' && values.some((value) => value !== null);
@@ -876,16 +930,15 @@ export function createTriangleModelViewer(options: {
       }));
 
       updatePositionGeometry(triangleFillGeometry, buffers.triangleFillPositions);
-      triangleFillGeometry.setAttribute(
+      setGeometryAttribute(
+        triangleFillGeometry,
         'color',
-        new THREE.BufferAttribute(
-          buildTriangleFillColors(
-            mesh.triangleResistivityValues ??
-              Array.from({ length: mesh.triangles.length }, () => null),
-            resistivityColorRange,
-          ),
-          3,
+        buildTriangleFillColors(
+          mesh.triangleResistivityValues ??
+            Array.from({ length: mesh.triangles.length }, () => null),
+          resistivityColorRange,
         ),
+        3,
       );
       triangleFillGeometry.setIndex(null);
       const hasResistivityColors =
