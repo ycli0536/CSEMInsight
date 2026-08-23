@@ -53,7 +53,7 @@ class ResistivityFileParser():
         return unique_columns
 
     @classmethod
-    def _parse_table_header(cls, line):
+    def parse_table_header(cls, line):
         """Parse a "!#" header line into column names.
 
         Splitting on runs of two or more spaces breaks on anisotropic headers
@@ -129,7 +129,7 @@ class ResistivityFileParser():
                 # extract table header and data
                 if rho_parse:
                     if line.startswith("!#"):
-                        table_header = self._parse_table_header(line)
+                        table_header = self.parse_table_header(line)
                     elif re.match(r'^\d+', value_part):  # If the line starts with a number, it belongs to the table
                         row = [self._coerce_numeric(x) for x in value_part.split()]
                         table_data.append(row)

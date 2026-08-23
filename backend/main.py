@@ -39,6 +39,15 @@ from penalty_cut_service import (
     parse_penalty_cut_parameters,
 )
 from poly_region_inheritance import RegionInheritanceError
+from rho_bound_service import (
+    RhoBoundError,
+    build_bounded_resistivity_text,
+    check_shape_against_bounds,
+    parse_rho_bound_parameters,
+    parse_shape_points,
+    parse_shape_text,
+    select_regions,
+)
 from triangle_model_resegmentation import (
     ResegmentationError,
     build_resegmentation_result,
@@ -1484,6 +1493,192 @@ def apply_penalty_cut_to_model():
             "warnings": result["warnings"],
         }
     )
+
+
+_RHO_BOUND_HINT = (
+    "A boundary or polygon is two columns 'y z' (whitespace or comma "
+    "separated, '#' comments allowed) in the same along-line/depth frame as "
+    "the model, or the same points as JSON in the parameters. Check the units "
+    "setting if the shape lands in the wrong place."
+)
+
+
+def _read_rho_bound_request():
+    """Pull the parameters and the shape out of a bounds request.
+
+    The shape arrives either as an uploaded two-column file or as JSON points
+    in the parameters, so a polygon drawn in the viewer and one read from disk
+    reach the same code.
+
+    Returns:
+        ``(parameters, points)`` with points in metres.
+
+    Raises:
+        RhoBoundError: On invalid parameters, a bad shape, or no shape at all.
+    """
+    try:
+        payload = json.loads(request.form.get("parameters") or "{}")
+    except json.JSONDecodeError as exc:
+        raise RhoBoundError("Invalid rho bound parameters JSON") from exc
+
+    parameters = parse_rho_bound_parameters(payload)
+
+    shape_file = request.files.get("shape_file")
+    if shape_file is not None and shape_file.filename != "":
+        text = shape_file.read().decode("utf-8", errors="replace")
+        return parameters, parse_shape_text(text, parameters)
+
+    raw_points = payload.get("points") if isinstance(payload, dict) else None
+    if raw_points is None:
+        raise RhoBoundError(
+            "No shape provided: upload a two-column 'y z' file as shape_file, "
+            "or pass its points in the parameters."
+        )
+    return parameters, parse_shape_points(raw_points, parameters)
+
+
+def _shape_payload(points, parameters, selection, warnings):
+    return {
+        "shape": parameters.shape,
+        "side": parameters.side,
+        "points": [[y, z] for y, z in points],
+        "selectedRegionIds": selection.region_ids,
+        "stats": {
+            "shapePointCount": len(points),
+            "selectedRegionCount": len(selection.region_ids),
+            "totalRegionCount": selection.total_count,
+            "outsideShapeSpanCount": selection.outside_span_count,
+        },
+        "warnings": warnings,
+    }
+
+
+def _rho_bound_warnings(points, vertices, selection, parameters):
+    warnings = check_shape_against_bounds(
+        points,
+        {
+            "yMin": min(vertex["hCoor"] for vertex in vertices.values()),
+            "yMax": max(vertex["hCoor"] for vertex in vertices.values()),
+            "zMin": min(vertex["vCoor"] for vertex in vertices.values()),
+            "zMax": max(vertex["vCoor"] for vertex in vertices.values()),
+        },
+    )
+    if selection.outside_span_count:
+        warnings.append(
+            f"{selection.outside_span_count} of {selection.total_count} regions "
+            "sit beyond the ends of the boundary and were left alone. A "
+            "boundary is not extrapolated past its last point."
+        )
+    if not selection.region_ids:
+        warnings.append(
+            f"The {parameters.shape} selected no regions. Check the units and, "
+            "for a boundary, which side you meant."
+        )
+    return warnings
+
+
+@app.route("/api/preview-rho-bounds", methods=["POST"])
+def preview_rho_bounds():
+    """Say which regions a boundary or polygon would bound, without writing.
+
+    The .resistivity is not needed to answer that, and it is the file the user
+    is about to overwrite -- so the question "how much of my model does this
+    touch" can be asked without putting it at risk.
+    """
+    poly_file = request.files.get("poly_file")
+    if poly_file is None or poly_file.filename == "":
+        return _error_response("No .poly file provided", hint=_RHO_BOUND_HINT)
+    if not poly_file.filename.endswith(".poly"):
+        return _error_response(
+            "Invalid .poly file format; expected a .poly file", hint=_RHO_BOUND_HINT
+        )
+
+    try:
+        parameters, points = _read_rho_bound_request()
+
+        with _upload_workspace() as temp_dir:
+            poly_path = _save_uploaded_file(poly_file, temp_dir)
+            vertices, _, _, regions = MARE2DEMPolyParser().read_poly_file(
+                poly_path, unit_scale_factor=1
+            )
+
+        selection = select_regions(regions, points, parameters)
+    except RhoBoundError as exc:
+        return _error_response(str(exc), hint=_RHO_BOUND_HINT)
+    except Exception:
+        return _unexpected_error(
+            "Could not work out which regions the shape covers.",
+            hint=_RHO_BOUND_HINT,
+        )
+
+    warnings = _rho_bound_warnings(points, vertices, selection, parameters)
+    return jsonify(_shape_payload(points, parameters, selection, warnings))
+
+
+@app.route("/api/apply-rho-bounds", methods=["POST"])
+def apply_rho_bounds():
+    """Write Lower/Upper bounds onto the regions a boundary or polygon covers.
+
+    Only those two columns change. The mesh is untouched, so this composes with
+    a penalty cut in either order, and the rho values stay where the inversion
+    left them.
+    """
+    poly_file = request.files.get("poly_file")
+    resistivity_file = request.files.get("resistivity_file")
+
+    for label, uploaded, suffix in (
+        (".poly model", poly_file, ".poly"),
+        (".resistivity file", resistivity_file, ".resistivity"),
+    ):
+        if uploaded is None or uploaded.filename == "":
+            return _error_response(f"No {label} provided", hint=_RHO_BOUND_HINT)
+        if not uploaded.filename.endswith(suffix):
+            return _error_response(
+                f"Invalid {label} format; expected a {suffix} file",
+                hint=_RHO_BOUND_HINT,
+            )
+
+    stem, _ = os.path.splitext(
+        secure_filename(resistivity_file.filename) or "model.resistivity"
+    )
+    output_name = f"{stem}.bounded.resistivity"
+
+    try:
+        parameters, points = _read_rho_bound_request()
+        resistivity_text = resistivity_file.read().decode("utf-8-sig")
+
+        with _upload_workspace() as temp_dir:
+            poly_path = _save_uploaded_file(poly_file, temp_dir)
+            vertices, _, _, regions = MARE2DEMPolyParser().read_poly_file(
+                poly_path, unit_scale_factor=1
+            )
+
+        selection = select_regions(regions, points, parameters)
+        bounded_text, bound_stats = build_bounded_resistivity_text(
+            resistivity_text, selection.region_ids, parameters
+        )
+    except RhoBoundError as exc:
+        return _error_response(str(exc), hint=_RHO_BOUND_HINT)
+    except UnicodeDecodeError:
+        return _error_response(
+            "Could not decode the .resistivity file as UTF-8",
+            hint="Re-export it from MARE2DEM and try again.",
+        )
+    except Exception:
+        return _unexpected_error(
+            "Could not apply the bounds to this model.", hint=_RHO_BOUND_HINT
+        )
+
+    payload = _shape_payload(
+        points,
+        parameters,
+        selection,
+        _rho_bound_warnings(points, vertices, selection, parameters),
+    )
+    payload["stats"].update(bound_stats)
+    payload["resistivityFileName"] = output_name
+    payload["resistivityText"] = bounded_text
+    return jsonify(payload)
 
 
 if __name__ == "__main__":
