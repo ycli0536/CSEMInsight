@@ -195,6 +195,13 @@ export interface TriangleModelViewer {
   setLayerVisibility(visibility: TriangleLayerVisibility): void;
   /** Draw a candidate interface before it is merged, in model coordinates. */
   setInterfacePreview(points: Array<[number, number]> | null): void;
+  /** Draw the boundary or polygon a rho bound is taken from. */
+  setBoundShapePreview(
+    points: Array<[number, number]> | null,
+    closed?: boolean,
+  ): void;
+  /** Shade the triangles of the regions that shape covers. */
+  setBoundRegionOverlay(triangleIndices: number[] | null): void;
   setResistivityColorRange(range: TriangleResistivityColorRange): void;
   setSelectionOverlay(selection: TriangleSelectionOverlay | null): void;
   setTriangleResistivityValues(values: Array<number | null>): void;
@@ -297,6 +304,36 @@ export function createTriangleModelViewer(options: {
   interfaceLine.renderOrder = 8;
   interfaceLine.visible = false;
   rootGroup.add(interfaceLine);
+
+  // The shape a rho bound is taken from. Teal and solid, deliberately unlike
+  // the penalty cut's magenta dashes: the two features are independent and can
+  // be on screen together, so they must not read as the same thing.
+  const boundShapeGeometry = new THREE.BufferGeometry();
+  const boundShapeMaterial = new THREE.LineBasicMaterial({
+    color: 0x0d9488,
+    linewidth: 2,
+  });
+  const boundShapeLine = new THREE.Line(boundShapeGeometry, boundShapeMaterial);
+  // Above its own fill, so the shape stays readable over the regions it picked.
+  boundShapeLine.renderOrder = 9;
+  boundShapeLine.visible = false;
+  rootGroup.add(boundShapeLine);
+
+  // The regions that shape covers, in the same teal so the two read as one
+  // answer. A separate overlay from the lasso's rather than a shared one: the
+  // two selections are independent and either can be on screen alone.
+  const boundRegionGeometry = new THREE.BufferGeometry();
+  const boundRegionMaterial = new THREE.MeshBasicMaterial({
+    color: 0x0d9488,
+    depthWrite: false,
+    opacity: 0.3,
+    side: THREE.DoubleSide,
+    transparent: true,
+  });
+  const boundRegionOverlay = new THREE.Mesh(boundRegionGeometry, boundRegionMaterial);
+  boundRegionOverlay.visible = false;
+  boundRegionOverlay.renderOrder = 8;
+  rootGroup.add(boundRegionOverlay);
 
   const pointGeometry = new THREE.BufferGeometry();
   const pointMaterial = new THREE.PointsMaterial({
@@ -862,6 +899,10 @@ export function createTriangleModelViewer(options: {
       segmentMaterial.dispose();
       interfaceGeometry.dispose();
       interfaceMaterial.dispose();
+      boundShapeGeometry.dispose();
+      boundShapeMaterial.dispose();
+      boundRegionGeometry.dispose();
+      boundRegionMaterial.dispose();
       pointGeometry.dispose();
       pointMaterial.dispose();
       hoverTriangleGeometry.dispose();
@@ -1002,6 +1043,44 @@ export function createTriangleModelViewer(options: {
       // LineDashedMaterial needs per-vertex distances or no dashes appear.
       interfaceLine.computeLineDistances();
       interfaceLine.visible = true;
+      renderScene();
+    },
+
+    setBoundShapePreview(points: Array<[number, number]> | null, closed = false) {
+      if (!points || points.length < 2) {
+        boundShapeLine.visible = false;
+        renderScene();
+        return;
+      }
+
+      // A polygon is stored open and drawn closed: repeating the first point
+      // here rather than in the caller keeps "closed" a drawing concern and
+      // stops the extra vertex from travelling back to the server.
+      const drawn = closed ? [...points, points[0]] : points;
+      const positions = new Float32Array(drawn.length * 3);
+      drawn.forEach(([y, z], index) => {
+        positions[index * 3] = y;
+        positions[index * 3 + 1] = z;
+        positions[index * 3 + 2] = 0;
+      });
+      updatePositionGeometry(boundShapeGeometry, positions);
+      boundShapeLine.visible = true;
+      renderScene();
+    },
+
+    setBoundRegionOverlay(triangleIndices: number[] | null) {
+      if (!mesh || !triangleIndices || triangleIndices.length === 0) {
+        boundRegionOverlay.visible = false;
+        renderScene();
+        return;
+      }
+
+      const positions = buildTriangleSelectionHighlightPositions(
+        mesh,
+        triangleIndices,
+      );
+      updateTriangleHighlight(boundRegionGeometry, positions);
+      boundRegionOverlay.visible = positions.length > 0;
       renderScene();
     },
 
