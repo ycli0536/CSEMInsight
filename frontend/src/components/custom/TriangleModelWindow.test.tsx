@@ -20,6 +20,8 @@ const mockViewer = {
   resize: vi.fn(),
   setData: vi.fn(),
   setInteractionMode: vi.fn(),
+  setBoundRegionOverlay: vi.fn(),
+  setBoundShapePreview: vi.fn(),
   setInterfacePreview: vi.fn(),
   setLayerVisibility: vi.fn(),
   setSelectionOverlay: vi.fn(),
@@ -1492,5 +1494,235 @@ describe('TriangleModelWindow penalty cut', () => {
       'Merging dropped 3 structural segments.',
     );
     expect(mockViewer.setData).not.toHaveBeenCalled();
+  });
+});
+
+describe('TriangleModelWindow rho bounds', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  const PREVIEW = {
+    shape: 'boundary',
+    side: 'below',
+    points: [
+      [10_000, 2_000],
+      [90_000, 3_000],
+    ],
+    selectedRegionIds: [20],
+    stats: {
+      shapePointCount: 2,
+      selectedRegionCount: 1,
+      totalRegionCount: 2,
+      outsideShapeSpanCount: 0,
+    },
+    warnings: [],
+  };
+
+  function mockUploadThen(handler: (url: string) => unknown) {
+    vi.mocked(axios.post).mockImplementation(async (url) => {
+      if (String(url).includes('/api/upload-triangle-model')) {
+        return { data: buildEditableTriangleModelResponse() };
+      }
+      return { data: handler(String(url)) };
+    });
+  }
+
+  async function dropShape(user: ReturnType<typeof userEvent.setup>) {
+    await user.upload(
+      screen.getByLabelText(/bound shape file/i),
+      new File(['10 2\n90 3\n'], 'basement.txt', { type: 'text/plain' }),
+    );
+  }
+
+  it('draws the shape and reports how much of the model it covers', async () => {
+    const user = userEvent.setup();
+    mockUploadThen(() => PREVIEW);
+
+    render(<TriangleModelWindow />);
+    await loadTriangleModel(user);
+    await dropShape(user);
+    await user.click(screen.getByRole('button', { name: /preview regions/i }));
+
+    await waitFor(() => {
+      // Metres from the server, kilometres in the viewer, drawn open because
+      // a boundary is not a ring.
+      expect(mockViewer.setBoundShapePreview).toHaveBeenLastCalledWith(
+        [
+          [10, 2],
+          [90, 3],
+        ],
+        false,
+      );
+    });
+    expect(await screen.findByTestId('rho-bound-status')).toHaveTextContent(
+      '1 of 2 regions covered',
+    );
+  });
+
+  it('shades the regions the shape covers', async () => {
+    // The line says where the shape falls; the shading says which regions it
+    // actually picked, which is what a units mistake or the wrong side gets
+    // wrong. Region 20 is the second triangle of the fixture mesh.
+    const user = userEvent.setup();
+    mockUploadThen(() => PREVIEW);
+
+    render(<TriangleModelWindow />);
+    await loadTriangleModel(user);
+    await dropShape(user);
+    await user.click(screen.getByRole('button', { name: /preview regions/i }));
+
+    await waitFor(() => {
+      expect(mockViewer.setBoundRegionOverlay).toHaveBeenLastCalledWith([1]);
+    });
+  });
+
+  it('clears the shading with the preview', async () => {
+    const user = userEvent.setup();
+    mockUploadThen(() => PREVIEW);
+
+    render(<TriangleModelWindow />);
+    await loadTriangleModel(user);
+    await dropShape(user);
+    await user.click(screen.getByRole('button', { name: /preview regions/i }));
+    await waitFor(() => {
+      expect(mockViewer.setBoundRegionOverlay).toHaveBeenLastCalledWith([1]);
+    });
+
+    await user.selectOptions(screen.getByLabelText(/bound side/i), 'above');
+
+    await waitFor(() => {
+      expect(mockViewer.setBoundRegionOverlay).toHaveBeenLastCalledWith(null);
+    });
+  });
+
+  it('closes the drawn shape for a polygon', async () => {
+    const user = userEvent.setup();
+    mockUploadThen(() => ({ ...PREVIEW, shape: 'polygon' }));
+
+    render(<TriangleModelWindow />);
+    await loadTriangleModel(user);
+    await user.selectOptions(screen.getByLabelText(/bound shape$/i), 'polygon');
+    await dropShape(user);
+    await user.click(screen.getByRole('button', { name: /preview regions/i }));
+
+    await waitFor(() => {
+      expect(mockViewer.setBoundShapePreview).toHaveBeenLastCalledWith(
+        expect.anything(),
+        true,
+      );
+    });
+  });
+
+  it('keeps Apply out of reach until both bounds make a band', async () => {
+    const user = userEvent.setup();
+    mockUploadThen(() => PREVIEW);
+
+    render(<TriangleModelWindow />);
+    await loadTriangleModel(user);
+    await dropShape(user);
+
+    const apply = screen.getByRole('button', { name: /apply bounds/i });
+    expect(apply).toBeDisabled();
+
+    await user.type(screen.getByLabelText(/lower bound/i), '500');
+    await user.type(screen.getByLabelText(/upper bound/i), '1');
+    expect(apply).toBeDisabled();
+    expect(screen.getByText(/lower bound must be below/i)).toBeVisible();
+
+    await user.clear(screen.getByLabelText(/lower bound/i));
+    await user.type(screen.getByLabelText(/lower bound/i), '1');
+    await user.clear(screen.getByLabelText(/upper bound/i));
+    await user.type(screen.getByLabelText(/upper bound/i), '500');
+    expect(apply).toBeEnabled();
+  });
+
+  it('accepts a pair of zeros, which is how a bound is cleared', async () => {
+    // Zero is not an empty form: it is the value that sends a region back to
+    // Global Bounds, and the only way to undo a bound applied by mistake.
+    const user = userEvent.setup();
+    mockUploadThen(() => PREVIEW);
+
+    render(<TriangleModelWindow />);
+    await loadTriangleModel(user);
+    await dropShape(user);
+    await user.type(screen.getByLabelText(/lower bound/i), '0');
+    await user.type(screen.getByLabelText(/upper bound/i), '0');
+
+    expect(screen.getByRole('button', { name: /apply bounds/i })).toBeEnabled();
+    expect(screen.getByText(/sending them back to/i)).toBeVisible();
+  });
+
+  it('offers the rewritten .resistivity and leaves the model alone', async () => {
+    const user = userEvent.setup();
+    const applied = {
+      ...PREVIEW,
+      stats: { ...PREVIEW.stats, updatedRowCount: 1, lower: 1, upper: 500 },
+      resistivityFileName: 'editable.bounded.resistivity',
+      resistivityText: 'Format: mare2dem_1.1\n',
+    };
+    mockUploadThen((url) =>
+      url.includes('/api/apply-rho-bounds') ? applied : PREVIEW,
+    );
+
+    render(<TriangleModelWindow />);
+    await loadTriangleModel(user);
+    await dropShape(user);
+    await user.type(screen.getByLabelText(/lower bound/i), '1');
+    await user.type(screen.getByLabelText(/upper bound/i), '500');
+
+    mockViewer.setData.mockClear();
+    await user.click(screen.getByRole('button', { name: /apply bounds/i }));
+
+    expect(await screen.findByTestId('rho-bound-status')).toHaveTextContent(
+      'Bounded 1-500 Ohm-m on 1 regions',
+    );
+    expect(
+      await screen.findByRole('button', { name: /editable\.bounded\.resistivity/i }),
+    ).toBeVisible();
+    // Bounds constrain the next inversion; they do not change the model, so
+    // the viewer must not be handed a new one.
+    expect(mockViewer.setData).not.toHaveBeenCalled();
+  });
+
+  it('drops a preview when a setting that changes the answer changes', async () => {
+    const user = userEvent.setup();
+    mockUploadThen(() => PREVIEW);
+
+    render(<TriangleModelWindow />);
+    await loadTriangleModel(user);
+    await dropShape(user);
+    await user.click(screen.getByRole('button', { name: /preview regions/i }));
+    expect(await screen.findByText('Regions covered')).toBeVisible();
+
+    await user.selectOptions(screen.getByLabelText(/bound side/i), 'above');
+
+    await waitFor(() => {
+      expect(screen.queryByText('Regions covered')).not.toBeInTheDocument();
+    });
+    expect(mockViewer.setBoundShapePreview).toHaveBeenLastCalledWith(null, false);
+  });
+
+  it('empties the shape input when a model is reloaded', async () => {
+    // Same reason as the interface picker: re-picking the same file fires no
+    // change event unless the input was cleared, and the region numbering a
+    // preview was taken against belongs to the model that produced it.
+    const user = userEvent.setup();
+    mockUploadThen(() => PREVIEW);
+
+    render(<TriangleModelWindow />);
+    await loadTriangleModel(user);
+    await dropShape(user);
+    await user.click(screen.getByRole('button', { name: /preview regions/i }));
+    expect(await screen.findByText('Regions covered')).toBeVisible();
+
+    await user.click(screen.getByRole('button', { name: /load triangle model/i }));
+
+    await waitFor(() => {
+      expect(
+        (screen.getByLabelText(/bound shape file/i) as HTMLInputElement).files,
+      ).toHaveLength(0);
+    });
+    expect(screen.queryByText('Regions covered')).not.toBeInTheDocument();
   });
 });

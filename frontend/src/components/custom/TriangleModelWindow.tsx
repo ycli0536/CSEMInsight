@@ -18,6 +18,7 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { DelaunayMeshIcon } from '@/components/icons/DelaunayMeshIcon';
+import { RhoBoundPanel } from '@/components/custom/RhoBoundPanel';
 import { TriangleResegmentPanel } from '@/components/custom/TriangleResegmentPanel';
 import { getApiErrorMessage } from '@/lib/apiError';
 import { apiUrl } from '@/lib/apiConfig';
@@ -62,6 +63,7 @@ import {
 import { formatTriangleHoverSummary } from '@/services/triangleModelHoverSummary';
 import { TRIANGLE_SEGMENT_MARKER_LEGEND } from '@/services/triangleSegmentMarkers';
 import { applyPenaltyCut, parseInterfaceFile } from '@/services/penaltyCut';
+import { applyRhoBounds, previewRhoBounds } from '@/services/rhoBounds';
 import {
   buildTriangleMeshFromConstrainedMesh,
   buildTriangleMeshFromModel,
@@ -84,6 +86,9 @@ import type {
   PenaltyCutMarker,
   PenaltyCutStats,
   PenaltyCutUnits,
+  RhoBoundApplyResponse,
+  RhoBoundParameters,
+  RhoBoundPreviewResponse,
   TriangleHoverState,
   TriangleLayerVisibility,
   TriangleConstrainedMesh,
@@ -246,6 +251,16 @@ export function TriangleModelWindow() {
   // happened. Bumping this key remounts the input, which empties it.
   const [cutInputKey, setCutInputKey] = useState(0);
   const [isApplyingCut, setIsApplyingCut] = useState(false);
+  // Rho bounds: a boundary or polygon picks regions and two columns of the
+  // .resistivity get rewritten. Nothing here touches the mesh, so it keeps its
+  // own state rather than sharing the penalty cut's.
+  const [boundShapeFile, setBoundShapeFile] = useState<File | null>(null);
+  const [boundPreview, setBoundPreview] = useState<RhoBoundPreviewResponse | null>(null);
+  const [boundResult, setBoundResult] = useState<RhoBoundApplyResponse | null>(null);
+  const [boundStatus, setBoundStatus] = useState<string | null>(null);
+  const [boundInputKey, setBoundInputKey] = useState(0);
+  const [isPreviewingBounds, setIsPreviewingBounds] = useState(false);
+  const [isApplyingBounds, setIsApplyingBounds] = useState(false);
   const [model, setModel] = useState<TriangleModelResponse | null>(null);
   const [mesh, setMesh] = useState<TriangleMesh | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -400,9 +415,11 @@ export function TriangleModelWindow() {
       setResegmentationPreview(null);
       setResegmentationStatus(null);
       setIsSegmentationOpen(false);
-      // A cut belongs to the model it was applied to.
+      // A cut belongs to the model it was applied to, and so does a bound.
       setCutFile(null);
       resetCutState();
+      setBoundShapeFile(null);
+      resetBoundState();
     } catch (uploadError) {
       setError(getUploadErrorMessage(uploadError));
       setModel(null);
@@ -423,6 +440,8 @@ export function TriangleModelWindow() {
       setIsSegmentationOpen(false);
       setCutFile(null);
       resetCutState();
+      setBoundShapeFile(null);
+      resetBoundState();
     } finally {
       setIsLoading(false);
     }
@@ -717,6 +736,136 @@ export function TriangleModelWindow() {
     viewerRef.current?.setInterfacePreview(cutPreviewForViewer);
   }, [cutPreviewForViewer, mesh]);
 
+  // Metres from the server, kilometres in the viewer -- the same conversion the
+  // penalty cut's overlay makes, for the same reason.
+  const boundShapeForViewer = useMemo(
+    () =>
+      boundPreview?.points.map(
+        ([y, z]) => [y * 1e-3, z * 1e-3] as [number, number],
+      ) ?? null,
+    [boundPreview],
+  );
+
+  useEffect(() => {
+    viewerRef.current?.setBoundShapePreview(
+      boundShapeForViewer,
+      boundPreview?.shape === 'polygon',
+    );
+  }, [boundShapeForViewer, boundPreview?.shape, mesh]);
+
+  // The shape line says where the cut falls; the shaded triangles say which
+  // regions it actually picked, which is the thing a units mistake or the
+  // wrong side gets wrong. The server answers in region numbers, so they are
+  // mapped back through the mesh the viewer is already drawing.
+  const boundTriangleIndices = useMemo(() => {
+    const regionIds = boundPreview?.selectedRegionIds;
+    const triangleRegionIds = mesh?.triangleRegionIds;
+    if (!regionIds?.length || !triangleRegionIds) {
+      return null;
+    }
+
+    const wanted = new Set(regionIds);
+    const indices: number[] = [];
+    triangleRegionIds.forEach((regionId, triangleIndex) => {
+      if (regionId !== null && wanted.has(regionId)) {
+        indices.push(triangleIndex);
+      }
+    });
+    return indices;
+  }, [boundPreview?.selectedRegionIds, mesh]);
+
+  useEffect(() => {
+    viewerRef.current?.setBoundRegionOverlay(boundTriangleIndices);
+  }, [boundTriangleIndices, mesh]);
+
+  const resetBoundState = () => {
+    setBoundPreview(null);
+    setBoundResult(null);
+    setBoundStatus(null);
+    setBoundInputKey((key) => key + 1);
+  };
+
+  const handleBoundShapeFileChange = (file: File | null) => {
+    setBoundShapeFile(file);
+    // The shape on screen belongs to the file that produced it. Drawing the old
+    // one against a new file is how a units mistake goes unnoticed.
+    setBoundPreview(null);
+    setBoundResult(null);
+    setBoundStatus(
+      file ? `${file.name} ready. Preview to see how many regions it covers.` : null,
+    );
+  };
+
+  const handleBoundSettingsChange = () => {
+    // Shape, side and units all change which regions are covered, so the
+    // preview on screen is now answering a question nobody asked.
+    setBoundPreview(null);
+    setBoundResult(null);
+  };
+
+  const handlePreviewRhoBounds = async (parameters: RhoBoundParameters) => {
+    if (!loadedPolyFile || !boundShapeFile) {
+      setBoundStatus('Load a model and pick a boundary or polygon file first.');
+      return;
+    }
+
+    setIsPreviewingBounds(true);
+    setBoundStatus('Working out which regions the shape covers...');
+
+    try {
+      const response = await previewRhoBounds({
+        polyFile: loadedPolyFile,
+        shapeFile: boundShapeFile,
+        parameters,
+      });
+      setBoundPreview(response);
+      setBoundStatus(
+        `${response.stats.selectedRegionCount} of ` +
+          `${response.stats.totalRegionCount} regions covered.`,
+      );
+    } catch (previewError) {
+      setBoundPreview(null);
+      setBoundStatus(getUploadErrorMessage(previewError));
+    } finally {
+      setIsPreviewingBounds(false);
+    }
+  };
+
+  const handleApplyRhoBounds = async (parameters: RhoBoundParameters) => {
+    if (!loadedPolyFile || !loadedResistivityFile || !boundShapeFile) {
+      setBoundStatus(
+        'Load a .poly and .resistivity pair and pick a boundary or polygon file first.',
+      );
+      return;
+    }
+
+    setIsApplyingBounds(true);
+    setBoundStatus('Writing the bounds...');
+
+    try {
+      const response = await applyRhoBounds({
+        polyFile: loadedPolyFile,
+        resistivityFile: loadedResistivityFile,
+        shapeFile: boundShapeFile,
+        parameters,
+      });
+      setBoundPreview(response);
+      setBoundResult(response);
+      const written =
+        parameters.lower === 0 && parameters.upper === 0
+          ? 'Cleared the bounds of'
+          : `Bounded ${parameters.lower}-${parameters.upper} Ohm-m on`;
+      setBoundStatus(
+        `${written} ${response.stats.updatedRowCount ?? 0} regions. ` +
+          'The model itself is unchanged -- download the .resistivity to keep it.',
+      );
+    } catch (applyError) {
+      setBoundStatus(getUploadErrorMessage(applyError));
+    } finally {
+      setIsApplyingBounds(false);
+    }
+  };
+
   const resetCutState = () => {
     setCutPreview(null);
     setCutWarnings([]);
@@ -807,6 +956,9 @@ export function TriangleModelWindow() {
       // invites an apply that would cut the same line a second time.
       setCutFile(null);
       setCutInputKey((key) => key + 1);
+      // A merge renumbers the regions, so a bound preview taken against the
+      // source model no longer points at the same rock.
+      resetBoundState();
       // The merged model already carries the cut; the candidate overlay would
       // just double the line.
       setCutPreview(null);
@@ -1373,6 +1525,26 @@ export function TriangleModelWindow() {
               </div>
             ) : null}
           </div>
+        ) : null}
+
+        {model ? (
+          <RhoBoundPanel
+            disabled={isLoading}
+            isApplying={isApplyingBounds}
+            isPreviewing={isPreviewingBounds}
+            preview={boundPreview}
+            result={boundResult}
+            shapeFileName={boundShapeFile?.name ?? null}
+            shapeInputKey={boundInputKey}
+            status={boundStatus}
+            onApply={handleApplyRhoBounds}
+            onDownload={(result) => {
+              downloadTextFile(result.resistivityFileName, result.resistivityText);
+            }}
+            onPreview={handlePreviewRhoBounds}
+            onSettingsChange={handleBoundSettingsChange}
+            onShapeFileChange={handleBoundShapeFileChange}
+          />
         ) : null}
       </section>
 

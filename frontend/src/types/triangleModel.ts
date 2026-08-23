@@ -236,3 +236,54 @@ export interface PenaltyCutApplyResponse extends TriangleModelResponse {
   stats: PenaltyCutStats;
   warnings: string[];
 }
+
+/**
+ * Bounding a model's resistivity over part of the section.
+ *
+ * Independent of the penalty cut: MARE2DEM reads a `Lower`/`Upper` pair per
+ * region and a pair of zeros means "use Global Bounds", so this rewrites two
+ * columns of the `.resistivity` and touches no geometry at all.
+ */
+export type RhoBoundShape = 'boundary' | 'polygon';
+
+/** Which side of a boundary the bounds apply to. Depth is positive down. */
+export type RhoBoundSide = 'below' | 'above';
+
+export interface RhoBoundParameters {
+  shape: RhoBoundShape;
+  units: PenaltyCutUnits;
+  side: RhoBoundSide;
+  lower: number;
+  upper: number;
+  /** Anisotropy qualifier to restrict the update to, e.g. `z`. */
+  component?: string;
+  /** Shape vertices as `[y, z]`, for a shape that has no file behind it. */
+  points?: [number, number][];
+}
+
+export interface RhoBoundStats {
+  shapePointCount: number;
+  selectedRegionCount: number;
+  totalRegionCount: number;
+  /** Regions off the ends of a boundary, which is never extrapolated. */
+  outsideShapeSpanCount: number;
+  updatedRowCount?: number;
+  boundColumns?: string[];
+  lower?: number;
+  upper?: number;
+}
+
+export interface RhoBoundPreviewResponse {
+  shape: RhoBoundShape;
+  side: RhoBoundSide;
+  /** Shape vertices as `[y, z]` pairs, in metres. */
+  points: [number, number][];
+  selectedRegionIds: number[];
+  stats: RhoBoundStats;
+  warnings: string[];
+}
+
+export interface RhoBoundApplyResponse extends RhoBoundPreviewResponse {
+  resistivityFileName: string;
+  resistivityText: string;
+}
