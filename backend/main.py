@@ -1676,7 +1676,7 @@ def apply_rho_bounds():
             )
 
         selection = select_regions(regions, points, parameters)
-        bounded_text, bound_stats = build_bounded_resistivity_text(
+        bounded_text, bound_stats, clamped_rho = build_bounded_resistivity_text(
             resistivity_text, selection.region_ids, parameters
         )
     except RhoBoundError as exc:
@@ -1700,6 +1700,14 @@ def apply_rho_bounds():
     payload["stats"].update(bound_stats)
     payload["resistivityFileName"] = output_name
     payload["resistivityText"] = bounded_text
+    payload["clampedRegionRho"] = clamped_rho
+    if bound_stats["clampedRowCount"]:
+        payload["warnings"].append(
+            f"{bound_stats['clampedRowCount']} of "
+            f"{bound_stats['updatedRowCount']} regions had a resistivity "
+            "outside the new band and were moved into it. MARE2DEM will not "
+            "start from a free parameter that sits outside its bounds."
+        )
     return jsonify(payload)
 
 

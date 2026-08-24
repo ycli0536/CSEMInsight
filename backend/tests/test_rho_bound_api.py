@@ -214,6 +214,46 @@ class TestApplyRhoBounds:
         # A file that goes back through the flow does not grow a name.
         assert cleared["resistivityFileName"] == "box.bounded.0.resistivity"
 
+    def test_moves_an_out_of_band_resistivity_into_the_band(self, app_client, model_files):
+        # Region 2 inverted to 10 ohm-m and is a free parameter. Bounding it to
+        # 0.5-5 leaves it outside its own band, and MARE2DEM's
+        # transformToUnbound_inputarrays refuses to start from that.
+        payload = self.post(
+            app_client, model_files, lower=0.5, upper=5
+        ).get_json()
+
+        table = rows(payload["resistivityText"])
+        assert 0.5 < float(table["2"][1]) < 5
+        assert payload["stats"]["clampedRowCount"] == 1
+        assert payload["clampedRegionRho"]["Rho"]["2"] == float(table["2"][1])
+        assert any("outside the new band" in w for w in payload["warnings"])
+
+    def test_uses_a_reset_resistivity_when_one_is_given(self, app_client, model_files):
+        payload = self.post(
+            app_client, model_files, lower=0.5, upper=5, resetRho=2
+        ).get_json()
+
+        assert float(rows(payload["resistivityText"])["2"][1]) == 2.0
+
+    def test_rejects_a_reset_resistivity_outside_the_band(
+        self, app_client, model_files
+    ):
+        response = self.post(
+            app_client, model_files, lower=0.5, upper=5, resetRho=50
+        )
+
+        assert response.status_code == 400
+        assert "strictly inside the band" in response.get_json()["error"]
+
+    def test_says_nothing_moved_when_every_value_already_fits(
+        self, app_client, model_files
+    ):
+        payload = self.post(app_client, model_files).get_json()
+
+        assert payload["stats"]["clampedRowCount"] == 0
+        assert payload["clampedRegionRho"] == {}
+        assert not any("outside the new band" in w for w in payload["warnings"])
+
     def test_rejects_a_one_sided_bound(self, app_client, model_files):
         response = self.post(app_client, model_files, upper=0)
 

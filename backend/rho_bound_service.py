@@ -37,6 +37,11 @@ from penalty_cut_service import (
 )
 from resistivity_file_parser import ResistivityFileParser
 
+#: How far inside a band a clamped resistivity lands, as a fraction of the
+#: band's width in log10 space. The transform is singular at the bounds
+#: themselves, so "clamp to the bound" is not a usable answer.
+BAND_MARGIN_FRACTION = 0.01
+
 #: A boundary line splits the model; a polygon encloses part of it.
 SHAPES = ("boundary", "polygon")
 
@@ -66,6 +71,9 @@ class RhoBoundParameters:
     #: Anisotropy qualifier to restrict the update to, e.g. ``"z"``. ``None``
     #: writes every Lower/Upper pair the file has.
     component: Optional[str] = None
+    #: Value to give free parameters whose rho falls outside the new band.
+    #: ``None`` moves them to the nearest admissible value instead.
+    reset_rho: Optional[float] = None
 
 
 @dataclass(frozen=True)
@@ -138,6 +146,20 @@ def parse_rho_bound_parameters(payload: Mapping[str, Any]) -> RhoBoundParameters
         if not component:
             component = None
 
+    reset_rho = payload.get("resetRho")
+    if reset_rho is not None:
+        reset_rho = _parse_bound(reset_rho, "Reset resistivity")
+        if not lower and not upper:
+            raise RhoBoundError(
+                "A reset resistivity has no band to sit inside when the bounds "
+                "are being cleared."
+            )
+        if not lower < reset_rho < upper:
+            raise RhoBoundError(
+                f"The reset resistivity must sit strictly inside the band; got "
+                f"{reset_rho} for {lower}..{upper}."
+            )
+
     return RhoBoundParameters(
         shape=shape,
         units=units,
@@ -145,7 +167,23 @@ def parse_rho_bound_parameters(payload: Mapping[str, Any]) -> RhoBoundParameters
         lower=lower,
         upper=upper,
         component=component,
+        reset_rho=reset_rho,
     )
+
+
+def admissible_rho_range(lower: float, upper: float) -> Tuple[float, float]:
+    """The band with both ends pulled in, in log10 space.
+
+    MARE2DEM's bandpass transform is ``log((m - a) / (b - m))``, which is
+    singular at the bounds themselves, so a value clamped exactly onto one is
+    no more usable than the value it replaced. Pulling in by a fraction of the
+    band's log width keeps the margin meaningful for a narrow band and a band
+    spanning decades alike.
+    """
+    log_lower = math.log10(lower)
+    log_upper = math.log10(upper)
+    margin = (log_upper - log_lower) * BAND_MARGIN_FRACTION
+    return 10 ** (log_lower + margin), 10 ** (log_upper - margin)
 
 
 def _parse_bound(value: Any, label: str) -> float:
@@ -331,12 +369,30 @@ def select_regions(
 
 
 @dataclass(frozen=True)
+class _ComponentColumns:
+    """Where one component's columns sit in a data row.
+
+    A component is one Lower/Upper pair and the Rho and Param that belong to
+    it: ``Lower``/``Upper``/``Rho``/``Param`` in an isotropic file, and
+    ``Lower z``/``Upper z``/``Rho-z``/``Param z`` in an anisotropic one.
+    """
+
+    lower: int
+    upper: int
+    rho: Optional[int]
+    param: Optional[int]
+    #: Name of the rho column, as spelled in the file, so a caller can line the
+    #: clamped values up with the component a viewer is showing.
+    rho_name: Optional[str]
+
+
+@dataclass(frozen=True)
 class _BoundColumns:
-    """Where the region number and each Lower/Upper pair sit in a data row."""
+    """Where the region number and each component's columns sit in a data row."""
 
     region_index: int
-    #: qualifier ("" when isotropic) -> (lower token index, upper token index)
-    pairs: Dict[str, Tuple[int, int]]
+    #: qualifier ("" when isotropic) -> that component's column positions
+    pairs: Dict[str, _ComponentColumns]
 
     @property
     def names(self) -> List[str]:
@@ -350,12 +406,18 @@ def _normalize(token: str) -> str:
 def _detect_bound_columns(
     header_line: str, component: Optional[str]
 ) -> Optional[_BoundColumns]:
-    """Locate the bound columns of a "!#" header line.
+    """Locate the bound, rho and parameter columns of a "!#" header line.
 
     Uses the .resistivity parser's own header reader rather than a plain split:
     an anisotropic header separates a column from its direction qualifier with
     a single space ("Lower z  Upper z  Lower xy"), so splitting on whitespace
     would put every bound column at the wrong index.
+
+    Rho and Param are found alongside the bounds because a new band can leave a
+    free parameter's rho outside it, which MARE2DEM refuses to start from --
+    see :func:`build_bounded_resistivity_text`. Rho spells its qualifier with a
+    hyphen ("Rho-z") where the others use a space ("Lower z"), so the two
+    spellings are reconciled here.
 
     Returns:
         The column positions, or None if this is not a table header.
@@ -376,20 +438,33 @@ def _detect_bound_columns(
 
     lowers: Dict[str, int] = {}
     uppers: Dict[str, int] = {}
+    rhos: Dict[str, Tuple[int, str]] = {}
+    params: Dict[str, int] = {}
     region_index = None
     for index, column in enumerate(columns):
         normalized = _normalize(column)
         if region_index is None and normalized in _REGION_HEADERS:
             region_index = index
             continue
+        if normalized == "rho" or normalized.startswith("rho-"):
+            rhos[normalized[len("rho-"):]] = (index, str(column).strip())
+            continue
         kind, _, qualifier = normalized.partition(" ")
         if kind == "lower":
             lowers[qualifier] = index
         elif kind == "upper":
             uppers[qualifier] = index
+        elif kind == "param":
+            params[qualifier] = index
 
     pairs = {
-        qualifier: (lowers[qualifier], uppers[qualifier])
+        qualifier: _ComponentColumns(
+            lower=lowers[qualifier],
+            upper=uppers[qualifier],
+            rho=rhos.get(qualifier, (None, None))[0],
+            rho_name=rhos.get(qualifier, (None, None))[1],
+            param=params.get(qualifier),
+        )
         for qualifier in lowers
         if qualifier in uppers
     }
@@ -405,7 +480,7 @@ def _detect_bound_columns(
     return _BoundColumns(region_index=region_index or 0, pairs=pairs)
 
 
-def _format_bound(value: float) -> str:
+def _format_value(value: float) -> str:
     return f"{value:.4E}"
 
 
@@ -416,53 +491,122 @@ def _split_line_ending(line: str) -> Tuple[str, str]:
     return line[: match.start()], match.group(1)
 
 
-def _replace_row_bounds(
+def _admissible_rho(
+    rho: float, low: float, high: float, reset_rho: Optional[float]
+) -> float:
+    """A resistivity the new band can actually start from.
+
+    A value already inside the pulled-in band is left exactly where the
+    inversion put it. One outside it moves to the caller's reset value, or --
+    with no reset value -- to the nearest edge of the band, which keeps as much
+    of the inverted structure as the band allows.
+    """
+    if low <= rho <= high:
+        return rho
+    if reset_rho is not None:
+        return reset_rho
+    return min(max(rho, low), high)
+
+
+def _is_free_parameter(token: str) -> bool:
+    """Whether a Param cell marks a free parameter.
+
+    Param 0 is a fixed region -- air at about 1e13 ohm-m and seawater at 0.3,
+    see poly_region_inheritance. Those are never inverted for and never
+    transformed, so clamping their rho into a band meant for the rock between
+    them would change the model for no reason.
+    """
+    try:
+        return int(float(token)) != 0
+    except (TypeError, ValueError):
+        # An unreadable Param is treated as free: the point of clamping is a
+        # file MARE2DEM can start from, and leaving a maybe-free parameter
+        # outside its band is the failure this exists to prevent.
+        return True
+
+
+def _rewrite_row(
     line: str,
     columns: _BoundColumns,
     region_ids: set,
     parameters: RhoBoundParameters,
-) -> Tuple[str, bool]:
-    """Rewrite one data row's bound columns, in place.
+) -> Tuple[str, bool, bool]:
+    """Rewrite one data row's bound columns, and its rho where the band needs it.
 
     Tokens are spliced back over their own character spans rather than joined
     with single spaces: a real file has tens of thousands of rows and only some
     of them are selected, so re-flowing the ones that change would leave a file
     whose columns line up in places and not in others.
+
+    Returns:
+        ``(line, region_id, {rho column: new value})``. The region id is None
+        when the row was left alone.
     """
     body, line_ending = _split_line_ending(line)
     matches = list(_TOKEN_PATTERN.finditer(body))
     if len(matches) <= columns.region_index:
-        return line, False
+        return line, None, {}
 
     try:
         region_id = int(float(matches[columns.region_index].group()))
     except (TypeError, ValueError):
-        return line, False
+        return line, None, {}
     if region_id not in region_ids:
-        return line, False
+        return line, None, {}
 
-    replacements: List[Tuple[int, int, str]] = []
-    for lower_index, upper_index in columns.pairs.values():
-        if max(lower_index, upper_index) >= len(matches):
+    is_clearing = not parameters.lower and not parameters.upper
+    low, high = (
+        (0.0, 0.0)
+        if is_clearing
+        else admissible_rho_range(parameters.lower, parameters.upper)
+    )
+
+    replacements: List[Tuple[Any, str]] = []
+    clamped: Dict[str, float] = {}
+    for component in columns.pairs.values():
+        if max(component.lower, component.upper) >= len(matches):
             continue
         for index, value in (
-            (lower_index, parameters.lower),
-            (upper_index, parameters.upper),
+            (component.lower, parameters.lower),
+            (component.upper, parameters.upper),
         ):
-            match = matches[index]
-            text = _format_bound(value)
-            # Keep the column width where the new value fits it, so a table
-            # stays a table.
-            width = match.end() - match.start()
-            replacements.append((match.start(), match.end(), text.rjust(width)))
+            replacements.append((matches[index], _format_value(value)))
+
+        # Clearing a bound sends the region back to Global Bounds, which its
+        # current rho already satisfied before this file was written.
+        if is_clearing or component.rho is None or component.rho >= len(matches):
+            continue
+        if component.param is not None and component.param < len(matches):
+            if not _is_free_parameter(matches[component.param].group()):
+                continue
+
+        try:
+            rho = float(matches[component.rho].group())
+        except (TypeError, ValueError):
+            continue
+        adjusted = _admissible_rho(rho, low, high, parameters.reset_rho)
+        if adjusted != rho:
+            text = _format_value(adjusted)
+            replacements.append((matches[component.rho], text))
+            # The value the file now holds, not the one we computed: a viewer
+            # showing more precision than was written would disagree with the
+            # download over what the model is.
+            clamped[component.rho_name or "Rho"] = float(text)
 
     if not replacements:
-        return line, False
+        return line, None, {}
 
     updated = body
-    for start, end, text in sorted(replacements, reverse=True):
-        updated = updated[:start] + text + updated[end:]
-    return updated + line_ending, True
+    for match, replacement in sorted(
+        replacements, key=lambda item: item[0].start(), reverse=True
+    ):
+        # Keep the column width where the new value fits it, so a table stays a
+        # table.
+        width = match.end() - match.start()
+        updated = (
+            updated[: match.start()] + replacement.rjust(width) + updated[match.end():]
+        )
+    return updated + line_ending, region_id, clamped
 
 
 def build_bounded_resistivity_text(
@@ -477,8 +621,19 @@ def build_bounded_resistivity_text(
         region_ids: Region numbers to bound, as :func:`select_regions` returns.
         parameters: Validated parameters; the bound values and the component.
 
+    A new band can leave a free parameter's rho outside it -- bounding a
+    basement to 1-500 ohm-m when the inversion put part of it at 2000 -- and
+    MARE2DEM will not start from that: transformToUnbound_inputarrays checks
+    every free parameter against its bounds, and the bandpass transform has
+    nothing to map a value outside the band to. So a selected free parameter's
+    rho is moved into the band, to the caller's reset value or to the nearest
+    edge. Fixed regions keep their rho: air and seawater are never inverted for
+    and never transformed.
+
     Returns:
-        ``(text, stats)`` where stats reports the rows and columns written.
+        ``(text, stats, clamped_rho)``, where clamped_rho maps each rho column
+        to the regions whose value had to move and where it moved to, so a
+        viewer can show what the file now holds.
 
     Raises:
         RhoBoundError: If the file has no bound columns to write, or none of
@@ -492,6 +647,7 @@ def build_bounded_resistivity_text(
     columns: Optional[_BoundColumns] = None
     saw_table = False
     updated_rows = 0
+    clamped_rho: Dict[str, Dict[int, float]] = {}
 
     for line in source_text.splitlines(keepends=True):
         if line.strip().startswith("!#"):
@@ -506,11 +662,13 @@ def build_bounded_resistivity_text(
             continue
 
         if columns is not None:
-            updated_line, was_updated = _replace_row_bounds(
+            updated_line, region_id, clamped = _rewrite_row(
                 line, columns, wanted, parameters
             )
-            if was_updated:
+            if region_id is not None:
                 updated_rows += 1
+            for column, value in clamped.items():
+                clamped_rho.setdefault(column, {})[region_id] = value
             output_lines.append(updated_line)
         else:
             output_lines.append(line)
@@ -530,8 +688,12 @@ def build_bounded_resistivity_text(
             "Check that the .poly and .resistivity come from the same model."
         )
 
+    clamped_rows = len(
+        {region_id for values in clamped_rho.values() for region_id in values}
+    )
     return "".join(output_lines), {
         "updatedRowCount": updated_rows,
+        "clampedRowCount": clamped_rows,
         "boundColumns": [
             name
             for qualifier in columns.names
@@ -539,4 +701,5 @@ def build_bounded_resistivity_text(
         ],
         "lower": parameters.lower,
         "upper": parameters.upper,
-    }
+        "resetRho": parameters.reset_rho,
+    }, clamped_rho

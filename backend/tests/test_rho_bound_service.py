@@ -5,11 +5,14 @@ or a polygon covers -- so most of these tests are about selection, and the rest
 about writing two columns of a .resistivity without disturbing the others.
 """
 
+import math
+
 import pytest
 
 from rho_bound_service import (
     RhoBoundError,
     RhoBoundParameters,
+    admissible_rho_range,
     build_bounded_resistivity_text,
     parse_rho_bound_parameters,
     parse_shape_points,
@@ -111,6 +114,28 @@ class TestParseParameters:
     def test_rejects_an_unusable_bound(self, value):
         with pytest.raises(RhoBoundError):
             parse_rho_bound_parameters({"lower": value, "upper": 500})
+
+
+class TestParseResetRho:
+    def test_accepts_a_value_inside_the_band(self):
+        parameters = parse_rho_bound_parameters(
+            {"lower": 1, "upper": 500, "resetRho": 50}
+        )
+
+        assert parameters.reset_rho == 50.0
+
+    @pytest.mark.parametrize("value", [0.5, 500, 1, 900])
+    def test_rejects_a_value_on_or_outside_the_band(self, value):
+        # On a bound is no better than outside it: the transform is singular
+        # there, which is the failure this whole clamp exists to prevent.
+        with pytest.raises(RhoBoundError, match="strictly inside the band"):
+            parse_rho_bound_parameters(
+                {"lower": 1, "upper": 500, "resetRho": value}
+            )
+
+    def test_rejects_a_value_when_the_bounds_are_being_cleared(self):
+        with pytest.raises(RhoBoundError, match="no band to sit inside"):
+            parse_rho_bound_parameters({"lower": 0, "upper": 0, "resetRho": 50})
 
 
 class TestParseShape:
@@ -266,7 +291,7 @@ class TestBuildBoundedText:
     PARAMETERS = RhoBoundParameters(lower=1.0, upper=500.0)
 
     def test_writes_the_bounds_of_the_selected_regions_only(self):
-        text, stats = build_bounded_resistivity_text(
+        text, stats, _ = build_bounded_resistivity_text(
             ISOTROPIC_RESISTIVITY, [3, 4], self.PARAMETERS
         )
 
@@ -276,20 +301,29 @@ class TestBuildBoundedText:
         assert [float(table["1"][3]), float(table["1"][4])] == [0.0, 0.0]
         assert stats["updatedRowCount"] == 2
 
-    def test_leaves_every_other_column_untouched(self):
-        # Bounds are a constraint on the inversion, not a change to the model:
-        # touching rho here would silently rewrite the result of an inversion.
-        text, _ = build_bounded_resistivity_text(
+    def test_leaves_the_parameter_prejudice_and_weight_columns_untouched(self):
+        text, _, _ = build_bounded_resistivity_text(
             ISOTROPIC_RESISTIVITY, [3], self.PARAMETERS
         )
 
         table = rows(text)
-        assert float(table["3"][1]) == 6.7727e02  # Rho
         assert table["3"][2] == "2"  # Param
         assert [float(value) for value in table["3"][5:]] == [0.0, 0.0]
 
+    def test_leaves_a_rho_that_already_fits_the_band_alone(self):
+        # Region 1 sits at 0.594 ohm-m, inside 0.1..1000, so the inversion's
+        # own value stands: nothing is gained by moving it.
+        text, stats, _ = build_bounded_resistivity_text(
+            ISOTROPIC_RESISTIVITY,
+            [1],
+            RhoBoundParameters(lower=0.1, upper=1000.0),
+        )
+
+        assert float(rows(text)["1"][1]) == 5.9380e-01
+        assert stats["clampedRowCount"] == 0
+
     def test_keeps_the_header_and_the_untouched_rows_byte_for_byte(self):
-        text, _ = build_bounded_resistivity_text(
+        text, _, _ = build_bounded_resistivity_text(
             ISOTROPIC_RESISTIVITY, [3], self.PARAMETERS
         )
 
@@ -305,7 +339,7 @@ class TestBuildBoundedText:
         # A real file has tens of thousands of rows and only some are selected,
         # so re-flowing the ones that change would leave a table that lines up
         # in places and not in others.
-        text, _ = build_bounded_resistivity_text(
+        text, _, _ = build_bounded_resistivity_text(
             ISOTROPIC_RESISTIVITY, [3], self.PARAMETERS
         )
 
@@ -313,11 +347,11 @@ class TestBuildBoundedText:
         assert lines["3"].index("1.0000E+00") == lines["4"].index("0.0000E+00")
 
     def test_clears_a_bound_back_to_the_global_one(self):
-        bounded, _ = build_bounded_resistivity_text(
+        bounded, _, _ = build_bounded_resistivity_text(
             ISOTROPIC_RESISTIVITY, [3], self.PARAMETERS
         )
 
-        cleared, _ = build_bounded_resistivity_text(
+        cleared, _, _ = build_bounded_resistivity_text(
             bounded, [3], RhoBoundParameters(lower=0.0, upper=0.0)
         )
 
@@ -325,7 +359,7 @@ class TestBuildBoundedText:
         assert [float(table["3"][3]), float(table["3"][4])] == [0.0, 0.0]
 
     def test_writes_every_bound_pair_of_an_anisotropic_file(self):
-        text, stats = build_bounded_resistivity_text(
+        text, stats, _ = build_bounded_resistivity_text(
             ANISOTROPIC_RESISTIVITY, [1], self.PARAMETERS
         )
 
@@ -339,7 +373,7 @@ class TestBuildBoundedText:
         ]
 
     def test_restricts_the_update_to_a_named_component(self):
-        text, stats = build_bounded_resistivity_text(
+        text, stats, _ = build_bounded_resistivity_text(
             ANISOTROPIC_RESISTIVITY,
             [1],
             RhoBoundParameters(lower=1.0, upper=500.0, component="z"),
@@ -367,3 +401,111 @@ class TestBuildBoundedText:
     def test_reports_an_empty_selection(self):
         with pytest.raises(RhoBoundError, match="No regions were selected"):
             build_bounded_resistivity_text(ISOTROPIC_RESISTIVITY, [], self.PARAMETERS)
+
+
+class TestClampRhoIntoTheBand:
+    """MARE2DEM refuses to start when a free parameter sits outside its bounds.
+
+    transformToUnbound_inputarrays checks every free parameter against its
+    band, and the bandpass transform has nothing to map an outside value to, so
+    writing bounds without moving rho would produce a file that cannot be run.
+    """
+
+    PARAMETERS = RhoBoundParameters(lower=1.0, upper=500.0)
+
+    def test_the_admissible_range_stops_short_of_the_bounds(self):
+        low, high = admissible_rho_range(1.0, 500.0)
+
+        # 1% of the band's log10 width in from each end, so the margin means
+        # the same thing for a narrow band and one spanning decades.
+        assert 1.0 < low < high < 500.0
+        assert low == pytest.approx(10 ** (0.01 * math.log10(500)))
+        assert high == pytest.approx(10 ** (0.99 * math.log10(500)))
+
+    def test_moves_a_free_parameter_above_the_band_to_its_top(self):
+        text, stats, _ = build_bounded_resistivity_text(
+            ISOTROPIC_RESISTIVITY, [3], self.PARAMETERS
+        )
+
+        _, high = admissible_rho_range(1.0, 500.0)
+        assert float(rows(text)["3"][1]) == pytest.approx(high, rel=1e-4)
+        assert stats["clampedRowCount"] == 1
+
+    def test_moves_a_free_parameter_below_the_band_to_its_floor(self):
+        text, _, _ = build_bounded_resistivity_text(
+            ISOTROPIC_RESISTIVITY, [1], RhoBoundParameters(lower=10.0, upper=500.0)
+        )
+
+        low, _ = admissible_rho_range(10.0, 500.0)
+        assert float(rows(text)["1"][1]) == pytest.approx(low, rel=1e-4)
+
+    def test_leaves_a_fixed_region_at_its_own_resistivity(self):
+        # Region 2 carries Param 0: seawater, never inverted for and never
+        # transformed. Dragging it into a band meant for the rock below would
+        # change the model for nothing.
+        text, stats, _ = build_bounded_resistivity_text(
+            ISOTROPIC_RESISTIVITY, [2], self.PARAMETERS
+        )
+
+        table = rows(text)
+        assert float(table["2"][1]) == 3.1000e-01
+        assert [float(table["2"][3]), float(table["2"][4])] == [1.0, 500.0]
+        assert stats["clampedRowCount"] == 0
+
+    def test_uses_the_reset_value_when_one_is_given(self):
+        text, stats, _ = build_bounded_resistivity_text(
+            ISOTROPIC_RESISTIVITY,
+            [3, 4],
+            RhoBoundParameters(lower=1.0, upper=500.0, reset_rho=50.0),
+        )
+
+        table = rows(text)
+        assert float(table["3"][1]) == 50.0  # was 677, outside the band
+        assert float(table["4"][1]) == 3.9900e02  # was 399, already inside
+        assert stats["clampedRowCount"] == 1
+
+    def test_clears_a_bound_without_touching_rho(self):
+        # Going back to Global Bounds cannot strand a parameter: whatever the
+        # rho is, it satisfied the global band when the file was written.
+        text, stats, _ = build_bounded_resistivity_text(
+            ISOTROPIC_RESISTIVITY, [3], RhoBoundParameters(lower=0.0, upper=0.0)
+        )
+
+        assert float(rows(text)["3"][1]) == 6.7727e02
+        assert stats["clampedRowCount"] == 0
+
+    def test_reports_where_each_clamped_value_landed(self):
+        # The viewer has to be able to show what the file now holds, keyed by
+        # the column it is displaying.
+        _, _, clamped = build_bounded_resistivity_text(
+            ISOTROPIC_RESISTIVITY, [3, 4], self.PARAMETERS
+        )
+
+        _, high = admissible_rho_range(1.0, 500.0)
+        assert set(clamped) == {"Rho"}
+        assert clamped["Rho"][3] == pytest.approx(high, rel=1e-4)
+        # Region 4 was already at 399, inside the band, so it is not reported.
+        assert 4 not in clamped["Rho"]
+
+    def test_keys_the_report_on_each_anisotropic_column(self):
+        _, _, clamped = build_bounded_resistivity_text(
+            ANISOTROPIC_RESISTIVITY, [1], RhoBoundParameters(lower=1.0, upper=5.0)
+        )
+
+        assert set(clamped) == {"Rho-z"}
+        assert set(clamped["Rho-z"]) == {1}
+
+    def test_clamps_each_component_of_an_anisotropic_file_on_its_own_param(self):
+        # Region 2 is fixed in both components (Param z and Param xy are 0) at
+        # 1e12, the air value; region 1 is free in both.
+        text, stats, _ = build_bounded_resistivity_text(
+            ANISOTROPIC_RESISTIVITY, [1, 2], RhoBoundParameters(lower=1.0, upper=5.0)
+        )
+
+        table = rows(text)
+        low, high = admissible_rho_range(1.0, 5.0)
+        assert float(table["1"][1]) == pytest.approx(high, rel=1e-4)  # 8.85 -> top
+        assert float(table["1"][2]) == pytest.approx(1.4373, rel=1e-4)  # already in
+        assert float(table["2"][1]) == 1.0e12
+        assert stats["clampedRowCount"] == 1
+        assert low < high
