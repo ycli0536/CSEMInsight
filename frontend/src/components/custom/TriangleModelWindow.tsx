@@ -831,6 +831,39 @@ export function TriangleModelWindow() {
     }
   };
 
+  const applyClampedRho = (
+    clampedRegionRho: RhoBoundApplyResponse['clampedRegionRho'],
+  ) => {
+    const columns = Object.keys(clampedRegionRho ?? {});
+    if (columns.length === 0) {
+      return;
+    }
+
+    // The server names the column as the .resistivity file spells it ("Rho-z");
+    // the viewer keys on the component it derived from that same column.
+    const keyByColumn = new Map(
+      resistivityComponents.map((component) => [component.column, component.key]),
+    );
+    const next = new Map(regionRhoByComponent);
+    columns.forEach((column) => {
+      const key = keyByColumn.get(column);
+      if (!key) {
+        return;
+      }
+      const rhoByRegion = new Map(next.get(key) ?? new Map<number, number>());
+      Object.entries(clampedRegionRho[column]).forEach(([regionId, rho]) => {
+        rhoByRegion.set(Number(regionId), rho);
+      });
+      next.set(key, rhoByRegion);
+    });
+
+    setRegionRhoByComponent(next);
+    // The file already holds these values, so they are the new baseline rather
+    // than a pending edit waiting to be exported.
+    setBaseRegionRhoByComponent(next);
+    pushTriangleValuesToViewer(getDisplayedRhoByRegion(next, resistivityView));
+  };
+
   const handleApplyRhoBounds = async (parameters: RhoBoundParameters) => {
     if (!loadedPolyFile || !loadedResistivityFile || !boundShapeFile) {
       setBoundStatus(
@@ -851,13 +884,25 @@ export function TriangleModelWindow() {
       });
       setBoundPreview(response);
       setBoundResult(response);
+      // Bounding can move a region's rho: MARE2DEM will not start from a free
+      // parameter outside its band, so those values had to change in the file.
+      // The display and the file the server sees next both have to agree with
+      // what was written, or the model on screen is not the one downloaded.
+      applyClampedRho(response.clampedRegionRho);
+      setLoadedResistivityFile(
+        new File([response.resistivityText], response.resistivityFileName, {
+          type: 'text/plain',
+        }),
+      );
       const written =
         parameters.lower === 0 && parameters.upper === 0
           ? 'Cleared the bounds of'
           : `Bounded ${parameters.lower}-${parameters.upper} Ohm-m on`;
+      const moved = response.stats.clampedRowCount ?? 0;
       setBoundStatus(
-        `${written} ${response.stats.updatedRowCount ?? 0} regions. ` +
-          'The model itself is unchanged -- download the .resistivity to keep it.',
+        `${written} ${response.stats.updatedRowCount ?? 0} regions` +
+          (moved ? `, moving ${moved} resistivities into the band` : '') +
+          '. Download the .resistivity to keep it.',
       );
     } catch (applyError) {
       setBoundStatus(getUploadErrorMessage(applyError));

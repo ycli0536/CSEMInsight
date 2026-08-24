@@ -257,6 +257,12 @@ export interface RhoBoundParameters {
   upper: number;
   /** Anisotropy qualifier to restrict the update to, e.g. `z`. */
   component?: string;
+  /**
+   * Value for free parameters whose rho falls outside the new band. Omitted,
+   * they move to the nearest admissible value instead. Either way they have to
+   * move: MARE2DEM will not start from a free parameter outside its bounds.
+   */
+  resetRho?: number;
   /** Shape vertices as `[y, z]`, for a shape that has no file behind it. */
   points?: [number, number][];
 }
@@ -268,9 +274,12 @@ export interface RhoBoundStats {
   /** Regions off the ends of a boundary, which is never extrapolated. */
   outsideShapeSpanCount: number;
   updatedRowCount?: number;
+  /** Regions whose rho had to move to sit inside the new band. */
+  clampedRowCount?: number;
   boundColumns?: string[];
   lower?: number;
   upper?: number;
+  resetRho?: number | null;
 }
 
 export interface RhoBoundPreviewResponse {
@@ -286,4 +295,10 @@ export interface RhoBoundPreviewResponse {
 export interface RhoBoundApplyResponse extends RhoBoundPreviewResponse {
   resistivityFileName: string;
   resistivityText: string;
+  /**
+   * Where each moved resistivity landed, as `{column: {regionId: rho}}` and
+   * keyed on the column as the file spells it, so the viewer can show what the
+   * downloaded file actually holds.
+   */
+  clampedRegionRho: Record<string, Record<string, number>>;
 }

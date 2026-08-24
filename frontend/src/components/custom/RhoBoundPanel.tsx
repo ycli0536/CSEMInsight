@@ -63,6 +63,7 @@ export function RhoBoundPanel({
   const [units, setUnits] = useState<PenaltyCutUnits>('km');
   const [lower, setLower] = useState('');
   const [upper, setUpper] = useState('');
+  const [resetRho, setResetRho] = useState('');
 
   const parsedLower = parseBound(lower);
   const parsedUpper = parseBound(upper);
@@ -74,17 +75,31 @@ export function RhoBoundPanel({
       ? 'The lower bound must be below the upper bound.'
       : null;
 
+  // A new band can leave a region's inverted rho outside it, and MARE2DEM will
+  // not start from a free parameter outside its bounds. Those regions move
+  // either way; this only decides where to.
+  const parsedReset = parseBound(resetRho);
+  const resetError =
+    resetRho.trim() === ''
+      ? null
+      : parsedReset === null || isCleared
+        ? 'A reset resistivity needs a band to sit inside.'
+        : !boundsGiven || parsedReset <= parsedLower || parsedReset >= parsedUpper
+          ? 'The reset resistivity must sit strictly inside the band.'
+          : null;
+
   const parameters: RhoBoundParameters = {
     shape,
     side,
     units,
     lower: parsedLower ?? 0,
     upper: parsedUpper ?? 0,
+    ...(parsedReset !== null && !resetError ? { resetRho: parsedReset } : {}),
   };
 
   const busy = disabled || isApplying || isPreviewing;
   const canPreview = !busy && !!shapeFileName;
-  const canApply = canPreview && !boundsError;
+  const canApply = canPreview && !boundsError && !resetError;
 
   return (
     <div
@@ -199,7 +214,21 @@ export function RhoBoundPanel({
           0 and 0 clears the selected regions' bounds, sending them back to
           Global Bounds.
         </p>
-      ) : null}
+      ) : (
+        <label className="space-y-1 text-xs text-muted-foreground">
+          <span>Reset out-of-range rho to (optional)</span>
+          <input
+            aria-label="Reset resistivity"
+            type="number"
+            min="0"
+            placeholder="blank: move to the nearest bound"
+            value={resetRho}
+            disabled={busy}
+            onChange={(event) => setResetRho(event.target.value)}
+            className="h-8 w-full rounded-md border border-border/60 bg-background px-2 text-xs tabular-nums"
+          />
+        </label>
+      )}
 
       <div className="flex gap-2">
         <Button
@@ -233,8 +262,8 @@ export function RhoBoundPanel({
         </Button>
       </div>
 
-      {boundsError && shapeFileName ? (
-        <p className="text-xs text-destructive">{boundsError}</p>
+      {shapeFileName && (boundsError || resetError) ? (
+        <p className="text-xs text-destructive">{boundsError ?? resetError}</p>
       ) : null}
 
       {status ? (
@@ -272,6 +301,14 @@ export function RhoBoundPanel({
               <dt>Rows written</dt>
               <dd className="text-right font-medium text-foreground">
                 {preview.stats.updatedRowCount}
+              </dd>
+            </>
+          ) : null}
+          {preview.stats.clampedRowCount ? (
+            <>
+              <dt>Rho moved into band</dt>
+              <dd className="text-right font-medium text-foreground">
+                {preview.stats.clampedRowCount}
               </dd>
             </>
           ) : null}

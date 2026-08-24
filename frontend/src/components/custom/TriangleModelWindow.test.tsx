@@ -1660,6 +1660,7 @@ describe('TriangleModelWindow rho bounds', () => {
       stats: { ...PREVIEW.stats, updatedRowCount: 1, lower: 1, upper: 500 },
       resistivityFileName: 'editable.bounded.0.resistivity',
       resistivityText: 'Format: mare2dem_1.1\n',
+      clampedRegionRho: {},
     };
     mockUploadThen((url) =>
       url.includes('/api/apply-rho-bounds') ? applied : PREVIEW,
@@ -1683,6 +1684,101 @@ describe('TriangleModelWindow rho bounds', () => {
     // Bounds constrain the next inversion; they do not change the model, so
     // the viewer must not be handed a new one.
     expect(mockViewer.setData).not.toHaveBeenCalled();
+  });
+
+  it('shows the resistivities that had to move into the band', async () => {
+    // MARE2DEM will not start from a free parameter outside its bounds, so
+    // bounding moves them -- and the file the user downloads then disagrees
+    // with the model on screen unless the viewer is told.
+    const user = userEvent.setup();
+    const applied = {
+      ...PREVIEW,
+      stats: { ...PREVIEW.stats, updatedRowCount: 1, clampedRowCount: 1 },
+      resistivityFileName: 'editable.bounded.0.resistivity',
+      resistivityText: 'Format: mare2dem_1.1\n',
+      clampedRegionRho: { Rho: { '20': 470 } },
+    };
+    mockUploadThen((url) =>
+      url.includes('/api/apply-rho-bounds') ? applied : PREVIEW,
+    );
+
+    render(<TriangleModelWindow />);
+    await loadTriangleModel(user);
+    await dropShape(user);
+    await user.type(screen.getByLabelText(/lower bound/i), '1');
+    await user.type(screen.getByLabelText(/upper bound/i), '500');
+    await user.click(screen.getByRole('button', { name: /apply bounds/i }));
+
+    await waitFor(() => {
+      // Region 10 is the first triangle and keeps its 10; region 20 is the
+      // second and now reads what the file holds.
+      expect(mockViewer.setTriangleResistivityValues).toHaveBeenLastCalledWith([
+        10, 470,
+      ]);
+    });
+    expect(await screen.findByTestId('rho-bound-status')).toHaveTextContent(
+      'moving 1 resistivities into the band',
+    );
+  });
+
+  it('sends the bounded file onward as the loaded .resistivity', async () => {
+    // The bounded file is what the user now holds, so a second pass -- or a
+    // later export -- has to run against it rather than the pre-clamp values.
+    const user = userEvent.setup();
+    const applied = {
+      ...PREVIEW,
+      stats: { ...PREVIEW.stats, updatedRowCount: 1, clampedRowCount: 1 },
+      resistivityFileName: 'editable.bounded.0.resistivity',
+      resistivityText: 'Format: mare2dem_1.1\n',
+      clampedRegionRho: { Rho: { '20': 470 } },
+    };
+    mockUploadThen((url) =>
+      url.includes('/api/apply-rho-bounds') ? applied : PREVIEW,
+    );
+
+    render(<TriangleModelWindow />);
+    await loadTriangleModel(user);
+    await dropShape(user);
+    await user.type(screen.getByLabelText(/lower bound/i), '1');
+    await user.type(screen.getByLabelText(/upper bound/i), '500');
+    await user.click(screen.getByRole('button', { name: /apply bounds/i }));
+    await screen.findByTestId('rho-bound-status');
+
+    await user.click(screen.getByRole('button', { name: /apply bounds/i }));
+
+    await waitFor(() => {
+      const applies = vi
+        .mocked(axios.post)
+        .mock.calls.filter(([url]) => String(url).includes('/api/apply-rho-bounds'));
+      expect(applies).toHaveLength(2);
+      const second = applies[1][1] as FormData;
+      expect((second.get('resistivity_file') as File).name).toBe(
+        'editable.bounded.0.resistivity',
+      );
+    });
+  });
+
+  it('keeps a reset resistivity inside the band', async () => {
+    const user = userEvent.setup();
+    mockUploadThen(() => PREVIEW);
+
+    render(<TriangleModelWindow />);
+    await loadTriangleModel(user);
+    await dropShape(user);
+    await user.type(screen.getByLabelText(/lower bound/i), '1');
+    await user.type(screen.getByLabelText(/upper bound/i), '500');
+
+    const apply = screen.getByRole('button', { name: /apply bounds/i });
+    expect(apply).toBeEnabled();
+
+    // On a bound is no better than outside it: the transform is singular there.
+    await user.type(screen.getByLabelText(/reset resistivity/i), '500');
+    expect(apply).toBeDisabled();
+    expect(screen.getByText(/strictly inside the band/i)).toBeVisible();
+
+    await user.clear(screen.getByLabelText(/reset resistivity/i));
+    await user.type(screen.getByLabelText(/reset resistivity/i), '50');
+    expect(apply).toBeEnabled();
   });
 
   it('drops a preview when a setting that changes the answer changes', async () => {
