@@ -1,5 +1,6 @@
 import traceback
 import os
+import re
 import shutil
 import sys
 import tempfile
@@ -1577,6 +1578,30 @@ def _rho_bound_warnings(points, vertices, selection, parameters):
     return warnings
 
 
+#: MARE2DEM writes <name>.<iteration>.resistivity, so the trailing number says
+#: which inversion iteration produced the file.
+_ITERATION_SUFFIX = re.compile(r"\.\d+$")
+
+
+def _bounded_resistivity_name(filename):
+    """Name the output as a starting model rather than an iteration's result.
+
+    Bounds constrain the *next* inversion, so what comes out is an input to
+    one: iteration 0, the same way a merged penalty-cut model is written as
+    .cut.0.resistivity. Carrying the source's number over instead -- .19 from a
+    converged run -- would label a starting model as that run's twentieth
+    iteration.
+
+    Applying bounds to an already-bounded file keeps the one suffix, so a
+    downloaded file that goes back through the flow does not grow a name.
+    """
+    stem, _ = os.path.splitext(secure_filename(filename) or "model.resistivity")
+    stem = _ITERATION_SUFFIX.sub("", stem)
+    if not stem.endswith(".bounded"):
+        stem = f"{stem}.bounded"
+    return f"{stem}.0.resistivity"
+
+
 @app.route("/api/preview-rho-bounds", methods=["POST"])
 def preview_rho_bounds():
     """Say which regions a boundary or polygon would bound, without writing.
@@ -1638,10 +1663,7 @@ def apply_rho_bounds():
                 hint=_RHO_BOUND_HINT,
             )
 
-    stem, _ = os.path.splitext(
-        secure_filename(resistivity_file.filename) or "model.resistivity"
-    )
-    output_name = f"{stem}.bounded.resistivity"
+    output_name = _bounded_resistivity_name(resistivity_file.filename)
 
     try:
         parameters, points = _read_rho_bound_request()

@@ -1658,7 +1658,7 @@ describe('TriangleModelWindow rho bounds', () => {
     const applied = {
       ...PREVIEW,
       stats: { ...PREVIEW.stats, updatedRowCount: 1, lower: 1, upper: 500 },
-      resistivityFileName: 'editable.bounded.resistivity',
+      resistivityFileName: 'editable.bounded.0.resistivity',
       resistivityText: 'Format: mare2dem_1.1\n',
     };
     mockUploadThen((url) =>
@@ -1678,7 +1678,7 @@ describe('TriangleModelWindow rho bounds', () => {
       'Bounded 1-500 Ohm-m on 1 regions',
     );
     expect(
-      await screen.findByRole('button', { name: /editable\.bounded\.resistivity/i }),
+      await screen.findByRole('button', { name: /editable\.bounded\.0\.resistivity/i }),
     ).toBeVisible();
     // Bounds constrain the next inversion; they do not change the model, so
     // the viewer must not be handed a new one.

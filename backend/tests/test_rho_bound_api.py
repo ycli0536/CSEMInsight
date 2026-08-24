@@ -167,7 +167,11 @@ class TestApplyRhoBounds:
     ):
         payload = self.post(app_client, model_files).get_json()
 
-        assert payload["resistivityFileName"] == "box.0.bounded.resistivity"
+        # Iteration 0: bounds constrain the next inversion, so the output is an
+        # input to one. MARE2DEM's trailing number says which iteration wrote a
+        # file, and carrying the source's over would label a starting model as
+        # that run's result.
+        assert payload["resistivityFileName"] == "box.bounded.0.resistivity"
         table = rows(payload["resistivityText"])
         assert [float(table["2"][3]), float(table["2"][4])] == [1.0, 500.0]
         assert [float(table["1"][3]), float(table["1"][4])] == [0.0, 0.0]
@@ -190,12 +194,15 @@ class TestApplyRhoBounds:
         assert float(table["1"][1]) == 0.3
 
     def test_a_pair_of_zeros_clears_the_bounds_again(self, app_client, model_files):
-        bounded = self.post(app_client, model_files).get_json()["resistivityText"]
+        bounded = self.post(app_client, model_files).get_json()
         cleared = app_client.post(
             "/api/apply-rho-bounds",
             data={
                 "poly_file": upload("box.poly", model_files["poly"]),
-                "resistivity_file": upload("box.0.resistivity", bounded.encode()),
+                "resistivity_file": upload(
+                    bounded["resistivityFileName"],
+                    bounded["resistivityText"].encode(),
+                ),
                 "shape_file": upload("basement.txt", b"0 10\n100 10\n"),
                 "parameters": json.dumps({"units": "km", "lower": 0, "upper": 0}),
             },
@@ -204,6 +211,8 @@ class TestApplyRhoBounds:
 
         table = rows(cleared["resistivityText"])
         assert [float(table["2"][3]), float(table["2"][4])] == [0.0, 0.0]
+        # A file that goes back through the flow does not grow a name.
+        assert cleared["resistivityFileName"] == "box.bounded.0.resistivity"
 
     def test_rejects_a_one_sided_bound(self, app_client, model_files):
         response = self.post(app_client, model_files, upper=0)
