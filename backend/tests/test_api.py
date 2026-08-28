@@ -615,6 +615,66 @@ class TestTriangleModelSerialization:
         assert result["metadata"]["Number of regions"] == 1
         assert result["table"] == [{"Region": 1.0, "Rho": [100.0, 200.0]}]
 
+    def test_serialize_resistivity_model_reports_file_column_order(self):
+        """The viewer needs the file's column order, not JSON key order."""
+        parsed = {
+            "Number of regions": {"value": 1, "comment": None, "line": ""},
+            "table": pd.DataFrame(
+                [[1, 0.5938, 1, 0.0, 0.0, 0.0, 0.0]],
+                # As MARE2DEM writes them: Rho, then Param, then the Lower/Upper
+                # and Prej/Weight pairs. Alphabetizing would split both pairs.
+                columns=["#", "Rho", "Param", "Lower", "Upper", "Prej", "Weight"],
+            ),
+        }
+
+        result = backend_main._serialize_resistivity_model(parsed)
+
+        assert result["columns"] == [
+            "#",
+            "Rho",
+            "Param",
+            "Lower",
+            "Upper",
+            "Prej",
+            "Weight",
+        ]
+
+    def test_serialize_resistivity_model_without_a_table(self):
+        """A header-only file should serialize to empty columns and rows."""
+        parsed = {
+            "Number of regions": {"value": 0, "comment": None, "line": ""},
+            "table": None,
+        }
+
+        result = backend_main._serialize_resistivity_model(parsed)
+
+        assert result["columns"] == []
+        assert result["table"] == []
+
+    def test_serialize_resistivity_model_sends_values_without_the_parse_wrapper(self):
+        """Only the value travels; the parser's comment and line stay behind."""
+        parsed = {
+            "Bounds Transform": {
+                "value": "bandpass",
+                "comment": "opt. input",
+                "line": "Bounds Transform: bandpass ! opt. input",
+            },
+            "Number of regions": {"value": 1, "comment": None, "line": ""},
+            "table": None,
+        }
+
+        result = backend_main._serialize_resistivity_model(parsed)
+
+        assert result["metadata"] == {
+            "Bounds Transform": "bandpass",
+            "Number of regions": 1,
+        }
+        # The inline note is deliberately dropped rather than forwarded: the
+        # viewer describes each parameter from its own table, so shipping a
+        # field that is blank for every native MARE2DEM file would be dead
+        # payload. See _serialize_resistivity_model for the reasoning.
+        assert "metadataComments" not in result
+
 
 class TestConfigHelpers:
     """Tests for configuration helper functions."""

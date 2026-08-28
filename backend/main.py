@@ -531,6 +531,12 @@ def _serialize_resistivity_model(parsed_resistivity):
     if parsed_resistivity is None:
         return None
 
+    # Only the value is sent on. The parser also captures the inline "! ..."
+    # note that follows it and the raw line, but native MARE2DEM output writes
+    # no notes at all -- only Mamba2D-written files do -- so the field would be
+    # blank for most real files and authoritative for none. The viewer explains
+    # each parameter from its own table instead, in
+    # frontend/src/config/resistivityParameterInfo.ts.
     metadata = {}
     for key, value in parsed_resistivity.items():
         if key == "table":
@@ -540,7 +546,9 @@ def _serialize_resistivity_model(parsed_resistivity):
 
     resistivity_table = parsed_resistivity.get("table")
     table = []
+    columns = []
     if resistivity_table is not None:
+        columns = [str(column) for column in resistivity_table.columns]
         table = [
             {column: _json_safe_value(row[column]) for column in resistivity_table.columns}
             for _, row in resistivity_table.iterrows()
@@ -548,6 +556,11 @@ def _serialize_resistivity_model(parsed_resistivity):
 
     return {
         "metadata": metadata,
+        # Column order as the file spells it. The rows are JSON objects and
+        # Flask sorts object keys, which would otherwise show the table
+        # alphabetically -- losing the Lower/Upper and Prej/Weight pairings that
+        # make the layout readable.
+        "columns": columns,
         "table": table,
     }
 
