@@ -27,8 +27,21 @@ export interface TriangleModelRegion {
   max_area: number | null;
 }
 
+export type TriangleResistivityMetadataValue =
+  | string
+  | number
+  | boolean
+  | null
+  | Array<string | number>;
+
 export interface TriangleModelResistivity {
-  metadata: Record<string, string | number | boolean | null>;
+  metadata: Record<string, TriangleResistivityMetadataValue>;
+  /**
+   * Table column names in the order the file writes them. Needed because the
+   * rows travel as JSON objects, whose key order does not survive the trip --
+   * and the file's order is what pairs Lower with Upper and Prej with Weight.
+   */
+  columns?: string[];
   table: Record<string, string | number | boolean | null>[];
 }
 

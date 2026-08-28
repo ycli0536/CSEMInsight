@@ -4,7 +4,8 @@ export type WindowId =
   | "bathymetry"
   | "custom-plot"
   | "misfit-stats"
-  | "triangle-model";
+  | "triangle-model"
+  | "resistivity-inspector";
 
 
 export type WindowContainer = "main" | "sidebar";

@@ -3,6 +3,7 @@ import {
   ChevronDown,
   Check,
   Download,
+  ExternalLink,
   Eye,
   LassoSelect,
   Loader2,
@@ -18,8 +19,11 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { DelaunayMeshIcon } from '@/components/icons/DelaunayMeshIcon';
+import { ResistivityMetadataList } from '@/components/custom/ResistivityMetadataList';
 import { RhoBoundPanel } from '@/components/custom/RhoBoundPanel';
 import { TriangleResegmentPanel } from '@/components/custom/TriangleResegmentPanel';
+import { useResistivityInspectorStore } from '@/store/resistivityInspectorStore';
+import { useWindowStore } from '@/store/windowStore';
 import { getApiErrorMessage } from '@/lib/apiError';
 import { apiUrl } from '@/lib/apiConfig';
 import { Button } from '@/components/ui/button';
@@ -106,6 +110,20 @@ const DEFAULT_LAYER_VISIBILITY: TriangleLayerVisibility = {
   segments: true,
   vertices: false,
 };
+
+/**
+ * The parameters worth seeing without expanding anything: what the inversion
+ * converged to, and the two entries that decide how the table below is read.
+ * Keys absent from a file are skipped, so older formats degrade quietly.
+ */
+const RESISTIVITY_SUMMARY_KEYS = [
+  'Model Misfit',
+  'Target Misfit',
+  'Model Roughness',
+  'Anisotropy',
+  'Number of regions',
+  'Global Bounds',
+];
 
 interface TriangleLassoSelection {
   featherTriangleIndices: number[];
@@ -300,6 +318,15 @@ export function TriangleModelWindow() {
   const [isPreviewingResegmentation, setIsPreviewingResegmentation] = useState(false);
   const [isExportingResegmentation, setIsExportingResegmentation] = useState(false);
   const [isSegmentationOpen, setIsSegmentationOpen] = useState(false);
+  const [isResistivityDetailOpen, setIsResistivityDetailOpen] = useState(false);
+  const setResistivitySource = useResistivityInspectorStore(
+    (state) => state.setResistivitySource,
+  );
+  const toggleWindow = useWindowStore((state) => state.toggleWindow);
+  const bringWindowToFront = useWindowStore((state) => state.bringToFront);
+  const isResistivityInspectorOpen = useWindowStore(
+    (state) => state.windows['resistivity-inspector'].isOpen,
+  );
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const viewportRef = useRef<HTMLDivElement | null>(null);
@@ -333,6 +360,17 @@ export function TriangleModelWindow() {
   );
   const resistivityMetadata = model?.resistivity?.metadata ?? {};
   const resistivityRows = model?.resistivity?.table ?? [];
+
+  // Mirror the loaded file into the inspector store so the Resistivity File
+  // window can show it beside the mesh. By reference -- the table can be tens
+  // of thousands of rows, and copying it per load would grow the heap.
+  useEffect(() => {
+    setResistivitySource({
+      resistivity: model?.resistivity ?? null,
+      resistivityFileName: model?.resistivityFileName ?? null,
+      polyFileName: model?.polyFileName ?? null,
+    });
+  }, [model, setResistivitySource]);
   const showColorbar =
     mesh?.source === 'constrained' &&
     !!model?.resistivity &&
@@ -1344,25 +1382,66 @@ export function TriangleModelWindow() {
               Resistivity Summary
             </p>
             {model?.resistivity ? (
-              <div className="mt-3 min-w-0 space-y-2 text-sm">
-                {Object.entries(resistivityMetadata).slice(0, 5).map(([key, value]) => {
-                  const displayValue = String(value);
-                  return (
-                    <div key={key} className="flex min-w-0 items-start justify-between gap-3">
-                      <span className="shrink-0 text-muted-foreground">{key}</span>
-                      <span
-                        className="min-w-0 flex-1 truncate text-right font-medium"
-                        title={displayValue}
-                      >
-                        {displayValue}
-                      </span>
-                    </div>
-                  );
-                })}
-                <div className="flex min-w-0 items-start justify-between gap-3 border-t border-border/40 pt-2">
+              <div className="mt-3 min-w-0 space-y-2">
+                {/* The file's own key order puts the filenames first, which are
+                    the least useful things to see at a glance; these are the
+                    ones that say what state the inversion reached. */}
+                <ResistivityMetadataList
+                  metadata={resistivityMetadata}
+                  keys={RESISTIVITY_SUMMARY_KEYS}
+                />
+                <div className="flex min-w-0 items-start justify-between gap-3 border-t border-border/40 pt-2 text-sm">
                   <span className="text-muted-foreground">Rows</span>
                   <span className="font-medium">{resistivityRows.length}</span>
                 </div>
+
+                <Collapsible
+                  open={isResistivityDetailOpen}
+                  onOpenChange={setIsResistivityDetailOpen}
+                  className="min-w-0"
+                >
+                  <CollapsibleTrigger asChild>
+                    <button
+                      type="button"
+                      className="flex w-full cursor-pointer items-center justify-between gap-2 rounded-lg py-1 text-left text-xs text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    >
+                      <span>
+                        {isResistivityDetailOpen ? 'Hide' : 'Show'} all{' '}
+                        {Object.keys(resistivityMetadata).length} parameters
+                      </span>
+                      <ChevronDown
+                        className={`h-3.5 w-3.5 shrink-0 transition-transform ${
+                          isResistivityDetailOpen ? 'rotate-180' : ''
+                        }`}
+                      />
+                    </button>
+                  </CollapsibleTrigger>
+                  <CollapsibleContent className="min-w-0 pt-2">
+                    <ResistivityMetadataList
+                      metadata={resistivityMetadata}
+                      layout="grouped"
+                    />
+                  </CollapsibleContent>
+                </Collapsible>
+
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="w-full"
+                  onClick={() => {
+                    if (isResistivityInspectorOpen) {
+                      bringWindowToFront('resistivity-inspector');
+                    } else {
+                      toggleWindow('resistivity-inspector');
+                    }
+                  }}
+                >
+                  <ExternalLink className="mr-2 h-3.5 w-3.5" />
+                  {isResistivityInspectorOpen
+                    ? 'Show Resistivity File window'
+                    : 'Inspect full file'}
+                </Button>
               </div>
             ) : (
               <p className="mt-3 text-sm text-muted-foreground">

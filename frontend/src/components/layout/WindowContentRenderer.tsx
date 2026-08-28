@@ -29,6 +29,12 @@ const TriangleModelWindow = lazy(() =>
   }))
 );
 
+const ResistivityInspectorWindow = lazy(() =>
+  import("@/components/custom/ResistivityInspectorWindow").then((mod) => ({
+    default: mod.ResistivityInspectorWindow,
+  }))
+);
+
 const windowContentRegistry: Record<WindowId, ComponentType> = {
   settings: SettingForm,
   "response-plot": ResponsesWithErrorBars,
@@ -36,6 +42,7 @@ const windowContentRegistry: Record<WindowId, ComponentType> = {
   "custom-plot": CustomPlot,
   "misfit-stats": MisfitStatsWindow,
   "triangle-model": TriangleModelWindow,
+  "resistivity-inspector": ResistivityInspectorWindow,
 };
 
 const LoadingFallback = () => (

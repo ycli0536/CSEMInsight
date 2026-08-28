@@ -21,6 +21,9 @@ const windowMinimumSizeByType: Partial<
 > = {
   'custom-plot': { width: 520, height: 400 },
   'triangle-model': { width: 720, height: 600 },
+  // Wide enough for the region table's columns without the grid collapsing
+  // them; the sidebar can also reach this, so it stays dockable.
+  'resistivity-inspector': { width: 520, height: 420 },
 };
 
 export function getWindowMinimumSize(type: WindowId) {

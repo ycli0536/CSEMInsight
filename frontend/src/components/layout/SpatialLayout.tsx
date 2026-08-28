@@ -1,4 +1,4 @@
-import { Activity, Settings, Waves, LineChart, BarChart3, Download, Zap, Loader2, Check, AlertCircle } from "lucide-react";
+import { Activity, Settings, Waves, LineChart, BarChart3, Download, Zap, Loader2, Check, AlertCircle, Table2 } from "lucide-react";
 import { useWindowStore } from "@/store/windowStore";
 import { DelaunayMeshIcon } from "@/components/icons/DelaunayMeshIcon";
 import MapSubstrate from "@/components/layout/MapSubstrate";
@@ -28,6 +28,7 @@ export default function SpatialLayout() {
     { id: "custom-plot", icon: LineChart, label: "Plot" },
     { id: "misfit-stats", icon: BarChart3, label: "Misfit" },
     { id: "triangle-model", icon: DelaunayMeshIcon, iconTestId: "mesh-nav-icon", label: "Mesh" },
+    { id: "resistivity-inspector", icon: Table2, label: "Resistivity" },
   ] as const;
   const visibleNavWindowIds = new Set(getVisibleNavWindowIds(isDemoMode));
   const navItems = allNavItems.filter((item) =>

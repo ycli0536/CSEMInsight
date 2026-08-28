@@ -297,10 +297,60 @@ describe('TriangleModelWindow', () => {
     );
     await user.click(screen.getByRole('button', { name: /load triangle model/i }));
 
+    // The card shows a curated handful of parameters; the filenames live in the
+    // full list behind the disclosure, which is where long values have to
+    // truncate rather than widen the control column.
+    await user.click(await screen.findByRole('button', { name: /show all 2 parameters/i }));
+
     const summaryValue = await screen.findByTitle(longDataFileName);
 
     expect(summaryValue).toHaveTextContent(longDataFileName);
     expect(summaryValue).toHaveClass('min-w-0', 'flex-1', 'truncate', 'text-right');
+  });
+
+  it('summarizes the parameters that describe the inversion, not the leading filenames', async () => {
+    const user = userEvent.setup();
+    vi.mocked(axios.post).mockResolvedValue({
+      data: {
+        ...buildEditableTriangleModelResponse(),
+        resistivity: {
+          metadata: {
+            // File order, as the parser produces it: the filenames come first
+            // and used to be all the card had room for.
+            Format: 'MARE2DEM_1.1',
+            'Data File': 'line5.data',
+            'Settings File': 'mare2dem.settings',
+            'Model Misfit': 0.9952,
+            Anisotropy: 'isotropic',
+            'Number of regions': 2,
+          },
+          table: [
+            { Region: 10, Rho: 10 },
+            { Region: 20, Rho: 100 },
+          ],
+        },
+      },
+    });
+
+    render(<TriangleModelWindow />);
+
+    await user.upload(
+      screen.getByLabelText(/poly file/i),
+      new File(['poly'], 'editable.poly', { type: 'text/plain' }),
+    );
+    await user.upload(
+      screen.getByLabelText(/resistivity file/i),
+      new File(['rho'], 'editable.resistivity', { type: 'text/plain' }),
+    );
+    await user.click(screen.getByRole('button', { name: /load triangle model/i }));
+
+    expect(await screen.findByTitle('0.9952')).toBeInTheDocument();
+    expect(screen.getByTitle('isotropic')).toBeInTheDocument();
+    expect(screen.queryByTitle('mare2dem.settings')).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /show all 6 parameters/i }));
+
+    expect(await screen.findByTitle('mare2dem.settings')).toBeInTheDocument();
   });
 
   it('renders viewport axes from the current camera view and updates ticks after zooming', async () => {

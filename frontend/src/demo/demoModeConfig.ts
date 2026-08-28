@@ -9,6 +9,7 @@ const DEFAULT_NAV_WINDOW_IDS: WindowId[] = [
   'custom-plot',
   'misfit-stats',
   'triangle-model',
+  'resistivity-inspector',
 ];
 
 export function isDemoModeEnabled(): boolean {
@@ -86,6 +87,16 @@ export function buildInitialWindows(
       zIndex: 10,
       position: { x: 180, y: 180 },
       size: { width: 1100, height: 760 },
+    },
+    'resistivity-inspector': {
+      id: 'resistivity-inspector',
+      type: 'resistivity-inspector',
+      title: 'Resistivity File',
+      container: 'main',
+      isOpen: false,
+      zIndex: 10,
+      position: { x: 240, y: 120 },
+      size: { width: 760, height: 640 },
     },
   };
 }

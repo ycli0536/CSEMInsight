@@ -38,6 +38,7 @@ describe('demoModeConfig', () => {
       'custom-plot',
       'misfit-stats',
       'triangle-model',
+      'resistivity-inspector',
     ]);
     expect(getVisibleNavWindowIds(false)).toEqual([
       'settings',
@@ -46,6 +47,7 @@ describe('demoModeConfig', () => {
       'custom-plot',
       'misfit-stats',
       'triangle-model',
+      'resistivity-inspector',
     ]);
   });
 });
