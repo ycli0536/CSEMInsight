@@ -270,7 +270,7 @@ def check_shape_against_bounds(
     return check_interface_against_bounds(points, bounds)
 
 
-def _region_number(region: Mapping[str, Any]) -> int:
+def region_number(region: Mapping[str, Any]) -> int:
     """The number a region is known by in the .resistivity table.
 
     MARE2DEM keys the table on the region's attribute, not its position in the
@@ -318,6 +318,34 @@ def _boundary_depth_at(
     return z1 + (z2 - z1) * (y - y1) / (y2 - y1)
 
 
+def extend_boundary_points(
+    points: Sequence[Tuple[float, float]], y_min: float, y_max: float
+) -> List[Tuple[float, float]]:
+    """Extend a boundary horizontally to the model's edges, at its end depths.
+
+    A bathymetry file often stops where the data stops, short of the padding a
+    model carries, and :func:`_boundary_depth_at` deliberately never
+    extrapolates. Extending flat from each end is the explicit opt-in: the
+    caller has said "treat the last known depth as holding to the edge".
+
+    Args:
+        points: Boundary points in metres, any order.
+        y_min: Model's left edge.
+        y_max: Model's right edge.
+
+    Returns:
+        The points sorted by ``y``, with a flat point prepended/appended
+        wherever the boundary stops short of an edge.
+    """
+    ordered = sorted(points, key=lambda point: point[0])
+    extended = list(ordered)
+    if ordered[0][0] > y_min:
+        extended.insert(0, (y_min, ordered[0][1]))
+    if ordered[-1][0] < y_max:
+        extended.append((y_max, ordered[-1][1]))
+    return extended
+
+
 def select_regions(
     regions: Optional[Sequence[Mapping[str, Any]]],
     points: Sequence[Tuple[float, float]],
@@ -336,7 +364,7 @@ def select_regions(
 
     if parameters.shape == "polygon":
         selected = [
-            _region_number(region)
+            region_number(region)
             for region in regions
             if _point_in_polygon(region["hCoor"], region["vCoor"], points)
         ]
@@ -359,7 +387,7 @@ def select_regions(
             continue
         is_below = region["vCoor"] > depth
         if is_below == (parameters.side == "below"):
-            selected.append(_region_number(region))
+            selected.append(region_number(region))
 
     return RegionSelection(
         region_ids=sorted(set(selected)),

@@ -14,6 +14,7 @@ from rho_bound_service import (
     RhoBoundParameters,
     admissible_rho_range,
     build_bounded_resistivity_text,
+    extend_boundary_points,
     parse_rho_bound_parameters,
     parse_shape_points,
     parse_shape_text,
@@ -509,3 +510,44 @@ class TestClampRhoIntoTheBand:
         assert float(table["2"][1]) == 1.0e12
         assert stats["clampedRowCount"] == 1
         assert low < high
+
+
+class TestExtendBoundaryPoints:
+    def test_extends_both_ends_horizontally(self):
+        points = [(20_000.0, 5_000.0), (80_000.0, 6_000.0)]
+
+        extended = extend_boundary_points(points, 0.0, 100_000.0)
+
+        assert extended == [
+            (0.0, 5_000.0),
+            (20_000.0, 5_000.0),
+            (80_000.0, 6_000.0),
+            (100_000.0, 6_000.0),
+        ]
+
+    def test_leaves_a_boundary_that_already_reaches_alone(self):
+        points = [(0.0, 5_000.0), (100_000.0, 5_000.0)]
+
+        assert extend_boundary_points(points, 0.0, 100_000.0) == points
+
+    def test_sorts_by_y_first(self):
+        # File order is not span order; the extension has to hang off the
+        # true ends, not the first and last line of the file.
+        points = [(80_000.0, 6_000.0), (20_000.0, 5_000.0)]
+
+        extended = extend_boundary_points(points, 0.0, 100_000.0)
+
+        assert extended[0] == (0.0, 5_000.0)
+        assert extended[-1] == (100_000.0, 6_000.0)
+
+    def test_extends_only_the_end_that_stops_short(self):
+        # A boundary already touching the left edge only grows on the right.
+        points = [(0.0, 5_000.0), (80_000.0, 6_000.0)]
+
+        extended = extend_boundary_points(points, 0.0, 100_000.0)
+
+        assert extended == [
+            (0.0, 5_000.0),
+            (80_000.0, 6_000.0),
+            (100_000.0, 6_000.0),
+        ]
