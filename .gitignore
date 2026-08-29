@@ -38,3 +38,6 @@ venv/
 
 # Logs
 *.log
+
+# Local design docs from the superpowers workflow (kept out of the repo)
+docs/superpowers/
