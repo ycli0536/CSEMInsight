@@ -49,6 +49,14 @@ from rho_bound_service import (
     parse_shape_text,
     select_regions,
 )
+from side_trim_service import (
+    SideTrimError,
+    apply_side_trim,
+    parse_boundary_text,
+    parse_side_trim_parameters,
+    plan_side_trim,
+    plan_stats,
+)
 from triangle_model_resegmentation import (
     ResegmentationError,
     build_resegmentation_result,
@@ -1722,6 +1730,224 @@ def apply_rho_bounds():
             "start from a free parameter that sits outside its bounds."
         )
     return jsonify(payload)
+
+
+_SIDE_TRIM_HINT = (
+    "The boundary file must hold two columns 'y z' (whitespace or comma "
+    "separated, '#' comments allowed) in the same along-line/depth frame as "
+    "the model -- typically the bathymetry the model was built from. Regions "
+    "whose seed point sits on the chosen side are removed and collapse into "
+    "one region; the outer boundary and the interface segments stay."
+)
+
+
+def _read_side_trim_request():
+    """Pull the parameters and boundary points out of a side-trim request.
+
+    Returns:
+        ``(parameters, points)`` with points in metres.
+
+    Raises:
+        SideTrimError: On invalid parameters or a missing/unreadable boundary.
+    """
+    try:
+        payload = json.loads(request.form.get("parameters") or "{}")
+    except json.JSONDecodeError as exc:
+        raise SideTrimError("Invalid side trim parameters JSON") from exc
+
+    parameters = parse_side_trim_parameters(payload)
+
+    boundary_file = request.files.get("boundary_file")
+    if boundary_file is None or boundary_file.filename == "":
+        raise SideTrimError(
+            "No boundary file provided: upload a two-column 'y z' file as "
+            "boundary_file."
+        )
+    text = boundary_file.read().decode("utf-8", errors="replace")
+    return parameters, parse_boundary_text(text, parameters)
+
+
+def _trimmed_output_names(poly_filename):
+    """`<stem>.trimmed.poly` / `<stem>.trimmed.0.resistivity`, non-stacking."""
+    stem, _ = os.path.splitext(secure_filename(poly_filename) or "model.poly")
+    if not stem.endswith(".trimmed"):
+        stem = f"{stem}.trimmed"
+    return f"{stem}.poly", f"{stem}.0.resistivity"
+
+
+@app.route("/api/preview-side-trim", methods=["POST"])
+def preview_side_trim():
+    """Say what clearing one side would remove, without writing anything.
+
+    The .resistivity is not needed to answer that, and it is one of the files
+    the user is about to replace -- same split as the rho bounds preview.
+    """
+    poly_file = request.files.get("poly_file")
+    if poly_file is None or poly_file.filename == "":
+        return _error_response("No .poly file provided", hint=_SIDE_TRIM_HINT)
+    if not poly_file.filename.endswith(".poly"):
+        return _error_response(
+            "Invalid .poly file format; expected a .poly file",
+            hint=_SIDE_TRIM_HINT,
+        )
+
+    try:
+        parameters, points = _read_side_trim_request()
+
+        with _upload_workspace() as temp_dir:
+            poly_path = _save_uploaded_file(poly_file, temp_dir)
+            vertices, segments, holes, regions = MARE2DEMPolyParser().read_poly_file(
+                poly_path, unit_scale_factor=1
+            )
+
+        plan = plan_side_trim(vertices, segments, holes, regions, points, parameters)
+    except SideTrimError as exc:
+        return _error_response(str(exc), hint=_SIDE_TRIM_HINT)
+    except Exception:
+        return _unexpected_error(
+            "Could not work out what the trim would remove.",
+            hint=_SIDE_TRIM_HINT,
+        )
+
+    return jsonify(
+        {
+            "side": parameters.side,
+            "points": [[y, z] for y, z in plan.boundary_points],
+            "removedRegionIds": plan.removed_region_ids,
+            "stats": plan_stats(plan, len(regions or [])),
+            "warnings": plan.warnings,
+        }
+    )
+
+
+@app.route("/api/apply-side-trim", methods=["POST"])
+def apply_side_trim_to_model():
+    """Clear one side of a model and rebuild both files.
+
+    Returns the trimmed model in the same shape as ``/api/upload-triangle-model``
+    so the viewer can swap it in directly, plus the text of both output files.
+    """
+    poly_file = request.files.get("poly_file")
+    resistivity_file = request.files.get("resistivity_file")
+
+    for label, uploaded, suffix in (
+        (".poly model", poly_file, ".poly"),
+        (".resistivity file", resistivity_file, ".resistivity"),
+    ):
+        if uploaded is None or uploaded.filename == "":
+            return _error_response(f"No {label} provided", hint=_SIDE_TRIM_HINT)
+        if not uploaded.filename.endswith(suffix):
+            return _error_response(
+                f"Invalid {label} format; expected a {suffix} file",
+                hint=_SIDE_TRIM_HINT,
+            )
+
+    output_poly_name, output_resistivity_name = _trimmed_output_names(
+        poly_file.filename
+    )
+
+    try:
+        parameters, points = _read_side_trim_request()
+
+        with _upload_workspace() as temp_dir:
+            poly_path = _save_uploaded_file(poly_file, temp_dir)
+            resistivity_path = _save_uploaded_file(resistivity_file, temp_dir)
+
+            vertices, segments, holes, regions = MARE2DEMPolyParser().read_poly_file(
+                poly_path, unit_scale_factor=1
+            )
+            resistivity_parser = ResistivityFileParser()
+            parsed_resistivity = resistivity_parser.parse_resistivity_file(
+                resistivity_path, rho_parse=True
+            )
+            with open(resistivity_path, "r", encoding="utf-8") as handle:
+                resistivity_text = handle.read()
+
+        result = apply_side_trim(
+            vertices,
+            segments,
+            holes,
+            regions,
+            parsed_resistivity.get("table"),
+            resistivity_text,
+            points,
+            parameters,
+            output_poly_name,
+        )
+    except SideTrimError as exc:
+        return _error_response(str(exc), hint=_SIDE_TRIM_HINT)
+    except UnicodeDecodeError:
+        return _error_response(
+            "Could not decode the .resistivity file as UTF-8",
+            hint="Re-export it from MARE2DEM and try again.",
+        )
+    except Exception:
+        return _unexpected_error(
+            "Could not clear that side of the model.", hint=_SIDE_TRIM_HINT
+        )
+
+    try:
+        # The trim ran in metres; the viewer speaks kilometres.
+        display_vertices, display_segments, display_regions = _scale_model_for_display(
+            result["vertices"], result["segments"], result["regions"]
+        )
+        display_holes = [
+            {**hole, "hCoor": hole["hCoor"] * _DISPLAY_UNIT_SCALE,
+             "vCoor": hole["vCoor"] * _DISPLAY_UNIT_SCALE}
+            for hole in (result["holes"] or [])
+        ]
+        (
+            ordered_vertices,
+            ordered_segments,
+            ordered_holes,
+            ordered_regions,
+        ) = _serialize_poly_model(
+            display_vertices, display_segments, display_holes, display_regions
+        )
+
+        # Parse the text we just generated rather than reusing the in-memory
+        # table: what the viewer colours by is exactly what the user downloads.
+        with _upload_workspace() as temp_dir:
+            derived_path = os.path.join(temp_dir, output_resistivity_name)
+            with open(derived_path, "w", encoding="utf-8") as handle:
+                handle.write(result["resistivityText"])
+            trimmed_resistivity = ResistivityFileParser().parse_resistivity_file(
+                derived_path, rho_parse=True
+            )
+
+        constrained_mesh = _serialize_constrained_mesh(
+            MARE2DEMPolyParser(),
+            display_vertices,
+            display_segments,
+            display_regions,
+            trimmed_resistivity,
+        )
+    except Exception:
+        return _unexpected_error(
+            "The side was cleared but the trimmed mesh could not be built for "
+            "display.",
+            hint=_SIDE_TRIM_HINT,
+        )
+
+    return jsonify(
+        {
+            "polyFileName": output_poly_name,
+            "resistivityFileName": output_resistivity_name,
+            "vertices": ordered_vertices,
+            "segments": ordered_segments,
+            "holes": ordered_holes,
+            "regions": ordered_regions,
+            "resistivity": _serialize_resistivity_model(trimmed_resistivity),
+            "constrainedMesh": constrained_mesh,
+            "polyText": result["polyText"],
+            "resistivityText": result["resistivityText"],
+            "side": parameters.side,
+            "points": result["boundaryPoints"],
+            "removedRegionIds": result["removedRegionIds"],
+            "stats": result["stats"],
+            "warnings": result["warnings"],
+        }
+    )
 
 
 if __name__ == "__main__":
