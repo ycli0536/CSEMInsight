@@ -21,6 +21,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { DelaunayMeshIcon } from '@/components/icons/DelaunayMeshIcon';
 import { ResistivityMetadataList } from '@/components/custom/ResistivityMetadataList';
 import { RhoBoundPanel } from '@/components/custom/RhoBoundPanel';
+import { SideTrimPanel } from '@/components/custom/SideTrimPanel';
 import { TriangleResegmentPanel } from '@/components/custom/TriangleResegmentPanel';
 import { useResistivityInspectorStore } from '@/store/resistivityInspectorStore';
 import { useWindowStore } from '@/store/windowStore';
@@ -68,6 +69,7 @@ import { formatTriangleHoverSummary } from '@/services/triangleModelHoverSummary
 import { TRIANGLE_SEGMENT_MARKER_LEGEND } from '@/services/triangleSegmentMarkers';
 import { applyPenaltyCut, parseInterfaceFile } from '@/services/penaltyCut';
 import { applyRhoBounds, previewRhoBounds } from '@/services/rhoBounds';
+import { applySideTrim, previewSideTrim } from '@/services/sideTrim';
 import {
   buildTriangleMeshFromConstrainedMesh,
   buildTriangleMeshFromModel,
@@ -93,6 +95,9 @@ import type {
   RhoBoundApplyResponse,
   RhoBoundParameters,
   RhoBoundPreviewResponse,
+  SideTrimApplyResponse,
+  SideTrimParameters,
+  SideTrimPreviewResponse,
   TriangleHoverState,
   TriangleLayerVisibility,
   TriangleConstrainedMesh,
@@ -279,6 +284,17 @@ export function TriangleModelWindow() {
   const [boundInputKey, setBoundInputKey] = useState(0);
   const [isPreviewingBounds, setIsPreviewingBounds] = useState(false);
   const [isApplyingBounds, setIsApplyingBounds] = useState(false);
+  // Side trim: a boundary file picks regions by side and everything they hold
+  // is cleared away. Its preview shares the rho bounds' overlay channels --
+  // one shape line and one shaded selection at a time -- so each preview
+  // clears the other's.
+  const [trimBoundaryFile, setTrimBoundaryFile] = useState<File | null>(null);
+  const [trimPreview, setTrimPreview] = useState<SideTrimPreviewResponse | null>(null);
+  const [trimResult, setTrimResult] = useState<SideTrimApplyResponse | null>(null);
+  const [trimStatus, setTrimStatus] = useState<string | null>(null);
+  const [trimInputKey, setTrimInputKey] = useState(0);
+  const [isPreviewingTrim, setIsPreviewingTrim] = useState(false);
+  const [isApplyingTrim, setIsApplyingTrim] = useState(false);
   const [model, setModel] = useState<TriangleModelResponse | null>(null);
   const [mesh, setMesh] = useState<TriangleMesh | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -458,6 +474,8 @@ export function TriangleModelWindow() {
       resetCutState();
       setBoundShapeFile(null);
       resetBoundState();
+      setTrimBoundaryFile(null);
+      resetTrimState();
     } catch (uploadError) {
       setError(getUploadErrorMessage(uploadError));
       setModel(null);
@@ -480,6 +498,8 @@ export function TriangleModelWindow() {
       resetCutState();
       setBoundShapeFile(null);
       resetBoundState();
+      setTrimBoundaryFile(null);
+      resetTrimState();
     } finally {
       setIsLoading(false);
     }
@@ -774,29 +794,50 @@ export function TriangleModelWindow() {
     viewerRef.current?.setInterfacePreview(cutPreviewForViewer);
   }, [cutPreviewForViewer, mesh]);
 
-  // Metres from the server, kilometres in the viewer -- the same conversion the
-  // penalty cut's overlay makes, for the same reason.
+  // One shape line and one shaded region set serve both the rho bounds and
+  // the side trim; whichever preview is newest owns them (each preview
+  // handler clears the other's, so at most one is non-null).
+  const shapeOverlay = useMemo(() => {
+    if (trimPreview) {
+      return {
+        points: trimPreview.points,
+        isPolygon: false,
+        regionIds: trimPreview.removedRegionIds,
+      };
+    }
+    if (boundPreview) {
+      return {
+        points: boundPreview.points,
+        isPolygon: boundPreview.shape === 'polygon',
+        regionIds: boundPreview.selectedRegionIds,
+      };
+    }
+    return null;
+  }, [trimPreview, boundPreview]);
+
+  // Metres from the server, kilometres in the viewer -- the same conversion
+  // the penalty cut's overlay makes, for the same reason.
   const boundShapeForViewer = useMemo(
     () =>
-      boundPreview?.points.map(
+      shapeOverlay?.points.map(
         ([y, z]) => [y * 1e-3, z * 1e-3] as [number, number],
       ) ?? null,
-    [boundPreview],
+    [shapeOverlay],
   );
 
   useEffect(() => {
     viewerRef.current?.setBoundShapePreview(
       boundShapeForViewer,
-      boundPreview?.shape === 'polygon',
+      shapeOverlay?.isPolygon ?? false,
     );
-  }, [boundShapeForViewer, boundPreview?.shape, mesh]);
+  }, [boundShapeForViewer, shapeOverlay?.isPolygon, mesh]);
 
-  // The shape line says where the cut falls; the shaded triangles say which
-  // regions it actually picked, which is the thing a units mistake or the
-  // wrong side gets wrong. The server answers in region numbers, so they are
-  // mapped back through the mesh the viewer is already drawing.
+  // The shape line says where the boundary falls; the shaded triangles say
+  // which regions it actually picked, which is the thing a units mistake or
+  // the wrong side gets wrong. The server answers in region numbers, so they
+  // are mapped back through the mesh the viewer is already drawing.
   const boundTriangleIndices = useMemo(() => {
-    const regionIds = boundPreview?.selectedRegionIds;
+    const regionIds = shapeOverlay?.regionIds;
     const triangleRegionIds = mesh?.triangleRegionIds;
     if (!regionIds?.length || !triangleRegionIds) {
       return null;
@@ -810,7 +851,7 @@ export function TriangleModelWindow() {
       }
     });
     return indices;
-  }, [boundPreview?.selectedRegionIds, mesh]);
+  }, [shapeOverlay?.regionIds, mesh]);
 
   useEffect(() => {
     viewerRef.current?.setBoundRegionOverlay(boundTriangleIndices);
@@ -821,6 +862,129 @@ export function TriangleModelWindow() {
     setBoundResult(null);
     setBoundStatus(null);
     setBoundInputKey((key) => key + 1);
+  };
+
+  const resetTrimState = () => {
+    setTrimPreview(null);
+    setTrimResult(null);
+    setTrimStatus(null);
+    setTrimInputKey((key) => key + 1);
+  };
+
+  const handleTrimBoundaryFileChange = (file: File | null) => {
+    setTrimBoundaryFile(file);
+    setTrimPreview(null);
+    setTrimResult(null);
+    setTrimStatus(
+      file ? `${file.name} ready. Preview to see what a trim removes.` : null,
+    );
+  };
+
+  const handleTrimSettingsChange = () => {
+    // Side, units and extension all change which regions are removed, so the
+    // preview on screen is now answering a question nobody asked.
+    setTrimPreview(null);
+    setTrimResult(null);
+  };
+
+  const handlePreviewSideTrim = async (parameters: SideTrimParameters) => {
+    if (!loadedPolyFile || !trimBoundaryFile) {
+      setTrimStatus('Load a model and pick a boundary file first.');
+      return;
+    }
+
+    setIsPreviewingTrim(true);
+    setTrimStatus('Working out what the trim would remove...');
+    // The overlay channels are shared with the rho bounds preview.
+    setBoundPreview(null);
+    setBoundResult(null);
+
+    try {
+      const response = await previewSideTrim({
+        polyFile: loadedPolyFile,
+        boundaryFile: trimBoundaryFile,
+        parameters,
+      });
+      setTrimPreview(response);
+      setTrimStatus(
+        `${response.stats.removedRegionCount} of ` +
+          `${response.stats.totalRegionCount} regions would be removed.`,
+      );
+    } catch (previewError) {
+      setTrimPreview(null);
+      setTrimStatus(getUploadErrorMessage(previewError));
+    } finally {
+      setIsPreviewingTrim(false);
+    }
+  };
+
+  const handleApplySideTrim = async (parameters: SideTrimParameters) => {
+    if (!loadedPolyFile || !loadedResistivityFile || !trimBoundaryFile) {
+      setTrimStatus(
+        'Load a .poly and .resistivity pair and pick a boundary file first.',
+      );
+      return;
+    }
+
+    setIsApplyingTrim(true);
+    setTrimStatus('Clearing the selected side...');
+
+    try {
+      const response = await applySideTrim({
+        polyFile: loadedPolyFile,
+        resistivityFile: loadedResistivityFile,
+        boundaryFile: trimBoundaryFile,
+        parameters,
+      });
+
+      const nextMesh = buildTriangleMeshFromModel(response);
+      setModel(response);
+      setMesh(nextMesh);
+      setVisibleLayers({ triangles: true, segments: true, vertices: false });
+      setHover(null);
+      setInteractionMode('pan');
+      const nextRegionRho = buildRegionRhoMaps(response);
+      setRegionRhoByComponent(nextRegionRho);
+      setBaseRegionRhoByComponent(nextRegionRho);
+      // Every region renumbered, so every edit patch points at whichever
+      // region now wears the old number. Undo would write rho onto the wrong
+      // rock; the history has to go.
+      setUndoStack([]);
+      setRedoStack([]);
+      setLassoSelection(null);
+      viewerRef.current?.setSelectionOverlay(null);
+      // The trimmed model is what the viewer shows, so it has to be what the
+      // server sees as well -- same invariant as the penalty cut.
+      setLoadedPolyFile(
+        new File([response.polyText], response.polyFileName, { type: 'text/plain' }),
+      );
+      setLoadedResistivityFile(
+        new File([response.resistivityText], response.resistivityFileName, {
+          type: 'text/plain',
+        }),
+      );
+      // The boundary is spent: applying it again would just re-clear an
+      // already-empty side.
+      setTrimBoundaryFile(null);
+      setTrimInputKey((key) => key + 1);
+      // Region numbers changed under any bound preview.
+      resetBoundState();
+      // A trim can shrink the model, so an interface parsed against the old
+      // bounds may be silently out of range now -- same rule as a model reload.
+      setCutFile(null);
+      resetCutState();
+      setTrimPreview(null);
+      setTrimResult(response);
+      setTrimStatus(
+        `Removed ${response.stats.removedRegionCount} regions; ` +
+          `${response.stats.totalRegionCount} -> ` +
+          `${response.stats.trimmedRegionCount} regions.`,
+      );
+    } catch (applyError) {
+      setTrimStatus(getUploadErrorMessage(applyError));
+    } finally {
+      setIsApplyingTrim(false);
+    }
   };
 
   const handleBoundShapeFileChange = (file: File | null) => {
@@ -849,6 +1013,9 @@ export function TriangleModelWindow() {
 
     setIsPreviewingBounds(true);
     setBoundStatus('Working out which regions the shape covers...');
+    // The overlay channels are shared with the side trim preview.
+    setTrimPreview(null);
+    setTrimResult(null);
 
     try {
       const response = await previewRhoBounds({
@@ -912,6 +1079,10 @@ export function TriangleModelWindow() {
 
     setIsApplyingBounds(true);
     setBoundStatus('Writing the bounds...');
+    // Apply works without a prior Preview, and it sets a bound preview of its
+    // own -- so the shared overlay must stop showing any trim first.
+    setTrimPreview(null);
+    setTrimResult(null);
 
     try {
       const response = await applyRhoBounds({
@@ -1040,8 +1211,10 @@ export function TriangleModelWindow() {
       setCutFile(null);
       setCutInputKey((key) => key + 1);
       // A merge renumbers the regions, so a bound preview taken against the
-      // source model no longer points at the same rock.
+      // source model no longer points at the same rock -- and neither does a
+      // trim preview.
       resetBoundState();
+      resetTrimState();
       // The merged model already carries the cut; the candidate overlay would
       // just double the line.
       setCutPreview(null);
@@ -1668,6 +1841,24 @@ export function TriangleModelWindow() {
             onPreview={handlePreviewRhoBounds}
             onSettingsChange={handleBoundSettingsChange}
             onShapeFileChange={handleBoundShapeFileChange}
+          />
+        ) : null}
+
+        {model ? (
+          <SideTrimPanel
+            disabled={isLoading}
+            isApplying={isApplyingTrim}
+            isPreviewing={isPreviewingTrim}
+            preview={trimPreview}
+            result={trimResult}
+            boundaryFileName={trimBoundaryFile?.name ?? null}
+            boundaryInputKey={trimInputKey}
+            status={trimStatus}
+            onApply={handleApplySideTrim}
+            onDownload={downloadTextFile}
+            onPreview={handlePreviewSideTrim}
+            onSettingsChange={handleTrimSettingsChange}
+            onBoundaryFileChange={handleTrimBoundaryFileChange}
           />
         ) : null}
       </section>

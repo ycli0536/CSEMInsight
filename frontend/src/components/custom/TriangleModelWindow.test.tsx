@@ -1872,3 +1872,294 @@ describe('TriangleModelWindow rho bounds', () => {
     expect(screen.queryByText('Regions covered')).not.toBeInTheDocument();
   });
 });
+
+describe('TriangleModelWindow side trim', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  const TRIM_PREVIEW = {
+    side: 'below',
+    points: [
+      [0, 5_000],
+      [100_000, 5_000],
+    ],
+    removedRegionIds: [20],
+    stats: {
+      removedRegionCount: 1,
+      totalRegionCount: 2,
+      componentCount: 1,
+      removedSegmentCount: 3,
+      removedVertexCount: 2,
+      removedHoleCount: 0,
+      outsideSpanCount: 0,
+      boundaryPointCount: 2,
+    },
+    warnings: [],
+  };
+
+  function mockUploadThen(handler: (url: string) => unknown) {
+    vi.mocked(axios.post).mockImplementation(async (url) => {
+      if (String(url).includes('/api/upload-triangle-model')) {
+        return { data: buildEditableTriangleModelResponse() };
+      }
+      return { data: handler(String(url)) };
+    });
+  }
+
+  async function dropBoundary(user: ReturnType<typeof userEvent.setup>) {
+    await user.upload(
+      screen.getByLabelText(/trim boundary file/i),
+      new File(['0 5\n100 5\n'], 'seafloor.txt', { type: 'text/plain' }),
+    );
+  }
+
+  it('draws the boundary and shades the regions a trim would remove', async () => {
+    const user = userEvent.setup();
+    mockUploadThen(() => TRIM_PREVIEW);
+
+    render(<TriangleModelWindow />);
+    await loadTriangleModel(user);
+    await dropBoundary(user);
+    await user.click(screen.getByRole('button', { name: /preview removal/i }));
+
+    await waitFor(() => {
+      // Metres from the server, kilometres in the viewer, drawn open.
+      expect(mockViewer.setBoundShapePreview).toHaveBeenLastCalledWith(
+        [
+          [0, 5],
+          [100, 5],
+        ],
+        false,
+      );
+    });
+    // Region 20 is the second triangle of the fixture mesh.
+    expect(mockViewer.setBoundRegionOverlay).toHaveBeenLastCalledWith([1]);
+    expect(await screen.findByTestId('side-trim-status')).toHaveTextContent(
+      '1 of 2 regions would be removed',
+    );
+  });
+
+  it('sends the chosen parameters with the preview', async () => {
+    const user = userEvent.setup();
+    mockUploadThen(() => TRIM_PREVIEW);
+
+    render(<TriangleModelWindow />);
+    await loadTriangleModel(user);
+    await user.selectOptions(screen.getByLabelText(/trim side/i), 'above');
+    await user.click(screen.getByLabelText(/extend to model bounds/i));
+    await dropBoundary(user);
+    await user.click(screen.getByRole('button', { name: /preview removal/i }));
+
+    await waitFor(() => {
+      const call = vi
+        .mocked(axios.post)
+        .mock.calls.find(([url]) => String(url).includes('/api/preview-side-trim'));
+      expect(call).toBeDefined();
+      const parameters = JSON.parse(
+        (call![1] as FormData).get('parameters') as string,
+      );
+      expect(parameters).toMatchObject({
+        side: 'above',
+        units: 'km',
+        extendToBounds: false,
+        rhoMode: 'free',
+        defaultRho: 100,
+      });
+    });
+  });
+
+  it('clears the shading when a setting changes', async () => {
+    const user = userEvent.setup();
+    mockUploadThen(() => TRIM_PREVIEW);
+
+    render(<TriangleModelWindow />);
+    await loadTriangleModel(user);
+    await dropBoundary(user);
+    await user.click(screen.getByRole('button', { name: /preview removal/i }));
+    await waitFor(() => {
+      expect(mockViewer.setBoundRegionOverlay).toHaveBeenLastCalledWith([1]);
+    });
+
+    await user.selectOptions(screen.getByLabelText(/trim side/i), 'above');
+
+    await waitFor(() => {
+      expect(mockViewer.setBoundRegionOverlay).toHaveBeenLastCalledWith(null);
+    });
+  });
+
+  it('blocks Preview and Clear side until the default rho is a positive number', async () => {
+    const user = userEvent.setup();
+    mockUploadThen(() => TRIM_PREVIEW);
+
+    render(<TriangleModelWindow />);
+    await loadTriangleModel(user);
+    await dropBoundary(user);
+
+    const preview = screen.getByRole('button', { name: /preview removal/i });
+    const apply = screen.getByRole('button', { name: /clear side/i });
+    expect(preview).toBeEnabled();
+    expect(apply).toBeEnabled();
+
+    await user.clear(screen.getByLabelText(/default resistivity/i));
+    // A trim without a rho for the new region cannot even be previewed: the
+    // preview sends the same parameters the apply would.
+    expect(preview).toBeDisabled();
+    expect(apply).toBeDisabled();
+    expect(screen.getByText(/must be a positive number/i)).toBeVisible();
+  });
+
+  it('hands the shared overlay to rho bounds when bounds are applied over a trim preview', async () => {
+    // Apply Bounds works without a prior Preview and draws its own shape, so
+    // it has to evict a trim preview from the shared overlay channels -- or
+    // the viewer keeps showing the trim while bounds were just written.
+    const user = userEvent.setup();
+    const boundApplied = {
+      shape: 'boundary',
+      side: 'below',
+      points: [
+        [10_000, 2_000],
+        [90_000, 3_000],
+      ],
+      selectedRegionIds: [20],
+      stats: {
+        shapePointCount: 2,
+        selectedRegionCount: 1,
+        totalRegionCount: 2,
+        outsideShapeSpanCount: 0,
+        updatedRowCount: 1,
+      },
+      warnings: [],
+      resistivityFileName: 'editable.bounded.0.resistivity',
+      resistivityText: 'Format: mare2dem_1.1\n',
+      clampedRegionRho: {},
+    };
+    mockUploadThen((url) =>
+      url.includes('/api/apply-rho-bounds') ? boundApplied : TRIM_PREVIEW,
+    );
+
+    render(<TriangleModelWindow />);
+    await loadTriangleModel(user);
+    await dropBoundary(user);
+    await user.click(screen.getByRole('button', { name: /preview removal/i }));
+    await waitFor(() => {
+      expect(mockViewer.setBoundShapePreview).toHaveBeenLastCalledWith(
+        [
+          [0, 5],
+          [100, 5],
+        ],
+        false,
+      );
+    });
+
+    await user.upload(
+      screen.getByLabelText(/bound shape file/i),
+      new File(['10 2\n90 3\n'], 'basement.txt', { type: 'text/plain' }),
+    );
+    await user.type(screen.getByLabelText(/lower bound/i), '1');
+    await user.type(screen.getByLabelText(/upper bound/i), '500');
+    await user.click(screen.getByRole('button', { name: /apply bounds/i }));
+
+    await waitFor(() => {
+      // The bound shape's line, not the trim's.
+      expect(mockViewer.setBoundShapePreview).toHaveBeenLastCalledWith(
+        [
+          [10, 2],
+          [90, 3],
+        ],
+        false,
+      );
+    });
+  });
+
+  it('swaps the trimmed model in and feeds it to the next request', async () => {
+    const user = userEvent.setup();
+    const trimmed = {
+      ...buildEditableTriangleModelResponse(),
+      polyFileName: 'editable.trimmed.poly',
+      resistivityFileName: 'editable.trimmed.0.resistivity',
+      polyText: '4 2 0 0\n',
+      resistivityText: 'Format: mare2dem_1.1\n',
+      side: 'below',
+      points: [
+        [0, 5_000],
+        [100_000, 5_000],
+      ],
+      removedRegionIds: [20],
+      warnings: [],
+      stats: {
+        ...TRIM_PREVIEW.stats,
+        trimmedRegionCount: 2,
+        inheritedRegionCount: 1,
+        fixedRegionCount: 1,
+        freeParameterCount: 1,
+      },
+    };
+    mockUploadThen((url) =>
+      url.includes('/api/apply-side-trim') ? trimmed : TRIM_PREVIEW,
+    );
+
+    render(<TriangleModelWindow />);
+    await loadTriangleModel(user);
+    await dropBoundary(user);
+
+    mockViewer.setData.mockClear();
+    await user.click(screen.getByRole('button', { name: /clear side/i }));
+
+    await waitFor(() => {
+      expect(mockViewer.setData).toHaveBeenCalled();
+    });
+    expect(await screen.findByTestId('side-trim-status')).toHaveTextContent(
+      'Removed 1 regions',
+    );
+    // One download button per file: a browser honours a single programmatic
+    // download per click, so a combined button would drop the second file.
+    const panel = within(screen.getByTestId('side-trim-panel'));
+    expect(panel.getByRole('button', { name: /\.poly$/i })).toBeVisible();
+    expect(panel.getByRole('button', { name: /\.resistivity$/i })).toBeVisible();
+    // The boundary input empties: the trim is part of the model now.
+    expect(
+      (screen.getByLabelText(/trim boundary file/i) as HTMLInputElement).files,
+    ).toHaveLength(0);
+
+    // The next operation uploads the trimmed files, not the source model.
+    await dropBoundary(user);
+    await user.click(screen.getByRole('button', { name: /preview removal/i }));
+    await waitFor(() => {
+      const previews = vi
+        .mocked(axios.post)
+        .mock.calls.filter(([url]) =>
+          String(url).includes('/api/preview-side-trim'),
+        );
+      const formData = previews[previews.length - 1][1] as FormData;
+      expect((formData.get('poly_file') as File).name).toBe(
+        'editable.trimmed.poly',
+      );
+    });
+  });
+
+  it('reports a server error without touching the model', async () => {
+    const user = userEvent.setup();
+    vi.mocked(axios.post).mockImplementation(async (url) => {
+      if (String(url).includes('/api/upload-triangle-model')) {
+        return { data: buildEditableTriangleModelResponse() };
+      }
+      throw Object.assign(new Error('rejected'), {
+        isAxiosError: true,
+        response: { data: { error: 'The boundary selects every region.' } },
+      });
+    });
+
+    render(<TriangleModelWindow />);
+    await loadTriangleModel(user);
+    await dropBoundary(user);
+
+    mockViewer.setData.mockClear();
+    await user.click(screen.getByRole('button', { name: /clear side/i }));
+
+    expect(await screen.findByTestId('side-trim-status')).toHaveTextContent(
+      'The boundary selects every region.',
+    );
+    expect(mockViewer.setData).not.toHaveBeenCalled();
+  });
+});
