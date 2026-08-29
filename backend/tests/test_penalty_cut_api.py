@@ -214,6 +214,22 @@ class TestApplyPenaltyCutEndpoint:
         assert response.status_code == 400
         assert ".resistivity file" in response.get_json()["error"]
 
+    def test_rejects_a_non_utf8_resistivity_file(self, app_client, model_files):
+        latin_1 = ("% r\xe9sistivit\xe9\n" + RESISTIVITY_TEXT).encode("latin-1")
+        response = app_client.post(
+            "/api/apply-penalty-cut",
+            data={
+                "poly_file": upload("box.poly", model_files["poly"]),
+                "resistivity_file": upload("box.0.resistivity", latin_1),
+                "cut_file": upload("basement.txt", b"0 12\n100 13\n"),
+                "parameters": json.dumps({"units": "km"}),
+            },
+            content_type="multipart/form-data",
+        )
+
+        assert response.status_code == 400
+        assert "Could not decode" in response.get_json()["error"]
+
     def test_rejects_a_wrong_extension(self, app_client, model_files):
         response = app_client.post(
             "/api/apply-penalty-cut",

@@ -1448,6 +1448,11 @@ def apply_penalty_cut_to_model():
         return _error_response(str(exc), hint=_PENALTY_CUT_HINT)
     except RegionInheritanceError as exc:
         return _error_response(str(exc), hint=_PENALTY_CUT_HINT)
+    except UnicodeDecodeError:
+        return _error_response(
+            "Could not decode the .resistivity file as UTF-8",
+            hint="Re-export it from MARE2DEM and try again.",
+        )
     except Exception:
         return _unexpected_error(
             "Could not apply the penalty cut to this model.",
