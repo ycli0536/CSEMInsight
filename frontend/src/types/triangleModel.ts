@@ -315,3 +315,60 @@ export interface RhoBoundApplyResponse extends RhoBoundPreviewResponse {
    */
   clampedRegionRho: Record<string, Record<string, number>>;
 }
+
+/**
+ * Clearing one side of the model along a boundary.
+ *
+ * The boundary is a selector, never geometry: regions are picked by which
+ * side their seed point falls on, and the deleted side collapses into one
+ * region per connected component. The interface between kept and deleted
+ * regions -- the seafloor -- keeps its exact segments.
+ */
+export type SideTrimRhoMode = 'free' | 'fixed';
+
+export interface SideTrimParameters {
+  units: PenaltyCutUnits;
+  side: RhoBoundSide;
+  /** Carry the boundary's end depths flat to the model's edges. */
+  extendToBounds: boolean;
+  /** Resistivity for the region(s) the cleared side collapses into. */
+  defaultRho: number;
+  rhoMode: SideTrimRhoMode;
+}
+
+export interface SideTrimStats {
+  removedRegionCount: number;
+  totalRegionCount: number;
+  componentCount: number;
+  removedSegmentCount: number;
+  removedVertexCount: number;
+  removedHoleCount: number;
+  /** Regions off the ends of the boundary, when extension is off. */
+  outsideSpanCount: number;
+  boundaryPointCount: number;
+  trimmedRegionCount?: number;
+  inheritedRegionCount?: number;
+  fixedRegionCount?: number;
+  freeParameterCount?: number;
+}
+
+export interface SideTrimPreviewResponse {
+  side: RhoBoundSide;
+  /** Boundary points as `[y, z]` pairs in metres, extension included. */
+  points: [number, number][];
+  removedRegionIds: number[];
+  stats: SideTrimStats;
+  warnings: string[];
+}
+
+/**
+ * The trimmed model, in the same shape `/api/upload-triangle-model` returns
+ * so the viewer can swap it in directly, plus the text of both output files.
+ */
+export interface SideTrimApplyResponse
+  extends TriangleModelResponse,
+    SideTrimPreviewResponse {
+  polyText: string;
+  resistivityFileName: string;
+  resistivityText: string;
+}
