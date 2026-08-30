@@ -1,11 +1,24 @@
 #!/usr/bin/env python3
-"""Build and place the platform-specific Tauri sidecar binary."""
+"""Build the backend and stage it as a Tauri resource directory.
+
+The backend is frozen with PyInstaller's onedir layout, not onefile.
+Onefile extracted a 39MB archive to a fresh temp path on every launch,
+which meant macOS re-validated every native library's code signature every
+time (the validation cache is keyed by path) -- about 20s of startup per
+launch, forever. Onedir installs at a stable path, so that cost is paid
+once per install/update and warm launches take about a second.
+
+A directory cannot ship through tauri.conf.json's `externalBin` (that
+contract wants a single file), so the tree is staged under
+frontend/src-tauri/resources/backend/ and declared in the `resources`
+map instead; the shell resolves the executable via resource_dir() at
+runtime.
+"""
 
 from __future__ import annotations
 
 import argparse
 import shutil
-import stat
 import subprocess
 import sys
 from pathlib import Path
@@ -18,23 +31,16 @@ SUPPORTED_TARGET_TRIPLES = {
 }
 
 
-def target_filename(target_triple: str) -> str:
-    """Return sidecar filename expected by Tauri for a target triple."""
+def executable_name(target_triple: str) -> str:
+    """Return the backend executable's file name for a target triple."""
     if target_triple not in SUPPORTED_TARGET_TRIPLES:
         raise ValueError(
             f"Unsupported target triple '{target_triple}'. "
             f"Supported values: {sorted(SUPPORTED_TARGET_TRIPLES)}"
         )
-
-    base_name = f"csemInsight-{target_triple}"
     if target_triple.endswith("windows-msvc"):
-        return f"{base_name}.exe"
-    return base_name
-
-
-def _pyinstaller_binary_name(target_triple: str) -> str:
-    """Return onefile output name used by PyInstaller."""
-    return f"csemInsight-{target_triple}"
+        return "csemInsight.exe"
+    return "csemInsight"
 
 
 def _run_pyinstaller(repo_root: Path, target_triple: str) -> Path:
@@ -43,7 +49,6 @@ def _run_pyinstaller(repo_root: Path, target_triple: str) -> Path:
     if not entrypoint.exists():
         raise FileNotFoundError(f"Backend entrypoint not found: {entrypoint}")
 
-    name = _pyinstaller_binary_name(target_triple)
     dist_dir = backend_dir / "dist"
     work_dir = backend_dir / "build" / f"pyinstaller-{target_triple}"
     spec_dir = work_dir / "spec"
@@ -72,12 +77,12 @@ def _run_pyinstaller(repo_root: Path, target_triple: str) -> Path:
         "-m",
         "PyInstaller",
         "--noconfirm",
-        "--onefile",
+        "--onedir",
         *exclude_args,
         "--name",
-        name,
+        "csemInsight",
         "--distpath",
-        str(dist_dir),
+        str(dist_dir / target_triple),
         "--workpath",
         str(work_dir),
         "--specpath",
@@ -86,56 +91,67 @@ def _run_pyinstaller(repo_root: Path, target_triple: str) -> Path:
     ]
     subprocess.run(command, cwd=backend_dir, check=True)
 
-    output_name = name
-    if target_triple.endswith("windows-msvc"):
-        output_name = f"{output_name}.exe"
-    output_path = dist_dir / output_name
-
-    if not output_path.exists():
+    output_dir = dist_dir / target_triple / "csemInsight"
+    if not (output_dir / executable_name(target_triple)).exists():
         raise FileNotFoundError(
-            f"PyInstaller completed but output binary is missing: {output_path}"
+            f"PyInstaller completed but the executable is missing in: {output_dir}"
         )
-    return output_path
+    return output_dir
 
 
-def _copy_to_tauri_binaries(
+def stage_to_resources(
     repo_root: Path,
-    source_binary: Path,
+    source_dir: Path,
     target_triple: str,
 ) -> Path:
-    binaries_dir = repo_root / "frontend" / "src-tauri" / "binaries"
-    binaries_dir.mkdir(parents=True, exist_ok=True)
+    """Copy the onedir tree into the Tauri resources location.
 
-    destination = binaries_dir / target_filename(target_triple)
-    shutil.copy2(source_binary, destination)
+    Args:
+        repo_root: Repository root.
+        source_dir: PyInstaller onedir output directory.
+        target_triple: Rust target triple, for the executable name.
 
-    current_mode = destination.stat().st_mode
-    destination.chmod(current_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+    Returns:
+        The staged directory, frontend/src-tauri/resources/backend.
 
+    Raises:
+        FileNotFoundError: If the tree lacks the expected executable.
+    """
+    exe = source_dir / executable_name(target_triple)
+    if not exe.is_file():
+        raise FileNotFoundError(f"Backend executable missing in tree: {exe}")
+
+    destination = repo_root / "frontend" / "src-tauri" / "resources" / "backend"
+    if destination.exists():
+        shutil.rmtree(destination)
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copytree(source_dir, destination)
+
+    staged_exe = destination / executable_name(target_triple)
+    staged_exe.chmod(staged_exe.stat().st_mode | 0o755)
     return destination
 
 
 def build_sidecar(target_triple: str, repo_root: Path) -> Path:
-    """Build sidecar via PyInstaller and copy it into src-tauri/binaries."""
-    # Validate target triple early for clear errors.
-    target_filename(target_triple)
+    """Freeze the backend and stage it under src-tauri/resources."""
+    executable_name(target_triple)  # Validate the triple early.
 
-    source_binary = _run_pyinstaller(repo_root=repo_root, target_triple=target_triple)
-    return _copy_to_tauri_binaries(
+    source_dir = _run_pyinstaller(repo_root=repo_root, target_triple=target_triple)
+    return stage_to_resources(
         repo_root=repo_root,
-        source_binary=source_binary,
+        source_dir=source_dir,
         target_triple=target_triple,
     )
 
 
 def _parse_args(argv: list[str] | None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Build the backend sidecar and copy it to Tauri binaries.",
+        description="Build the backend and stage it as a Tauri resource.",
     )
     parser.add_argument(
         "--target-triple",
         required=True,
-        help="Rust target triple for which to build the sidecar.",
+        help="Rust target triple for which to build the backend.",
     )
     parser.add_argument(
         "--repo-root",
@@ -158,7 +174,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 1
 
-    print(f"Built sidecar: {destination}")
+    print(f"Staged backend: {destination}")
     return 0
 
 

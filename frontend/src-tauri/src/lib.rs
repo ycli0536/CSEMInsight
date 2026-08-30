@@ -10,6 +10,12 @@ use tauri_plugin_shell::ShellExt;
 /// the address the docs and dev tooling refer to.
 const PREFERRED_PORT: u16 = 3354;
 
+/// File name of the frozen backend inside the bundled resources.
+#[cfg(windows)]
+const BACKEND_EXECUTABLE: &str = "csemInsight.exe";
+#[cfg(not(windows))]
+const BACKEND_EXECUTABLE: &str = "csemInsight";
+
 /// The backend process this window owns, and the port it was told to use.
 #[derive(Default)]
 struct Backend {
@@ -62,23 +68,33 @@ fn start_backend(app: &AppHandle) {
         return;
     };
 
-    // --parent-pid lets the backend shut itself down if this process goes away.
-    // Killing the child we spawn is not enough: PyInstaller's onefile
-    // bootloader re-executes itself, so the process actually serving requests
-    // is a grandchild we hold no handle on. It also covers the cases we cannot
-    // handle from here at all, such as a crash or a force quit.
-    let sidecar = match app.shell().sidecar("csemInsight") {
-        Ok(command) => command.args([
-            "--port",
-            &port.to_string(),
-            "--parent-pid",
-            &std::process::id().to_string(),
-        ]),
+    // The backend ships as a PyInstaller onedir tree under the bundle's
+    // resource dir (see scripts/build_sidecar.py for why not onefile).
+    let backend_exe = match app.path().resource_dir() {
+        Ok(dir) => dir.join("backend").join(BACKEND_EXECUTABLE),
         Err(err) => {
-            error!("Could not locate the backend sidecar: {}", err);
+            error!("Could not resolve the resource directory: {}", err);
             return;
         }
     };
+    if !backend_exe.is_file() {
+        error!(
+            "Backend executable not found at {:?}; was the backend staged \
+             with scripts/build_sidecar.py before building?",
+            backend_exe
+        );
+        return;
+    }
+
+    // --parent-pid lets the backend shut itself down if this process goes
+    // away without us killing it: a crash or a force quit, where no exit
+    // handler runs here.
+    let sidecar = app.shell().command(&backend_exe).args([
+        "--port",
+        &port.to_string(),
+        "--parent-pid",
+        &std::process::id().to_string(),
+    ]);
 
     let (mut receiver, child) = match sidecar.spawn() {
         Ok(spawned) => spawned,
