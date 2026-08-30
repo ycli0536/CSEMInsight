@@ -3,6 +3,5 @@
 /target/
 /gen/schemas
 
-# binaries
-binaries/*
-!binaries/.gitkeep
+# staged backend (built by scripts/build_sidecar.py)
+resources/backend/
