@@ -35,10 +35,7 @@ import pandas as pd
 
 from MARE2DEM_poly_parser import MARE2DEMPolyParser
 
-try:
-    from matplotlib.tri import Triangulation
-except ModuleNotFoundError:  # pragma: no cover - optional dependency
-    Triangulation = None
+from triangle_point_location import TriangleLocator
 
 
 class RegionInheritanceError(ValueError):
@@ -118,14 +115,9 @@ def map_regions_to_source(
         falls outside every source region.
 
     Raises:
-        RegionInheritanceError: If matplotlib is unavailable, or the source model
-            has no regions to inherit from.
+        RegionInheritanceError: If the source model has no regions to
+            inherit from.
     """
-    if Triangulation is None:  # pragma: no cover - exercised only without matplotlib
-        raise RegionInheritanceError(
-            "matplotlib is required to locate regions; install matplotlib to use "
-            "region inheritance."
-        )
     if not source_regions:
         raise RegionInheritanceError("The source model has no regions to inherit from.")
     if not target_regions:
@@ -140,10 +132,9 @@ def map_regions_to_source(
     triangle_labels, region_index = parser.get_triangle_regions(list(source_regions))
 
     vertices = tri_output["vertices"]
-    triangulation = Triangulation(
+    trifinder = TriangleLocator(
         vertices[:, 0], vertices[:, 1], tri_output["triangles"]
     )
-    trifinder = triangulation.get_trifinder()
 
     seed_y = np.array([region["hCoor"] for region in target_regions], dtype=float)
     seed_z = np.array([region["vCoor"] for region in target_regions], dtype=float)

@@ -2,10 +2,7 @@ import numpy as np
 import time
 import math
 from scipy.sparse import coo_matrix
-try:
-    from matplotlib.tri import Triangulation
-except ModuleNotFoundError:  # pragma: no cover - optional dependency for plotting helpers
-    Triangulation = None
+from triangle_point_location import TriangleLocator
 
 class MARE2DEMPolyParser():
     """Class for parsing .poly files used in MARE2DEM."""
@@ -615,8 +612,8 @@ class MARE2DEMPolyParser():
             # Extract x and y coordinates from vertices dictionary
             x = self.tri_output['vertices'][:,0]
             y = self.tri_output['vertices'][:,1]
-            mtri = Triangulation(x, y, triangles)
-            iTri = np.array([self.find_containing_triangle(point, mtri) for point in regions_coords])
+            locator = TriangleLocator(x, y, triangles)
+            iTri = np.asarray(locator(regions_coords[:, 0], regions_coords[:, 1]))
             
             # Loop over each seed (using 0-based index for seeds)
             for ireg in range(regions_coords.shape[0]):
@@ -690,12 +687,6 @@ class MARE2DEMPolyParser():
         
         return stats
                     
-    def find_containing_triangle(self, point, mtri):
-        """Find which triangle contains the given point using matplotlib's Triangulation"""
-        # Find which triangle contains each region point using matplotlib's Triangulation
-        return mtri.get_trifinder()(point[0], point[1])
-    
-    
 class MARE2DEMPolyManager():
     """High-performance class for managing large MARE2DEM .poly files."""
     def __init__(self):
@@ -1316,9 +1307,8 @@ class MARE2DEMPolyManager():
         new_regions = []
         all_original_regions = (regions1 or []) + (regions2 or [])
         
-        # Create a triangulation object to efficiently find which triangle contains a point
-        mtri = Triangulation(tri_vertices[:,0], tri_vertices[:,1], triangles)
-        trifinder = mtri.get_trifinder()
+        # Point locator to find which triangle contains a seed point
+        trifinder = TriangleLocator(tri_vertices[:,0], tri_vertices[:,1], triangles)
 
         # OPTIMIZATION: Batch process original regions for better performance
         # Create mapping from triangle index to original regions (same logic, better performance)

@@ -48,10 +48,7 @@ from rho_bound_service import (
     select_regions,
 )
 
-try:
-    from matplotlib.tri import Triangulation
-except ModuleNotFoundError:  # pragma: no cover - optional dependency
-    Triangulation = None
+from triangle_point_location import TriangleLocator
 
 
 class SideTrimError(ValueError):
@@ -227,10 +224,6 @@ def plan_side_trim(
         SideTrimError: If the model has no regions, the boundary selects
             nothing, or it selects everything.
     """
-    if Triangulation is None:  # pragma: no cover - exercised only without matplotlib
-        raise SideTrimError(
-            "matplotlib is required to clear a side; install matplotlib."
-        )
     if not regions:
         raise SideTrimError(
             "The .poly file has no regions, so there is no side to clear. "
@@ -296,10 +289,9 @@ def plan_side_trim(
             edge = (min(int(tri[a]), int(tri[b])), max(int(tri[a]), int(tri[b])))
             edge_triangles.setdefault(edge, []).append(triangle_index)
 
-    triangulation = Triangulation(
+    trifinder = TriangleLocator(
         mesh_vertices[:, 0], mesh_vertices[:, 1], tri_output["triangles"]
     )
-    trifinder = triangulation.get_trifinder()
     span = max(max(ys) - min(ys), max(zs) - min(zs), 1.0)
     offset = 1e-9 * span
 

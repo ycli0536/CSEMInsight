@@ -48,12 +48,32 @@ def _run_pyinstaller(repo_root: Path, target_triple: str) -> Path:
     work_dir = backend_dir / "build" / f"pyinstaller-{target_triple}"
     spec_dir = work_dir / "spec"
 
+    # The backend imports none of these, but PyInstaller follows pandas's
+    # and scipy's optional imports and bundles whatever the build venv has
+    # installed. Excluding them keeps a dev-venv build (which also carries
+    # the Jupyter/pytest stack) identical to a CI build from requirements.txt.
+    excluded_modules = [
+        "matplotlib",
+        "PIL",
+        "IPython",
+        "ipykernel",
+        "jupyter_client",
+        "jupyter_core",
+        "tornado",
+        "pytest",
+        "_pytest",
+    ]
+    exclude_args = []
+    for module in excluded_modules:
+        exclude_args += ["--exclude-module", module]
+
     command = [
         sys.executable,
         "-m",
         "PyInstaller",
         "--noconfirm",
         "--onefile",
+        *exclude_args,
         "--name",
         name,
         "--distpath",
