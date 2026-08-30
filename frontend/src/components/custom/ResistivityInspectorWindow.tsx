@@ -71,7 +71,8 @@ export function ResistivityInspectorWindow() {
   const { theme, systemTheme } = useTheme();
   const resolvedTheme = theme === 'system' ? systemTheme : theme;
 
-  const rows = resistivity?.table ?? [];
+  // Memoized so the fallback [] does not remake every useMemo below per render.
+  const rows = useMemo(() => resistivity?.table ?? [], [resistivity]);
   const metadata = resistivity?.metadata ?? {};
 
   // The file's own column order. Falling back to the first row's keys keeps

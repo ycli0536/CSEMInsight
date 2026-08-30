@@ -23,7 +23,7 @@ import type {
  * are parsed into arrays upstream (Global Bounds, Roughness Weights), so they
  * are re-joined rather than shown as a JS array.
  */
-export function formatResistivityMetadataValue(
+function formatResistivityMetadataValue(
   value: TriangleResistivityMetadataValue,
 ): string {
   if (value === null || value === undefined) {
