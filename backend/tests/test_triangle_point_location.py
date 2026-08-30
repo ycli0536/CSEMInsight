@@ -96,6 +96,61 @@ class TestRobustness:
         assert np.all(result[inside] >= 0)
 
 
+class TestGradedMesh:
+    """A graded mesh: tiny core triangles inside huge boundary triangles.
+
+    This is the shape of a real MARE2DEM model and exercises both grid
+    levels: the core triangles index on the fine level, the boundary
+    triangles overflow to the coarse level.
+    """
+
+    @staticmethod
+    def _graded_triangulation():
+        from scipy.spatial import Delaunay
+
+        rng = np.random.default_rng(3)
+        core = rng.uniform(-1.0, 1.0, size=(300, 2))
+        boundary = np.array(
+            [[-500.0, -500.0], [500.0, -500.0], [500.0, 500.0], [-500.0, 500.0],
+             [0.0, -500.0], [500.0, 0.0], [0.0, 500.0], [-500.0, 0.0]]
+        )
+        points = np.vstack([core, boundary])
+        delaunay = Delaunay(points)
+        return points[:, 0], points[:, 1], delaunay.simplices
+
+    def test_both_levels_are_populated(self):
+        x, y, triangles = self._graded_triangulation()
+        locator = TriangleLocator(x, y, triangles)
+
+        assert len(locator._grids) == 2
+
+    def test_matches_matplotlib_across_the_gradation(self):
+        matplotlib = pytest.importorskip("matplotlib")
+        from matplotlib.tri import Triangulation
+
+        x, y, triangles = self._graded_triangulation()
+        ours = TriangleLocator(x, y, triangles)
+        theirs = Triangulation(x, y, triangles).get_trifinder()
+
+        rng = np.random.default_rng(11)
+        # Half the queries in the dense core, half out among the giants.
+        qx = np.concatenate([rng.uniform(-1, 1, 400), rng.uniform(-600, 600, 400)])
+        qy = np.concatenate([rng.uniform(-1, 1, 400), rng.uniform(-600, 600, 400)])
+
+        our_idx = np.asarray(ours(qx, qy))
+        their_idx = np.asarray(theirs(qx, qy))
+
+        np.testing.assert_array_equal(our_idx >= 0, their_idx >= 0)
+        found = np.nonzero(our_idx >= 0)[0]
+        # Same region verdict: both answers contain the query point.
+        for i in found:
+            a, b, c = triangles[our_idx[i]]
+            d = (x[b]-x[a])*(y[c]-y[a]) - (y[b]-y[a])*(x[c]-x[a])
+            s = ((qx[i]-x[a])*(y[c]-y[a]) - (qy[i]-y[a])*(x[c]-x[a])) / d
+            t = ((x[b]-x[a])*(qy[i]-y[a]) - (y[b]-y[a])*(qx[i]-x[a])) / d
+            assert s >= -1e-9 and t >= -1e-9 and s + t <= 1 + 1e-9
+
+
 @pytest.mark.skipif(
     pytest.importorskip("matplotlib", reason="cross-check needs matplotlib") is None,
     reason="matplotlib unavailable",
