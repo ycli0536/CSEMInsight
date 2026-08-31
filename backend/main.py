@@ -724,6 +724,12 @@ def _serialize_constrained_mesh(poly_parser, vertices, segments, regions, parsed
     }
 
 
+@app.route("/api/health", methods=["GET"])
+def health():
+    """Liveness probe the frontend polls while the backend starts up."""
+    return jsonify({"status": "ok"})
+
+
 @app.route("/api/upload-xyz", methods=["POST"])
 def upload_xyz_file():
     file, error = _pick_uploaded_file((".xyz",))
