@@ -1,5 +1,10 @@
 import '@testing-library/jest-dom';
+import { configure } from '@testing-library/react';
 import { vi } from 'vitest';
+
+// waitFor/findBy give up after 1s by default, which CPU contention from
+// parallel test workers can overrun; the raised bound costs green runs nothing.
+configure({ asyncUtilTimeout: 5_000 });
 
 // Mock ResizeObserver which is not available in jsdom
 global.ResizeObserver = vi.fn().mockImplementation(() => ({

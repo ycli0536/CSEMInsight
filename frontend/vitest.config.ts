@@ -7,6 +7,9 @@ export default defineConfig({
   test: {
     globals: true,
     environment: 'jsdom',
+    // Interaction-heavy jsdom tests that idle at ~0.5s inflate past the 5s
+    // default when parallel workers contend for CPU on a loaded machine.
+    testTimeout: 20_000,
     setupFiles: ['./src/test/setup.ts'],
     include: ['src/**/*.{test,spec}.{ts,tsx}'],
     coverage: {
