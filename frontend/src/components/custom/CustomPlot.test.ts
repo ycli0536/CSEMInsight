@@ -8,10 +8,12 @@ import { CustomPlot } from './CustomPlot';
 import { getPlotLabelParts } from './customPlot.utils';
 
 vi.mock('uplot', () => {
-  const mockUPlot = vi.fn().mockImplementation(() => ({
-    destroy: vi.fn(),
-    setSize: vi.fn(),
-  }));
+  const mockUPlot = vi.fn(function () {
+    return {
+      destroy: vi.fn(),
+      setSize: vi.fn(),
+    };
+  });
   return {
     default: mockUPlot,
   };
@@ -93,7 +95,7 @@ describe('CustomPlot', () => {
 
     vi.stubGlobal(
       'ResizeObserver',
-      vi.fn().mockImplementation((callback: ResizeObserverCallback) => {
+      vi.fn(function (callback: ResizeObserverCallback) {
         resizeCallbacks.push(callback);
         return {
           observe: vi.fn(),

@@ -24,13 +24,19 @@ vi.mock('@/hooks/useTheme', () => ({
 
 // Mock uPlot to avoid canvas errors
 vi.mock('uplot', () => {
-  const mockUPlot = vi.fn().mockImplementation(() => ({
-    destroy: vi.fn(),
-    setSize: vi.fn(),
-  }));
-  mockUPlot.paths = {
-    points: vi.fn(() => vi.fn()),
-  };
+  const mockUPlot = Object.assign(
+    vi.fn(function () {
+      return {
+        destroy: vi.fn(),
+        setSize: vi.fn(),
+      };
+    }),
+    {
+      paths: {
+        points: vi.fn(() => vi.fn()),
+      },
+    },
+  );
   return {
     default: mockUPlot,
   };
@@ -74,7 +80,7 @@ describe('MisfitStatsWindow', () => {
             Type: 'Ex',
             Data: 1.0,
             Residual: 0.5,
-          } as CsemData,
+          } as unknown as CsemData,
         ]
       : [
           {
@@ -83,7 +89,7 @@ describe('MisfitStatsWindow', () => {
             Tx_id: 1,
             Type: 'Ex',
             Data: 1.0,
-          } as CsemData,
+          } as unknown as CsemData,
         ];
 
     return {
@@ -96,14 +102,14 @@ describe('MisfitStatsWindow', () => {
       txSelected: 'all',
       rxSelected: 'all',
       filterModel: null,
-    };
+    } as unknown as Dataset;
   };
 
   beforeEach(() => {
     vi.clearAllMocks();
 
     // Mock theme
-    (useTheme as ReturnType<typeof vi.fn>).mockReturnValue({
+    (useTheme as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
       theme: 'light',
       systemTheme: 'light',
       setTheme: vi.fn(),
@@ -115,7 +121,7 @@ describe('MisfitStatsWindow', () => {
     // Set VITE_DEMO_MODE to enable demo mode
     vi.stubEnv('VITE_DEMO_MODE', 'true');
 
-    (useWindowStore as ReturnType<typeof vi.fn>).mockImplementation((selector) =>
+    (useWindowStore as unknown as ReturnType<typeof vi.fn>).mockImplementation((selector) =>
       selector({ draggingWindowId: null })
     );
   });
@@ -125,7 +131,7 @@ describe('MisfitStatsWindow', () => {
     const mockDataset = createMockDataset('dataset1', true);
     const mockDatasets = new Map<string, Dataset>([['dataset1', mockDataset]]);
 
-    (useDataTableStore as ReturnType<typeof vi.fn>).mockReturnValue({
+    (useDataTableStore as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
       filteredData: mockDataset.data,
       datasets: mockDatasets,
       activeDatasetIds: ['dataset1'],
@@ -154,7 +160,7 @@ describe('MisfitStatsWindow', () => {
       activeDatasetIds: ['dataset1'],
     };
 
-    (useDataTableStore as ReturnType<typeof vi.fn>).mockReturnValue(mockStoreReturn);
+    (useDataTableStore as unknown as ReturnType<typeof vi.fn>).mockReturnValue(mockStoreReturn);
 
     // Act - Initial render
     const { container, rerender } = render(<MisfitStatsWindow />);
@@ -171,7 +177,7 @@ describe('MisfitStatsWindow', () => {
     const mockDataset2 = createMockDataset('dataset2', true);
     const mockDatasets2 = new Map<string, Dataset>([['dataset2', mockDataset2]]);
 
-    (useDataTableStore as ReturnType<typeof vi.fn>).mockReturnValue({
+    (useDataTableStore as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
       filteredData: mockDataset2.data,
       datasets: mockDatasets2,
       activeDatasetIds: ['dataset2'],
@@ -194,7 +200,7 @@ describe('MisfitStatsWindow', () => {
       ['dataset2', mockDataset2],
     ]);
 
-    (useDataTableStore as ReturnType<typeof vi.fn>).mockReturnValue({
+    (useDataTableStore as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
       filteredData: mockDataset1.data,
       datasets: mockDatasets,
       activeDatasetIds: ['dataset1', 'dataset2'],
@@ -220,7 +226,7 @@ describe('MisfitStatsWindow', () => {
     const mockDataset = createMockDataset('dataset1', false);
     const mockDatasets = new Map<string, Dataset>([['dataset1', mockDataset]]);
 
-    (useDataTableStore as ReturnType<typeof vi.fn>).mockReturnValue({
+    (useDataTableStore as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
       filteredData: mockDataset.data,
       datasets: mockDatasets,
       activeDatasetIds: ['dataset1'],
@@ -237,7 +243,7 @@ describe('MisfitStatsWindow', () => {
 
   it('should show empty state when no datasets available', () => {
     // Arrange
-    (useDataTableStore as ReturnType<typeof vi.fn>).mockReturnValue({
+    (useDataTableStore as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
       filteredData: [],
       datasets: new Map(),
       activeDatasetIds: [],
@@ -255,7 +261,7 @@ describe('MisfitStatsWindow', () => {
       const mockDataset = createMockDataset('dataset1', true);
       const mockDatasets = new Map<string, Dataset>([['dataset1', mockDataset]]);
 
-      (useDataTableStore as ReturnType<typeof vi.fn>).mockReturnValue({
+      (useDataTableStore as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
         filteredData: mockDataset.data,
         datasets: mockDatasets,
         activeDatasetIds: ['dataset1'],
@@ -319,13 +325,13 @@ describe('MisfitStatsWindow', () => {
     const mockDataset = createMockDataset('dataset1', true);
     const mockDatasets = new Map<string, Dataset>([['dataset1', mockDataset]]);
 
-    (useDataTableStore as ReturnType<typeof vi.fn>).mockReturnValue({
+    (useDataTableStore as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
       filteredData: mockDataset.data,
       datasets: mockDatasets,
       activeDatasetIds: ['dataset1'],
     });
 
-    (useWindowStore as ReturnType<typeof vi.fn>).mockImplementation((selector) =>
+    (useWindowStore as unknown as ReturnType<typeof vi.fn>).mockImplementation((selector) =>
       selector({ draggingWindowId: 'misfit-stats' })
     );
 
@@ -342,14 +348,14 @@ describe('MisfitStatsWindow', () => {
     const mockDataset = createMockDataset('dataset1', true);
     const mockDatasets = new Map<string, Dataset>([['dataset1', mockDataset]]);
 
-    (useDataTableStore as ReturnType<typeof vi.fn>).mockReturnValue({
+    (useDataTableStore as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
       filteredData: mockDataset.data,
       datasets: mockDatasets,
       activeDatasetIds: ['dataset1'],
     });
 
     // Stats arrive while the window is being dragged, so the plot is skipped.
-    (useWindowStore as ReturnType<typeof vi.fn>).mockImplementation((selector) =>
+    (useWindowStore as unknown as ReturnType<typeof vi.fn>).mockImplementation((selector) =>
       selector({ draggingWindowId: 'misfit-stats' })
     );
 
@@ -361,7 +367,7 @@ describe('MisfitStatsWindow', () => {
     expect(uPlot).not.toHaveBeenCalled();
 
     // Drag ends: the effect must re-run and create the plot it skipped.
-    (useWindowStore as ReturnType<typeof vi.fn>).mockImplementation((selector) =>
+    (useWindowStore as unknown as ReturnType<typeof vi.fn>).mockImplementation((selector) =>
       selector({ draggingWindowId: null })
     );
     rerender(<MisfitStatsWindow />);

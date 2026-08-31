@@ -27,11 +27,13 @@ describe('SimpleBarChart', () => {
 
     const mockObserve = vi.fn();
     const mockDisconnect = vi.fn();
-    global.ResizeObserver = vi.fn().mockImplementation(() => ({
-      observe: mockObserve,
-      unobserve: vi.fn(),
-      disconnect: mockDisconnect,
-    }));
+    global.ResizeObserver = vi.fn(function () {
+      return {
+        observe: mockObserve,
+        unobserve: vi.fn(),
+        disconnect: mockDisconnect,
+      };
+    }) as unknown as typeof ResizeObserver;
 
     vi.spyOn(HTMLDivElement.prototype, 'offsetWidth', 'get').mockReturnValue(0);
     vi.spyOn(HTMLDivElement.prototype, 'offsetHeight', 'get').mockReturnValue(0);
@@ -51,7 +53,7 @@ describe('SimpleBarChart', () => {
 
     let observerCallback: ResizeObserverCallback;
     const mockObserve = vi.fn();
-    global.ResizeObserver = vi.fn().mockImplementation((callback) => {
+    global.ResizeObserver = vi.fn(function (callback: ResizeObserverCallback) {
       observerCallback = callback;
       return {
         observe: (target: Element) => {
@@ -64,7 +66,7 @@ describe('SimpleBarChart', () => {
         unobserve: vi.fn(),
         disconnect: vi.fn(),
       };
-    });
+    }) as unknown as typeof ResizeObserver;
 
     vi.spyOn(HTMLDivElement.prototype, 'offsetWidth', 'get').mockReturnValue(400);
     vi.spyOn(HTMLDivElement.prototype, 'offsetHeight', 'get').mockReturnValue(300);
@@ -89,7 +91,7 @@ describe('SimpleBarChart', () => {
 
     let observerCallback: ResizeObserverCallback;
     const mockObserve = vi.fn();
-    global.ResizeObserver = vi.fn().mockImplementation((callback) => {
+    global.ResizeObserver = vi.fn(function (callback: ResizeObserverCallback) {
       observerCallback = callback;
       return {
         observe: (target: Element) => {
@@ -102,7 +104,7 @@ describe('SimpleBarChart', () => {
         unobserve: vi.fn(),
         disconnect: vi.fn(),
       };
-    });
+    }) as unknown as typeof ResizeObserver;
 
     vi.spyOn(HTMLDivElement.prototype, 'offsetWidth', 'get').mockReturnValue(400);
     vi.spyOn(HTMLDivElement.prototype, 'offsetHeight', 'get').mockReturnValue(300);
