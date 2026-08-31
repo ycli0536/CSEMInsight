@@ -722,3 +722,26 @@ class TestTypeCodeConstants:
         """Test that amplitude and phase codes don't overlap."""
         overlap = backend_main.AMPLITUDE_TYPE_CODES & backend_main.PHASE_TYPE_CODES
         assert len(overlap) == 0, f"Type codes overlap: {overlap}"
+
+
+class TestHealth:
+    """Tests for the /api/health endpoint the frontend polls at startup."""
+
+    def test_health_returns_ok(self, app_client):
+        response = app_client.get("/api/health")
+
+        assert response.status_code == 200
+        assert response.get_json() == {"status": "ok"}
+
+    def test_health_answers_cors_preflight_for_app_origin(self, app_client):
+        response = app_client.options(
+            "/api/health",
+            headers={
+                "Origin": "http://localhost:5173",
+                "Access-Control-Request-Method": "GET",
+            },
+        )
+
+        assert response.headers.get("Access-Control-Allow-Origin") == (
+            "http://localhost:5173"
+        )
