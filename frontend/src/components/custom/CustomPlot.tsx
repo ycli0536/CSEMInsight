@@ -378,9 +378,8 @@ export function CustomPlot() {
             uPlotRef.current.destroy();
         }
 
-        // TS Cast for data in Mode 2
-        type UPlotDataArray = [Float64Array, Float64Array][];
-        uPlotRef.current = new uPlot(opts, data as UPlotDataArray, plotRef.current);
+        // TS Cast for data in Mode 2 (faceted series data, not aligned columns)
+        uPlotRef.current = new uPlot(opts, data as unknown as uPlot.AlignedData, plotRef.current);
 
         const resizeObserver = new ResizeObserver(() => {
             if (plotRef.current && uPlotRef.current) {

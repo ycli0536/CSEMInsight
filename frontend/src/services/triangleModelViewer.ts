@@ -28,6 +28,7 @@ import type {
   TriangleMeshBounds,
   TriangleMeshPoint,
   TriangleModelResponse,
+  TriangleModelSegment,
 } from '@/types';
 
 const CAMERA_Z = 10;
@@ -242,6 +243,7 @@ export function createTriangleModelViewer(options: {
 
   const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 100);
   const raycaster = new THREE.Raycaster();
+  const raycastNdc = new THREE.Vector2();
   let resistivityColorRange: TriangleResistivityColorRange = {
     min: TRIANGLE_RESISTIVITY_RANGE.min,
     max: TRIANGLE_RESISTIVITY_RANGE.max,
@@ -618,15 +620,15 @@ export function createTriangleModelViewer(options: {
       ? null
       : findNearestSegment(model.segments, sourceVertexById, dataPoint, tolerance);
     raycaster.setFromCamera(
-      {
-        x: (point.x / rect.width) * 2 - 1,
-        y: -(point.y / rect.height) * 2 + 1,
-      },
+      raycastNdc.set(
+        (point.x / rect.width) * 2 - 1,
+        -(point.y / rect.height) * 2 + 1,
+      ),
       camera,
     );
     const hit = raycaster.intersectObject(triangleFillMesh, false)[0];
     const regionHit: TriangleRegionHoverHit | null =
-      hit?.faceIndex !== undefined && mesh.triangles[hit.faceIndex]
+      hit?.faceIndex != null && mesh.triangles[hit.faceIndex]
         ? {
             triangleIndex: hit.faceIndex,
             regionId: mesh.triangleRegionIds?.[hit.faceIndex] ?? null,

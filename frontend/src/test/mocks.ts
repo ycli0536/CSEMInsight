@@ -93,7 +93,7 @@ export const createMockDataset = (overrides: Partial<Dataset> = {}): Dataset => 
     createMockCsemData({ index: 0, Freq: 0.25, Tx_id: 1, Rx_id: 1 }),
     createMockCsemData({ index: 1, Freq: 0.25, Tx_id: 1, Rx_id: 2, Y_rx: 2500 }),
     createMockCsemData({ index: 2, Freq: 1.0, Tx_id: 1, Rx_id: 1, Freq_id: '2' }),
-    createMockCsemData({ index: 3, Freq: 1.0, Tx_id: 2, Rx_id: 1, Freq_id: '2', Tx_id: 2 }),
+    createMockCsemData({ index: 3, Freq: 1.0, Tx_id: 2, Rx_id: 1, Freq_id: '2' }),
   ];
 
   const txData = [
@@ -113,7 +113,7 @@ export const createMockDataset = (overrides: Partial<Dataset> = {}): Dataset => 
     txData,
     rxData,
     geometryInfo: createMockGeometryInfo(),
-    dataBlocks: [],
+    dataBlocks: {},
     color: '#2563eb',
     visible: true,
     role: 'primary',
@@ -139,7 +139,7 @@ export const createMockApiResponse = (
     name: filename,
     geometryInfo: createMockGeometryInfo(),
     data: JSON.stringify({ data: mockData }),
-    dataBlocks: [],
+    dataBlocks: {},
   };
 };
 

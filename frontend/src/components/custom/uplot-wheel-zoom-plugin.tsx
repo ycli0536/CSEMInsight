@@ -1,11 +1,6 @@
 /* eslint-disable no-inner-declarations */
 import uPlot from 'uplot';
 
-type UPlotInstance = uPlot & {
-    over: HTMLElement;
-    cursor: { left: number; top: number };
-};
-
 
 export const wheelZoomPlugin = (opts: { factor: number; drag: boolean; scroll: boolean}): uPlot.Plugin => {
     const factor = opts.factor || 0.75;
@@ -30,18 +25,24 @@ export const wheelZoomPlugin = (opts: { factor: number; drag: boolean; scroll: b
     return {
         hooks: {
             init: [
-                (u: UPlotInstance) => {
+                (u: uPlot) => {
                     const axisEls = u.root.querySelectorAll('.u-axis');
 
                     for (let i = 0; i < axisEls.length; i++) {
                         if (i > 0) {
                             const el = axisEls[i];
 
-                            el.addEventListener('mousedown', (event: MouseEvent) => {
+                            el.addEventListener('mousedown', ((event: MouseEvent) => {
                                 const y0 = event.clientY;
                                 const scaleKey = u.axes[i].scale;
+                                if (scaleKey == null) {
+                                    return;
+                                }
                                 const scale = u.scales[scaleKey];
                                 const { min, max } = scale;
+                                if (min == null || max == null) {
+                                    return;
+                                }
                                 const unitsPerPx = (max - min) / (u.bbox.height / uPlot.pxRatio);
 
                                 const mousemove = (moveEvent: MouseEvent) => {
@@ -61,16 +62,25 @@ export const wheelZoomPlugin = (opts: { factor: number; drag: boolean; scroll: b
 
                                 document.addEventListener('mousemove', mousemove);
                                 document.addEventListener('mouseup', mouseup);
-                            });
+                            }) as EventListener);
                         }
                     }
                 },
             ],
-            ready: (u: UPlotInstance) => {
-                const xMin = u.scales.x.min;
-                const xMax = u.scales.x.max;
-                const yMin = u.scales.y.min;
-                const yMax = u.scales.y.max;
+            ready: (u: uPlot) => {
+                const xMinRaw = u.scales.x.min;
+                const xMaxRaw = u.scales.x.max;
+                const yMinRaw = u.scales.y.min;
+                const yMaxRaw = u.scales.y.max;
+                if (xMinRaw == null || xMaxRaw == null || yMinRaw == null || yMaxRaw == null) {
+                    return;
+                }
+                // Explicitly-typed snapshots: the guard's narrowing doesn't
+                // reach the nested event handlers that capture these.
+                const xMin: number = xMinRaw;
+                const xMax: number = xMaxRaw;
+                const yMin: number = yMinRaw;
+                const yMax: number = yMaxRaw;
 
                 const xRange = xMax - xMin;
                 const yRange = yMax - yMin;
@@ -90,15 +100,27 @@ export const wheelZoomPlugin = (opts: { factor: number; drag: boolean; scroll: b
 
                             const left0 = event.clientX;
 
-                            const scXMin0 = u.scales.x.min;
-                            const scXMax0 = u.scales.x.max;
+                            // Snapshot into explicitly-typed consts: narrowing
+                            // from the guard doesn't reach the hoisted onmove().
+                            const scXMinRaw = u.scales.x.min;
+                            const scXMaxRaw = u.scales.x.max;
+                            if (scXMinRaw == null || scXMaxRaw == null) {
+                                return;
+                            }
+                            const scXMin0: number = scXMinRaw;
+                            const scXMax0: number = scXMaxRaw;
 
                             const xUnitsPerPx = u.posToVal(1, 'x') - u.posToVal(0, 'x');
 
                             const top0 = event.clientY;
 
-                            const scYMin0 = u.scales.y.min;
-                            const scYMax0 = u.scales.y.max;
+                            const scYMinRaw = u.scales.y.min;
+                            const scYMaxRaw = u.scales.y.max;
+                            if (scYMinRaw == null || scYMaxRaw == null) {
+                                return;
+                            }
+                            const scYMin0: number = scYMinRaw;
+                            const scYMax0: number = scYMaxRaw;
 
                             const yUnitsPerPx = u.posToVal(1, 'y') - u.posToVal(0, 'y');
 
@@ -169,14 +191,19 @@ export const wheelZoomPlugin = (opts: { factor: number; drag: boolean; scroll: b
                     over.addEventListener("wheel", (event: WheelEvent) => {
                         event.preventDefault();
 
-                        const {left, top} = u.cursor;
+                        const { left = 0, top = 0 } = u.cursor;
+                        const { min: scXMin, max: scXMax } = u.scales.x;
+                        const { min: scYMin, max: scYMax } = u.scales.y;
+                        if (scXMin == null || scXMax == null || scYMin == null || scYMax == null) {
+                            return;
+                        }
 
                         const leftPct = left/rect.width;
                         const btmPct = 1 - top/rect.height;
                         const xVal = u.posToVal(left, "x");
                         const yVal = u.posToVal(top, "y");
-                        const oxRange = u.scales.x.max - u.scales.x.min;
-                        const oyRange = u.scales.y.max - u.scales.y.min;
+                        const oxRange = scXMax - scXMin;
+                        const oyRange = scYMax - scYMin;
 
                         const nxRange = event.deltaY < 0 ? oxRange * factor : oxRange / factor;
                         let nxMin = xVal - leftPct * nxRange;

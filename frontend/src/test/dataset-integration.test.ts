@@ -37,7 +37,7 @@ describe('Dataset Loading Integration', () => {
       filteredData: [],
       filteredTxData: [],
       filteredRxData: [],
-      dataBlocks: [],
+      dataBlocks: {},
       filterModel: null,
       geometryInfo: { UTM_zone: 0, Hemisphere: 'N', North: 0, East: 0, Strike: 0 },
       isTxDepthAdjusted: false,

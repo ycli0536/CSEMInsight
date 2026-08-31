@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useMemo } from "react";
-import { SimpleBarChart, BarSeries } from "./SimpleBarChart";
+import { SimpleBarChart, BarSeries, BarChartDataPoint } from "./SimpleBarChart";
 import { getCachedMisfitStats, getMisfitCacheKey, setCachedMisfitStats } from './misfitStatsCache';
 import uPlot from "uplot";
 import "uplot/dist/uPlot.min.css";
@@ -107,7 +107,7 @@ export const MisfitStatsWindow = () => {
         const sortedFreqs = Array.from(freqs).sort((a, b) => a - b);
 
         return sortedFreqs.map(f => {
-            const row: Record<string, string | number> = { name: f };
+            const row: BarChartDataPoint = { name: f };
             datasetStats.forEach(ds => {
                 const amp = ds.stats.byFreq.amplitude.find(d => d.Freq_id === f)?.RMS ?? 0;
                 const phi = ds.stats.byFreq.phase.find(d => d.Freq_id === f)?.RMS ?? 0;
@@ -129,7 +129,7 @@ export const MisfitStatsWindow = () => {
         const sortedPos = Array.from(positions).sort((a, b) => a - b);
 
         return sortedPos.map(pos => {
-            const row: Record<string, string | number> = { name: pos.toFixed(2) };
+            const row: BarChartDataPoint = { name: pos.toFixed(2) };
             datasetStats.forEach(ds => {
                 const amp = ds.stats.byTx.amplitude.find(d => d.Y_tx_km === pos)?.RMS ?? 0;
                 const phi = ds.stats.byTx.phase.find(d => d.Y_tx_km === pos)?.RMS ?? 0;
@@ -168,7 +168,7 @@ export const MisfitStatsWindow = () => {
 
         // Single point check
         if (globalMax - globalMin < 1e-6) {
-            const row: Record<string, string | number> = { name: globalMin.toFixed(2) };
+            const row: BarChartDataPoint = { name: globalMin.toFixed(2) };
             datasetStats.forEach(ds => {
                 // Avg of all
                 let ampSum = 0, ampCount = 0;
@@ -223,7 +223,7 @@ export const MisfitStatsWindow = () => {
 
         // Flatten
         return rows.map(r => {
-            const finalRow: Record<string, string | number> = { name: r.name };
+            const finalRow: BarChartDataPoint = { name: r.name };
             datasetStats.forEach(ds => {
                 const ampAcc = r.data[`Amp_${ds.id}`];
                 const phiAcc = r.data[`Phi_${ds.id}`];
@@ -420,7 +420,9 @@ export const MisfitStatsWindow = () => {
 
         if (scatterRef.current) {
             const series: uPlot.Series[] = [{}];
-            const data: uPlot.AlignedData = [null];
+            // Mode-2 (faceted scatter) data: a null x slot followed by [x, y]
+            // pairs per series; uPlot's AlignedData type only models mode 1.
+            const data: (null | [number[], number[]])[] = [null];
 
             datasetStats.forEach(ds => {
                 // Amplitude Series
@@ -476,7 +478,7 @@ export const MisfitStatsWindow = () => {
                 mode: 2, // Scatter
                 scales: {
                     x: { time: false, auto: true },
-                    y: { auto: true, range: (_self: uPlot, min: number, max: number) => [0, max * 1.1] }
+                    y: { auto: true, range: (_self: uPlot, _min: number, max: number) => [0, max * 1.1] }
                 },
                 axes: [
                     {
@@ -497,7 +499,7 @@ export const MisfitStatsWindow = () => {
                 legend: { show: true }
             };
 
-            scatterPlotRef.current = new uPlot(opts, data, scatterRef.current);
+            scatterPlotRef.current = new uPlot(opts, data as unknown as uPlot.AlignedData, scatterRef.current);
         }
 
         return () => {

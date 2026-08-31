@@ -302,7 +302,6 @@ export function BathymetryUpload() {
                 >
                     <FileTrigger
                         acceptedFileTypes={[".txt"]}
-                        isDisabled={isDemoMode}
                         onSelect={(e) => {
                             if (e) {
                                 const files = Array.from(e);

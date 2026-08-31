@@ -46,18 +46,18 @@ describe('InputFile', () => {
   beforeEach(() => {
     vi.clearAllMocks();
 
-    (useDataTableStore as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
+    (useDataTableStore as unknown as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
       datasets: new Map(),
       addDataset: vi.fn(),
       setPrimaryDataset: vi.fn(),
       resetAllFilters: vi.fn(),
     });
 
-    (useSettingFormStore as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
+    (useSettingFormStore as unknown as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
       setDataFiles: vi.fn(),
     });
 
-    (useAlertDialog as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
+    (useAlertDialog as unknown as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
       alertState: {
         isOpen: false,
         title: '',
