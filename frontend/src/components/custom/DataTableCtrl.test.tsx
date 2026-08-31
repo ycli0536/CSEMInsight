@@ -79,7 +79,7 @@ describe('DataTableCtrl', () => {
     vi.clearAllMocks();
     vi.unstubAllEnvs();
 
-    (useSettingFormStore as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
+    (useSettingFormStore as unknown as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
       freqSelected: 'all',
       txSelected: 'all',
       rxSelected: 'all',
@@ -92,7 +92,7 @@ describe('DataTableCtrl', () => {
       setResetColumnFilters: vi.fn(),
     });
 
-    (useDataTableStore as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
+    (useDataTableStore as unknown as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
       data: [],
       txData: [],
       rxData: [],
@@ -103,7 +103,7 @@ describe('DataTableCtrl', () => {
       setVisibleColumns: vi.fn(),
     });
 
-    (useAlertDialog as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
+    (useAlertDialog as unknown as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
       alertState: {
         isOpen: false,
         title: '',
@@ -120,7 +120,7 @@ describe('DataTableCtrl', () => {
     const user = userEvent.setup();
     const showAlert = vi.fn();
 
-    (useAlertDialog as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
+    (useAlertDialog as unknown as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
       alertState: {
         isOpen: false,
         title: '',

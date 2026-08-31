@@ -15,7 +15,7 @@ const baseData: CsemData[] = [
     Y_tx: 0,
     Freq_id: 1,
     Residual: 1.0,
-  } as CsemData,
+  } as unknown as CsemData,
 ];
 
 describe('misfitStatsCache', () => {

@@ -7,10 +7,7 @@ import { SafeResponsiveContainer } from './SafeResponsiveContainer';
 let resizeCallback: ResizeObserverCallback | null = null;
 
 class MockResizeObserver {
-  private readonly callback: ResizeObserverCallback;
-
   constructor(callback: ResizeObserverCallback) {
-    this.callback = callback;
     resizeCallback = callback;
   }
 

@@ -18,7 +18,7 @@ describe('MapLayerControl', () => {
     const setMapLayer = vi.fn();
     const triggerRecenter = vi.fn();
 
-    (useSettingFormStore as unknown as vi.Mock).mockReturnValue({
+    (useSettingFormStore as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
       mapLayer: 'satellite',
       setMapLayer,
       triggerRecenter,

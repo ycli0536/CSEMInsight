@@ -7,7 +7,7 @@ export default defineConfig({
   base: '/CSEMInsight/',
   resolve: {
     alias: {
-      '@': path.resolve(__dirname, './src'),
+      '@': path.resolve(import.meta.dirname, './src'),
     },
   },
   define: {
@@ -17,8 +17,8 @@ export default defineConfig({
   build: {
     rollupOptions: {
       input: {
-        index: path.resolve(__dirname, 'demo.html'),
-        embed: path.resolve(__dirname, 'src/embed/index.ts'),
+        index: path.resolve(import.meta.dirname, 'demo.html'),
+        embed: path.resolve(import.meta.dirname, 'src/embed/index.ts'),
       },
       output: {
         entryFileNames: (chunk) =>

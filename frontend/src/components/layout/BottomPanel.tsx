@@ -96,8 +96,7 @@ export function BottomPanel({ children }: BottomPanelProps) {
                     <ResizableHandle
                         withHandle
                         onDoubleClick={toggleCollapse}
-                        onPointerDown={(event) => {
-                            event?.stopPropagation();
+                        onPointerDown={() => {
                             raisePanel();
                         }}
                         className={cn(

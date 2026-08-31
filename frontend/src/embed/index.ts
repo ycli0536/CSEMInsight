@@ -1,4 +1,3 @@
-import { mountApp } from '../app/mountApp';
 import { mountApp } from '@/app/mountApp';
 import { loadDemoDatasets } from '@/demo/loadDemoData';
 

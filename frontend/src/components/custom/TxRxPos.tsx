@@ -327,7 +327,7 @@ export function TxRxPosPlot() {
 
             // Select xy plan view series
             const uplotTxRxData_xy: uPlot.AlignedData = [
-                uplotTxRxData[nameToIndexMap['Y_tx']], // Keep the x-axis (Y distance)
+                uplotTxRxData[nameToIndexMap['Y_tx']] as number[], // Keep the x-axis (Y distance)
                 uplotTxRxData[nameToIndexMap['X_tx']],
                 uplotTxRxData[nameToIndexMap['X_rx']],
                 uplotTxRxData[nameToIndexMap['Name_tx']],
@@ -337,7 +337,7 @@ export function TxRxPosPlot() {
 
             // Prepare Tx/Rx data - start with basic data
             const txRxData_yz: uPlot.AlignedData = [
-                uplotTxRxData[nameToIndexMap['Y_tx']], // x-axis (Y distance)
+                uplotTxRxData[nameToIndexMap['Y_tx']] as number[], // x-axis (Y distance)
                 uplotTxRxData[nameToIndexMap['Z_tx']],  // Tx depths
                 uplotTxRxData[nameToIndexMap['Z_rx']],  // Rx depths
                 uplotTxRxData[nameToIndexMap['Dip']],
@@ -404,7 +404,7 @@ export function TxRxPosPlot() {
                 {
                     label: "Tx Site",
                     show: false, // Do not plot this series
-                    value: (_self, _rawValue, _seriesIdx, idx) => `${uplotTxRxData[nameToIndexMap['Name_tx']][idx]}` // Display string in legend
+                    value: (_self, _rawValue, _seriesIdx, idx) => `${uplotTxRxData[nameToIndexMap['Name_tx']][idx as number]}` // Display string in legend
                 },
                 {
                     label: "Rx Theta",
